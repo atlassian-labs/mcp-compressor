@@ -1,0 +1,52 @@
+site_name: mcp-compressor
+repo_url: https://github.com/atlassian/mcp-compressor
+site_url: https://atlassian.github.io/mcp-compressor
+site_description: An MCP server wrapper for reducing tokens consumed by MCP tools.
+site_author: Tim Esler
+edit_uri: edit/main/docs/
+repo_name: atlassian/mcp-compressor
+copyright: Maintained by <a href="https://atlassian.com">atlassian</a>.
+
+nav:
+  - Home: index.md
+  - Modules: modules.md
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: ["mcp_compressor"]
+theme:
+  name: material
+  feature:
+    tabs: true
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: white
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/atlassian/mcp-compressor
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/mcp-compressor
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
