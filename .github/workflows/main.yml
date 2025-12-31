@@ -49,8 +49,6 @@ jobs:
       - name: Check typing
         run: uv run ty check
 
-
-
   check-docs:
     runs-on: ubuntu-latest
     steps:

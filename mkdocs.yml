@@ -19,6 +19,8 @@ plugins:
           paths: ["mcp_compressor"]
 theme:
   name: material
+  logo: https://raw.githubusercontent.com/atlassian-forks/SWE-PolyBench/refs/heads/main/rovo-dev-logo.svg
+  favicon: https://raw.githubusercontent.com/atlassian-forks/SWE-PolyBench/refs/heads/main/rovo-dev-logo.svg
   feature:
     tabs: true
   palette:
