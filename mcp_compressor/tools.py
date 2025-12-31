@@ -288,7 +288,7 @@ def sanitize_tool_name(name: str) -> str:
         A sanitized tool name conforming to MCP specifications.
     """
     # Replace spaces and invalid characters with underscores
-    sanitized = re.sub(r"[^A-Za-z0-9_\-.]", "_", name)
+    sanitized = re.sub(r"[^A-Za-z0-9_\-.]", "_", name).lower()
 
     # Ensure the name is not empty after sanitization
     if not sanitized:

@@ -19,6 +19,19 @@ MCP Compressor is a proxy server that wraps existing [Model Context Protocol (MC
 
 This approach dramatically reduces the number of tokens sent in the initial context while maintaining full functionality.
 
+## Why?
+
+MCP servers are exploding in popularity, but their tool descriptions consume significant tokens in every LLM request. For example:
+
+- The official **GitHub MCP server** exposes 94 tools consuming **17,600 tokens**
+- The official **Atlassian MCP server** consumes ~10,000 tokens
+
+With 30k+ tokens just for tool descriptions, costs can reach **1-10 cents per request** depending on prompt caching. MCP Compressor solves this by replacing dozens of tools with just 2 wrapper tools, achieving **70-97% token reduction** while maintaining full functionality. This enables:
+
+- Adding many MCP servers without blowing out context windows
+- Significant cost savings on token-based API pricing
+- Support for providing 100s or 1000s of tools across multiple servers to your agent
+
 ## Features
 
 - **Token Reduction**: Compress tool descriptions by up to 99% depending on compression level and tool count
@@ -114,7 +127,7 @@ mcp-compressor https://api.githubcopilot.com/mcp/ --server-name github
 
 # Special characters are automatically sanitized
 mcp-compressor uvx mcp-server-fetch --server-name "My Server!"
-  # Results in: My_Server__get_tool_schema, My_Server__invoke_tool
+  # Results in: my_server__get_tool_schema, my_server__invoke_tool
 ```
 
 #### Logging
