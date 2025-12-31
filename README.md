@@ -143,20 +143,17 @@ mcp-compressor uvx mcp-server-fetch -l warning
 The MCP Compressor acts as a transparent proxy between your LLM client and the underlying MCP server:
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph github["GitHub MCP"]
-        direction TB
         g1["create_pr"]
         g2["get_me"]
         g3["list_repos"]
         g4["get_issue"]
-        g5["create_issue"]
-        g6["get_file"]
-        g7["(+85 more tools)"]
+        g5["..."]
+        g6["(+87 more tools)"]
     end
 
     subgraph proxy["MCP Compressor"]
-        direction TB
         t1["get_tool_schema"]
         t2["invoke_tool"]
     end
@@ -164,14 +161,11 @@ flowchart LR
     subgraph client["MCP Client"]
     end
 
-    github <--> t1
-    g1 <--> t2
-    g2 <--> t2
-    g3 <--> t2
-    g4 <--> t2
-    g5 <--> t2
-    g6 <--> t2
-    g7 <--> t2
+    g1 <--> proxy
+    g2 <--> proxy
+    g3 <--> proxy
+    g4 <--> proxy
+    g6 <--> proxy
     t1 <--> client
     t2 <--> client
 ```
@@ -199,7 +193,7 @@ sequenceDiagram
     Compressor-->>Client: get_tool_schema, invoke_tool
 
     Client->>Compressor: get_tool_schema("create_pr")
-    Compressor-->>Client: {name: "create_pr", params: {...}}
+    Compressor-->>Client: create_pr description & schema
 
     Client->>Compressor: invoke_tool("create_pr", {...})
     Compressor->>Server: create_pr({...})
