@@ -2,7 +2,6 @@
 
 [![Release](https://img.shields.io/github/v/release/atlassian/mcp-compressor)](https://img.shields.io/github/v/release/atlassian/mcp-compressor)
 [![Build status](https://img.shields.io/github/actions/workflow/status/atlassian/mcp-compressor/main.yml?branch=main)](https://github.com/atlassian/mcp-compressor/actions/workflows/main.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/atlassian/mcp-compressor/branch/main/graph/badge.svg)](https://codecov.io/gh/atlassian/mcp-compressor)
 [![Commit activity](https://img.shields.io/github/commit-activity/m/atlassian/mcp-compressor)](https://img.shields.io/github/commit-activity/m/atlassian/mcp-compressor)
 [![License](https://img.shields.io/github/license/atlassian/mcp-compressor)](https://img.shields.io/github/license/atlassian/mcp-compressor)
 
@@ -22,7 +21,7 @@ This approach dramatically reduces the number of tokens sent in the initial cont
 
 ## Features
 
-- **Token Reduction**: Compress tool descriptions by up to 90% depending on compression level
+- **Token Reduction**: Compress tool descriptions by up to 99% depending on compression level and tool count
 - **Multiple Compression Levels**: Choose between `low`, `medium`, `high`, or `max`
 - **Universal Compatibility**: Works with any MCP server (stdio, HTTP, SSE)
 - **Zero Functionality Loss**: All tools remain fully accessible through the wrapper interface
@@ -130,11 +129,38 @@ mcp-compressor uvx mcp-server-fetch -l warning
 
 The MCP Compressor acts as a transparent proxy between your LLM client and the underlying MCP server:
 
-```
-┌─────────┐      ┌──────────────────┐      ┌────────────┐
-│   MCP   │ <──> │  MCP Compressor  │ <──> │ MCP Server │
-│  Client │      │  (This Package)  │      │            │
-└─────────┘      └──────────────────┘      └────────────┘
+```mermaid
+flowchart LR
+    subgraph github["GitHub MCP"]
+        direction TB
+        g1["create_pr"]
+        g2["get_me"]
+        g3["list_repos"]
+        g4["get_issue"]
+        g5["create_issue"]
+        g6["get_file"]
+        g7["(+85 more tools)"]
+    end
+
+    subgraph proxy["MCP Compressor"]
+        direction TB
+        t1["get_tool_schema"]
+        t2["invoke_tool"]
+    end
+
+    subgraph client["MCP Client"]
+    end
+
+    github <--> t1
+    g1 <--> t2
+    g2 <--> t2
+    g3 <--> t2
+    g4 <--> t2
+    g5 <--> t2
+    g6 <--> t2
+    g7 <--> t2
+    t1 <--> client
+    t2 <--> client
 ```
 
 Instead of seeing all tools with full schemas (which are often thousands of tokens), the LLM sees just:
@@ -148,6 +174,26 @@ Available tools:
 
 When the LLM needs to use a tool, it first calls `get_tool_schema(tool_name)` to retrieve the full schema, then `invoke_tool(tool_name, tool_input)` to execute it.
 
+```mermaid
+sequenceDiagram
+    participant Client as MCP Client
+    participant Compressor as MCP Compressor
+    participant Server as GitHub MCP<br/>(91 tools)
+
+    Client->>Compressor: list_tools()
+    Compressor->>Server: list_tools()
+    Server-->>Compressor: create_pr, get_me, list_repos, ...
+    Compressor-->>Client: get_tool_schema, invoke_tool
+
+    Client->>Compressor: get_tool_schema("create_pr")
+    Compressor-->>Client: {name: "create_pr", params: {...}}
+
+    Client->>Compressor: invoke_tool("create_pr", {...})
+    Compressor->>Server: create_pr({...})
+    Server-->>Compressor: result
+    Compressor-->>Client: result
+```
+
 ## Compression Level Details
 
 | Level | Description | Use Case |
@@ -158,9 +204,10 @@ When the LLM needs to use a tool, it first calls `get_tool_schema(tool_name)` to
 | `low` | Complete tool descriptions | For tools that are unusual and not intuitive for the agent to understand and use. Using a lower level of compression in these cases provides more context to the LLM on the purpose of the tools and how they relate to each other. |
 
 The best choice of compression level will depend on a number of factors, including:
-1. The number of tools in the MCP server - more tools, use more compression.
-1. How frequently the tools are expected to be used - if tools from a compressed server are rarely used, compress them more to prevent eating up tokens for nothing.
-1. How unusual or complex the tools are - simpler tools can be compressed more heavily with little downsize. Consider a simple `bash` tool with a single input argument `command`. Any modern LLM will understand exactly how to use it after seeing just the tool name and the name of the argument, so unless there is unexpected internal logic within the tool, aggressive compression can be used with little downside.
+
+1. **The number of tools in the MCP server** - more tools, use more compression.
+1. **How frequently the tools are expected to be used** - if tools from a compressed server are rarely used, compress them more to prevent eating up tokens for nothing.
+1. **How unusual or complex the tools are** - simpler tools can be compressed more heavily with little downsize. Consider a simple `bash` tool with a single input argument `command`. Any modern LLM will understand exactly how to use it after seeing just the tool name and the name of the argument, so unless there is unexpected internal logic within the tool, aggressive compression can be used with little downside.
 
 ## Configuration with MCP JSON file
 
