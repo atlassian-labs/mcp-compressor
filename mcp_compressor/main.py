@@ -6,18 +6,22 @@ compresses their tool descriptions to reduce token consumption.
 
 import asyncio
 import os
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Annotated, Literal, overload
 
 import typer
-from fastmcp import Client, FastMCP
+from fastmcp import FastMCP
 from fastmcp.client.transports import (
     SSETransport,
     StdioTransport,
     StreamableHttpTransport,
     infer_transport_type_from_url,
 )
+from fastmcp.server.proxy import ProxyClient
 from loguru import logger
 
+from .banner import print_banner
 from .tools import CompressedTools
 from .types import CompressionLevel, LogLevel, TransportType
 
@@ -112,7 +116,7 @@ def main(
             ),
             case_sensitive=False,
         ),
-    ] = LogLevel.INFO,
+    ] = LogLevel.WARNING,
 ):
     """Run the MCP Compressor proxy server.
 
@@ -161,6 +165,24 @@ async def async_main(
     """
     logger.info(f"Starting MCP Compressor with log level: {log_level.value}")
 
+    async with _server(command_or_url_list, cwd, env_list, header_list, timeout, compression_level, server_name) as mcp:
+        logger.info("Starting MCP Compressor server")
+        await mcp.run_async(show_banner=False, log_level=log_level.value)
+
+
+@asynccontextmanager
+async def _server(
+    command_or_url_list: list[str],
+    cwd: str | None,
+    env_list: list[str] | None,
+    header_list: list[str] | None,
+    timeout: float,
+    compression_level: CompressionLevel,
+    server_name: str | None,
+) -> AsyncGenerator[FastMCP, None]:
+    if compression_level == CompressionLevel.MAX and server_name is None:
+        raise ValueError("server_name must be provided when using MAX compression level")  # noqa: TRY003
+
     command_or_url = " ".join(command_or_url_list)
     transport_type = infer_transport_type_from_url(command_or_url) if command_or_url.startswith("http") else "stdio"
     logger.info(f"Inferred transport type: {transport_type}")
@@ -177,11 +199,16 @@ async def async_main(
         transport = _get_sse_transport(url=command_or_url, header_list=header_list, timeout=timeout)
 
     # Start the MCP client with the selected transport
-    async with Client(transport=transport) as client:
-        mcp = FastMCP("MCP Compressor", version="0.1.0", log_level=log_level.value)
-        compressed_tools = CompressedTools(client, compression_level=compression_level, server_name=server_name)
-        await compressed_tools.configure_server(mcp)
-        await mcp.run_async()
+    logger.info("Initializing proxy client")
+    async with ProxyClient(transport=transport) as client:
+        logger.info("Initalizing proxy server")
+        mcp = FastMCP.as_proxy(backend=client, name="MCP Compressor Proxy", version="0.1.0")
+        logger.info("Configuring compressed tools middleware")
+        compressed_tools = CompressedTools(mcp, compression_level=compression_level, server_name=server_name)
+        await compressed_tools.configure_server()
+        stats = await compressed_tools.get_compression_stats()
+        print_banner(server_name, transport_type, stats, compression_level)
+        yield mcp
 
 
 def _interpolate_string(value: str) -> str:

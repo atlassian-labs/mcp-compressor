@@ -35,6 +35,8 @@ mcp-compressor = "mcp_compressor.main:app"
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=6.0.0",
     "pre-commit>=4.5.0",
     "tox-uv>=1.29.0",
     "deptry>=0.24.0",
@@ -58,6 +60,8 @@ python-version = "3.10"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--cov=mcp_compressor --cov-report=term-missing"
 
 [tool.ruff]
 target-version = "py39"
