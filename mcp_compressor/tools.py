@@ -14,9 +14,9 @@ from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools import Tool
 from fastmcp.tools.tool import ToolResult
 from loguru import logger
-from mcp.types import CallToolRequestParams, ListToolsRequest
+from mcp.types import CallToolRequestParams, ListToolsRequest, TextContent
 
-from .types import CompressionLevel, ToolResultBlock
+from .types import CompressionLevel
 
 
 class ToolNotFoundError(ValueError):
@@ -82,18 +82,20 @@ class CompressedTools(Middleware):
         tool_description = self._format_tool_description(tool, CompressionLevel.LOW)
         return tool_description + "\n\n" + json.dumps(tool.parameters, indent=2)
 
-    async def invoke_tool(self, tool_name: str, tool_input: dict[str, Any] | None = None) -> list[ToolResultBlock]:
+    async def invoke_tool(self, tool_name: str, tool_input: dict[str, Any] | None = None, quiet: bool = False) -> Any:
         """Invoke a tool from {server_description}.
 
         Args:
             tool_name: The name of the tool to invoke.
             tool_input: The input to the tool. Schemas can be retrieved using the appropriate `get_tool_schema`
                 function.
+            quiet: If true, truncates large tool outputs for successful invocations. This is useful for reducing token
+                consumption when the output is not needed. Full responses will always be returned for tool errors.
 
         Returns:
             The output from the tool.
         """
-        return []
+        pass
 
     async def on_call_tool(
         self,
@@ -114,11 +116,21 @@ class CompressedTools(Middleware):
             return await call_next(context)
 
         if "tool_input" not in tool_args or not tool_args["tool_input"]:
-            tool_input = {k: v for k, v in tool_args.items() if k != "tool_name"}
+            tool_input = {k: v for k, v in tool_args.items() if k not in ["tool_name", "quiet"]}
         else:
             tool_input = tool_args["tool_input"]
         tool = await self._get_backend_tool(tool_args["tool_name"])
-        return await tool.run(tool_input)
+        tool_result = await tool.run(tool_input)
+        if tool_args.get("quiet"):
+            if len(tool_result.content) == 1 and isinstance(tool_result.content[0], TextContent):
+                return_text = tool_result.content[0].text
+                if len(return_text) < 1000:
+                    return tool_result
+                return_text = return_text[:500] + "\n...\n(truncated due to quiet mode)\n...\n" + return_text[-500:]
+            else:
+                return_text = f"Successfully executed tool '{tool.name}' without output."
+            return ToolResult(content=[TextContent(type="text", text=return_text)])
+        return tool_result
 
     async def on_list_tools(
         self, context: MiddlewareContext[ListToolsRequest], call_next: CallNext[ListToolsRequest, Sequence[Tool]]
