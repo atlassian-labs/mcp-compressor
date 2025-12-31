@@ -1,14 +1,14 @@
 # mcp-compressor
 
-[![Release](https://img.shields.io/github/v/release/atlassian/mcp-compressor)](https://img.shields.io/github/v/release/atlassian/mcp-compressor)
-[![Build status](https://img.shields.io/github/actions/workflow/status/atlassian/mcp-compressor/main.yml?branch=main)](https://github.com/atlassian/mcp-compressor/actions/workflows/main.yml?query=branch%3Amain)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/atlassian/mcp-compressor)](https://img.shields.io/github/commit-activity/m/atlassian/mcp-compressor)
-[![License](https://img.shields.io/github/license/atlassian/mcp-compressor)](https://img.shields.io/github/license/atlassian/mcp-compressor)
+[![Release](https://img.shields.io/github/v/release/atlassian-labs/mcp-compressor)](https://img.shields.io/github/v/release/atlassian-labs/mcp-compressor)
+[![Build status](https://img.shields.io/github/actions/workflow/status/atlassian-labs/mcp-compressor/main.yml?branch=main)](https://github.com/atlassian-labs/mcp-compressor/actions/workflows/main.yml?query=branch%3Amain)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/atlassian-labs/mcp-compressor)](https://img.shields.io/github/commit-activity/m/atlassian-labs/mcp-compressor)
+[![License](https://img.shields.io/github/license/atlassian-labs/mcp-compressor)](https://img.shields.io/github/license/atlassian-labs/mcp-compressor)
 
 An MCP server wrapper for reducing tokens consumed by MCP tools.
 
-- **Github repository**: <https://github.com/atlassian/mcp-compressor/>
-- **Documentation** <https://atlassian.github.io/mcp-compressor/>
+- **Github repository**: <https://github.com/atlassian-labs/mcp-compressor/>
+- **Documentation** <https://atlassian-labs.github.io/mcp-compressor/>
 
 ## Overview
 

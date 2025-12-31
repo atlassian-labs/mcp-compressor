@@ -25,9 +25,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://atlassian.github.io/mcp-compressor/"
-Repository = "https://github.com/atlassian/mcp-compressor"
-Documentation = "https://atlassian.github.io/mcp-compressor/"
+Homepage = "https://atlassian-labs.github.io/mcp-compressor/"
+Repository = "https://github.com/atlassian-labs/mcp-compressor"
+Documentation = "https://atlassian-labs.github.io/mcp-compressor/"
 
 [project.scripts]
 mcp-compressor = "mcp_compressor.main:app"

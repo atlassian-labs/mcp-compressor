@@ -1,10 +1,10 @@
 site_name: mcp-compressor
-repo_url: https://github.com/atlassian/mcp-compressor
-site_url: https://atlassian.github.io/mcp-compressor
+repo_url: https://github.com/atlassian-labs/mcp-compressor
+site_url: https://atlassian-labs.github.io/mcp-compressor
 site_description: An MCP server wrapper for reducing tokens consumed by MCP tools.
 site_author: Tim Esler
 edit_uri: edit/main/docs/
-repo_name: atlassian/mcp-compressor
+repo_name: atlassian-labs/mcp-compressor
 copyright: Maintained by <a href="https://atlassian.com">atlassian</a>.
 
 nav:
@@ -44,7 +44,7 @@ theme:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/atlassian/mcp-compressor
+      link: https://github.com/atlassian-labs/mcp-compressor
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/mcp-compressor
 

@@ -39,7 +39,7 @@ def print_banner(
     banner.append(blank_line)
     banner.append(_pad_line(f"\033[32m●\033[0m Backend server transport: {transport_type.upper()}", columns + 9))
     banner.append(blank_line)
-    banner.append(_pad_line("\033[32m●\033[0m Docs: https://atlassian.github.io/mcp-compressor/", columns + 9))
+    banner.append(_pad_line("\033[32m●\033[0m Docs: https://atlassian-labs.github.io/mcp-compressor/", columns + 9))
     banner.append(blank_line)
     banner.append(separator)
     banner.append(blank_line)
