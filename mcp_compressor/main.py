@@ -122,19 +122,9 @@ def main(
 
     This is the main entry point for the CLI application. It connects to an MCP server
     (via stdio, HTTP, or SSE) and wraps it with a compressed tool interface.
-
-    Args:
-        command_or_url_list: Command and arguments for stdio servers, or URL for remote servers.
-        cwd: Working directory for stdio servers.
-        env_list: Environment variables for stdio servers in VAR=VALUE format.
-        header_list: HTTP headers for remote servers in Header-Name=Value format.
-        timeout: Timeout in seconds for server connections and requests.
-        compression_level: Level of tool description compression to apply.
-        server_name: Optional custom name prefix for wrapper tools.
-        log_level: Logging verbosity level.
     """
     asyncio.run(
-        async_main(
+        _async_main(
             command_or_url_list=command_or_url_list,
             cwd=cwd,
             env_list=env_list,
@@ -147,7 +137,7 @@ def main(
     )
 
 
-async def async_main(
+async def _async_main(
     command_or_url_list: list[str],
     cwd: str | None,
     env_list: list[str] | None,
@@ -157,21 +147,7 @@ async def async_main(
     server_name: str | None,
     log_level: LogLevel,
 ) -> None:
-    """Run the MCP Compressor proxy server asynchronously.
-
-    This function handles the core logic of connecting to the underlying MCP server,
-    setting up the compression middleware, and running the proxy server.
-
-    Args:
-        command_or_url_list: Command and arguments for stdio servers, or URL for remote servers.
-        cwd: Working directory for stdio servers.
-        env_list: Environment variables for stdio servers in VAR=VALUE format.
-        header_list: HTTP headers for remote servers in Header-Name=Value format.
-        timeout: Timeout in seconds for server connections and requests.
-        compression_level: Level of tool description compression to apply.
-        server_name: Optional custom name prefix for wrapper tools.
-        log_level: Logging verbosity level.
-    """
+    """Run the MCP Compressor proxy server asynchronously."""
     logger.info(f"Starting MCP Compressor with log level: {log_level.value}")
 
     async with _server(

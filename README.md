@@ -276,21 +276,51 @@ With compression level:
 ## Command-Line Reference
 
 ```
-Usage: mcp-compressor [OPTIONS] COMMAND_OR_URL...
+Usage: mcp-compressor [OPTIONS] COMMAND_OR_URL
+
+  Run the MCP Compressor proxy server.
+
+  This is the main entry point for the CLI application. It connects to an MCP
+  server (via stdio, HTTP, or SSE) and wraps it with a compressed tool
+  interface.
 
 Arguments:
-  COMMAND_OR_URL...  Command and args for stdio servers, or URL for remote
-                     servers [required]
+  COMMAND_OR_URL  The URL of the MCP server to connect to for streamable HTTP
+                  or SSE servers, or the command and arguments to run for
+                  stdio servers. Example: uvx mcp-server-fetch  \[required]
 
 Options:
-  --cwd DIRECTORY              Working directory for stdio servers
-  -e, --env TEXT               Environment variables (VAR=VALUE format)
-  -H, --header TEXT            HTTP headers for remote servers
-  -t, --timeout FLOAT          Timeout in seconds [default: 10.0]
-  -c, --compression-level      Compression level [default: medium]
-                               [low|medium|high|max]
-  -n, --server-name TEXT       Custom name prefix for wrapper tools
-  -l, --log-level              Logging level [default: info]
-                               [debug|info|warning|error|critical]
-  --help                       Show this message and exit
+  --cwd TEXT                      The working directory to use when running
+                                  stdio MCP servers.
+  -e, --env TEXT                  Environment variables to set when running
+                                  stdio MCP servers, in the form
+                                  VAR_NAME=VALUE. Can be used multiple times.
+                                  Supports environment variable expansion with
+                                  ${VAR_NAME} syntax.
+  -H, --header TEXT               Headers to use for remote (HTTP/SSE) MCP
+                                  server connections, in the form Header-
+                                  Name=Header-Value. Can be use multiple
+                                  times. Supports environment variable
+                                  expansion with ${VAR_NAME} syntax.
+  -t, --timeout FLOAT             The timeout in seconds for connecting to the
+                                  MCP server and making requests.  \[default:
+                                  10.0]
+  -c, --compression-level [max|high|medium|low]
+                                  The level of compression to apply to tool
+                                  the tools descriptions of the wrapped MCP
+                                  server.  \[default: medium]
+  -n, --server-name TEXT          Optional custom name to prefix the wrapper
+                                  tool names (get_tool_schema, invoke_tool,
+                                  list_tools). The name will be sanitized to
+                                  conform to MCP tool name specifications
+                                  (only A-Z, a-z, 0-9, _, -, .).
+  -l, --log-level [debug|info|warning|error|critical]
+                                  The logging level. Used for both the MCP
+                                  Compressor server and the underlying MCP
+                                  server if it is a stdio server.  \[default:
+                                  WARNING]
+  --install-completion            Install completion for the current shell.
+  --show-completion               Show completion for the current shell, to
+                                  copy it or customize the installation.
+  --help                          Show this message and exit.
 ```
