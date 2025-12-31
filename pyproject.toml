@@ -20,6 +20,7 @@ classifiers = [
 dependencies = [
     "fastmcp>=2.14.1",
     "loguru>=0.7.3",
+    "loguru-logging-intercept>=0.1.5",
     "mcp>=1.25.0",
     "typer>=0.21.0",
 ]
@@ -115,3 +116,8 @@ ignore = [
 
 [tool.ruff.format]
 preview = true
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple/"
+default = true

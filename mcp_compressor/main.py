@@ -5,7 +5,9 @@ compresses their tool descriptions to reduce token consumption.
 """
 
 import asyncio
+import logging
 import os
+import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal, overload
@@ -20,10 +22,13 @@ from fastmcp.client.transports import (
 )
 from fastmcp.server.proxy import ProxyClient
 from loguru import logger
+from loguru_logging_intercept import setup_loguru_logging_intercept
 
 from .banner import print_banner
 from .tools import CompressedTools
 from .types import CompressionLevel, LogLevel, TransportType
+
+LOGGING_LEVEL_MAP = logging.getLevelNamesMapping()
 
 app = typer.Typer(name="MCP Compressor", help="An MCP server wrapper for reducing tokens consumed by MCP tools.")
 
@@ -123,6 +128,10 @@ def main(
     This is the main entry point for the CLI application. It connects to an MCP server
     (via stdio, HTTP, or SSE) and wraps it with a compressed tool interface.
     """
+    logger.remove()
+    logger.add(sys.stderr, level=log_level.value.upper())
+    setup_loguru_logging_intercept(modules=("fastmcp",))
+
     asyncio.run(
         _async_main(
             command_or_url_list=command_or_url_list,
@@ -193,7 +202,7 @@ async def _server(
 
     # Start the MCP client with the selected transport
     logger.info("Initializing proxy client")
-    async with ProxyClient(transport=transport) as client:
+    async with ProxyClient(transport=transport, timeout=timeout) as client:
         logger.info("Initalizing proxy server")
         mcp = FastMCP.as_proxy(backend=client, name="MCP Compressor Proxy", version="0.1.0")
         logger.info("Configuring compressed tools middleware")
@@ -256,7 +265,7 @@ def _get_remote_transport(
             key, val = header.split("=", 1)
             header_dict[key] = _interpolate_string(val)
     transport_cls = StreamableHttpTransport if transport_type == "http" else SSETransport
-    return transport_cls(url=url, headers=header_dict, sse_read_timeout=timeout)
+    return transport_cls(url=url, headers=header_dict)
 
 
 def _get_streamable_http_transport(url: str, header_list: list[str] | None, timeout: float) -> StreamableHttpTransport:
