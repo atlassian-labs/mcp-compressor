@@ -51,6 +51,19 @@ def empty_tool() -> None:
     pass
 
 
+@mcp.tool
+def generate_long_output(length: int = 2000) -> str:
+    """A test tool that generates a long output string.
+
+    Args:
+        length: The length of the output string to generate. Defaults to 2000.
+
+    Returns:
+        A string of the specified length containing repeating characters.
+    """
+    return "X" * length
+
+
 @mcp.resource("test://test-resource")
 def test_resource() -> str:
     """A test resource that returns a static string.

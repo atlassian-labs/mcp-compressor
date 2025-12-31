@@ -18,6 +18,9 @@ from mcp.types import CallToolRequestParams, ListToolsRequest, TextContent
 
 from .types import CompressionLevel
 
+# Minimum output length before quiet mode truncation applies
+QUIET_MODE_THRESHOLD = 1000
+
 
 class ToolNotFoundError(ValueError):
     """Exception raised when a requested tool is not found in the backend MCP server."""
@@ -124,9 +127,14 @@ class CompressedTools(Middleware):
         if tool_args.get("quiet"):
             if len(tool_result.content) == 1 and isinstance(tool_result.content[0], TextContent):
                 return_text = tool_result.content[0].text
-                if len(return_text) < 1000:
+                if len(return_text) < QUIET_MODE_THRESHOLD:
                     return tool_result
-                return_text = return_text[:500] + "\n...\n(truncated due to quiet mode)\n...\n" + return_text[-500:]
+                preview_length = QUIET_MODE_THRESHOLD // 2
+                return_text = (
+                    return_text[:preview_length]
+                    + "\n...\n(truncated due to quiet mode)\n...\n"
+                    + return_text[-preview_length:]
+                )
             else:
                 return_text = f"Successfully executed tool '{tool.name}' without output."
             return ToolResult(content=[TextContent(type="text", text=return_text)])

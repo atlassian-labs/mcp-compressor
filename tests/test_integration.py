@@ -5,6 +5,7 @@ from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from mcp.types import TextContent
 
+from mcp_compressor.tools import QUIET_MODE_THRESHOLD
 from mcp_compressor.types import CompressionLevel
 
 expected_tools_2 = {"get_tool_schema", "invoke_tool"}
@@ -94,3 +95,35 @@ async def test_invoke_tool_propagates_results_and_errors(
     assert result.content
     assert isinstance(result.content[0], TextContent)
     assert result.content[0].text == expected_result
+
+
+@pytest.mark.parametrize(
+    "output_length,should_truncate",
+    [
+        (QUIET_MODE_THRESHOLD - 1, False),  # Under threshold - no truncation
+        (QUIET_MODE_THRESHOLD, True),  # At threshold - truncated (uses < comparison)
+        (QUIET_MODE_THRESHOLD * 2, True),  # Well over threshold - truncated
+    ],
+)
+async def test_invoke_tool_quiet_mode(proxy_mcp_client: Client, output_length: int, should_truncate: bool) -> None:
+    """Test that quiet mode truncates tool outputs at or above threshold."""
+    result = await proxy_mcp_client.call_tool(
+        "test_server_invoke_tool",
+        {"tool_name": "generate_long_output", "tool_input": {"length": output_length}, "quiet": True},
+    )
+
+    assert result.content
+    assert isinstance(result.content[0], TextContent)
+    result_text = result.content[0].text
+
+    if should_truncate:
+        # Should be truncated with the marker
+        assert "(truncated due to quiet mode)" in result_text
+        # Should contain beginning and end preview (half of threshold each)
+        preview_length = QUIET_MODE_THRESHOLD // 2
+        assert result_text.startswith("X" * preview_length)
+        assert result_text.endswith("X" * preview_length)
+    else:
+        # Should return full output without truncation
+        assert "(truncated due to quiet mode)" not in result_text
+        assert result_text == "X" * output_length
