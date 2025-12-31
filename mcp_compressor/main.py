@@ -134,7 +134,16 @@ def main(
         log_level: Logging verbosity level.
     """
     asyncio.run(
-        async_main(command_or_url_list, cwd, env_list, header_list, timeout, compression_level, server_name, log_level)
+        async_main(
+            command_or_url_list=command_or_url_list,
+            cwd=cwd,
+            env_list=env_list,
+            header_list=header_list,
+            timeout=timeout,
+            compression_level=compression_level,
+            server_name=server_name,
+            log_level=log_level,
+        )
     )
 
 
@@ -165,7 +174,15 @@ async def async_main(
     """
     logger.info(f"Starting MCP Compressor with log level: {log_level.value}")
 
-    async with _server(command_or_url_list, cwd, env_list, header_list, timeout, compression_level, server_name) as mcp:
+    async with _server(
+        command_or_url_list=command_or_url_list,
+        cwd=cwd,
+        env_list=env_list,
+        header_list=header_list,
+        timeout=timeout,
+        compression_level=compression_level,
+        server_name=server_name,
+    ) as mcp:
         logger.info("Starting MCP Compressor server")
         await mcp.run_async(show_banner=False, log_level=log_level.value)
 

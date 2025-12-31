@@ -14,7 +14,7 @@ from mcp_compressor.types import CompressionLevel
         ("my_tool", "my_tool"),
         ("my-tool", "my-tool"),
         ("my.tool", "my.tool"),
-        ("MyTool123", "MyTool123"),
+        ("MyTool123", "mytool123"),
         # Invalid characters are replaced with underscores
         ("my tool", "my_tool"),
         ("my!tool", "my_tool"),

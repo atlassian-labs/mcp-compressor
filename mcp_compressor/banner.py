@@ -43,9 +43,7 @@ def print_banner(
     banner.append(blank_line)
     banner.append(separator)
     banner.append(blank_line)
-    banner.append(
-        _pad_line(f"📊 Compression Statistics (current = {compression_level.value.capitalize()}):", columns - 1)
-    )
+    banner.append(_pad_line(f"📊 Compression Statistics (current = {compression_level.capitalize()}):", columns - 1))
     banner.append(blank_line)
     for line in _format_compression_chart(stats, columns, compression_level):
         banner.append(line)

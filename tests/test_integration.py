@@ -31,7 +31,7 @@ async def test_list_tools(proxy_mcp_client: Client, expected_tools: set[str]) ->
 
 @pytest.mark.parametrize(
     "proxy_mcp_client",
-    [CompressionLevel.LOW, CompressionLevel.MEDIUM, CompressionLevel.HIGH, expected_tools_2],
+    [CompressionLevel.LOW, CompressionLevel.MEDIUM, CompressionLevel.HIGH],
     indirect=True,
 )
 async def test_get_tool_schema_description(proxy_mcp_client: Client, backend_mcp_client: Client) -> None:
