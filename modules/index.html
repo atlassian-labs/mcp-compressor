@@ -1,0 +1,3312 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="An MCP server wrapper for reducing tokens consumed by MCP tools.">
+      
+      
+        <meta name="author" content="Tim Esler">
+      
+      
+        <link rel="canonical" href="https://atlassian-labs.github.io/mcp-compressor/modules/">
+      
+      
+        <link rel="prev" href="..">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="https://raw.githubusercontent.com/atlassian-forks/SWE-PolyBench/refs/heads/main/rovo-dev-logo.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>Modules - mcp-compressor</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="deep-orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="mcp-compressor" class="md-header__button md-logo" aria-label="mcp-compressor" data-md-component="logo">
+      
+  <img src="https://raw.githubusercontent.com/atlassian-forks/SWE-PolyBench/refs/heads/main/rovo-dev-logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            mcp-compressor
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Modules
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="deep-orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="deep-orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/atlassian-labs/mcp-compressor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    atlassian-labs/mcp-compressor
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="mcp-compressor" class="md-nav__button md-logo" aria-label="mcp-compressor" data-md-component="logo">
+      
+  <img src="https://raw.githubusercontent.com/atlassian-forks/SWE-PolyBench/refs/heads/main/rovo-dev-logo.svg" alt="logo">
+
+    </a>
+    mcp-compressor
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/atlassian-labs/mcp-compressor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    atlassian-labs/mcp-compressor
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#main-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Main Module
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.main" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        main
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.main.main" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        main
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tools-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tools Module
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CompressedTools
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CompressedTools">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.__init__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __init__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.configure_server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        configure_server
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.get_compression_stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_compression_stats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.get_tool_schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_tool_schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.invoke_tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        invoke_tool
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.list_tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list_tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.on_call_tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        on_call_tool
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.on_list_tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        on_list_tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.ToolNotFoundError" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ToolNotFoundError
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.sanitize_tool_name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sanitize_tool_name
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#types-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Types Module
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.types.ToolResultBlock" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ToolResultBlock
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.types.TransportType" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TransportType
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.types.CompressionLevel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CompressionLevel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.types.LogLevel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LogLevel
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#main-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Main Module
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.main" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        main
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.main.main" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        main
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tools-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tools Module
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CompressedTools
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CompressedTools">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.__init__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __init__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.configure_server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        configure_server
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.get_compression_stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_compression_stats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.get_tool_schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_tool_schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.invoke_tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        invoke_tool
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.list_tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list_tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.on_call_tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        on_call_tool
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.CompressedTools.on_list_tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        on_list_tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.ToolNotFoundError" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ToolNotFoundError
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.tools.sanitize_tool_name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sanitize_tool_name
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#types-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Types Module
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.types.ToolResultBlock" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ToolResultBlock
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.types.TransportType" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TransportType
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.types.CompressionLevel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CompressionLevel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp_compressor.types.LogLevel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LogLevel
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="api-reference">API Reference<a class="headerlink" href="#api-reference" title="Permanent link">&para;</a></h1>
+<p>This page provides detailed API documentation for the MCP Compressor package.</p>
+<h2 id="main-module">Main Module<a class="headerlink" href="#main-module" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<a id="mcp_compressor.main"></a>
+    <div class="doc doc-contents first">
+
+        <p>Main entry point for the MCP Compressor CLI.</p>
+<p>This module provides the CLI interface for running the MCP Compressor proxy server, which wraps existing MCP servers and
+compresses their tool descriptions to reduce token consumption.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mcp_compressor.main.main" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">main</span><span class="p">(</span><span class="n">command_or_url_list</span><span class="p">,</span> <span class="n">cwd</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">env_list</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">header_list</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">10.0</span><span class="p">,</span> <span class="n">compression_level</span><span class="o">=</span><span class="n">CompressionLevel</span><span class="o">.</span><span class="n">MEDIUM</span><span class="p">,</span> <span class="n">server_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">log_level</span><span class="o">=</span><span class="n">LogLevel</span><span class="o">.</span><span class="n">WARNING</span><span class="p">)</span></code>
+
+<a href="#mcp_compressor.main.main" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Run the MCP Compressor proxy server.</p>
+<p>This is the main entry point for the CLI application. It connects to an MCP server
+(via stdio, HTTP, or SSE) and wraps it with a compressed tool interface.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mcp_compressor/main.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 33</span>
+<span class="normal"> 34</span>
+<span class="normal"> 35</span>
+<span class="normal"> 36</span>
+<span class="normal"> 37</span>
+<span class="normal"> 38</span>
+<span class="normal"> 39</span>
+<span class="normal"> 40</span>
+<span class="normal"> 41</span>
+<span class="normal"> 42</span>
+<span class="normal"> 43</span>
+<span class="normal"> 44</span>
+<span class="normal"> 45</span>
+<span class="normal"> 46</span>
+<span class="normal"> 47</span>
+<span class="normal"> 48</span>
+<span class="normal"> 49</span>
+<span class="normal"> 50</span>
+<span class="normal"> 51</span>
+<span class="normal"> 52</span>
+<span class="normal"> 53</span>
+<span class="normal"> 54</span>
+<span class="normal"> 55</span>
+<span class="normal"> 56</span>
+<span class="normal"> 57</span>
+<span class="normal"> 58</span>
+<span class="normal"> 59</span>
+<span class="normal"> 60</span>
+<span class="normal"> 61</span>
+<span class="normal"> 62</span>
+<span class="normal"> 63</span>
+<span class="normal"> 64</span>
+<span class="normal"> 65</span>
+<span class="normal"> 66</span>
+<span class="normal"> 67</span>
+<span class="normal"> 68</span>
+<span class="normal"> 69</span>
+<span class="normal"> 70</span>
+<span class="normal"> 71</span>
+<span class="normal"> 72</span>
+<span class="normal"> 73</span>
+<span class="normal"> 74</span>
+<span class="normal"> 75</span>
+<span class="normal"> 76</span>
+<span class="normal"> 77</span>
+<span class="normal"> 78</span>
+<span class="normal"> 79</span>
+<span class="normal"> 80</span>
+<span class="normal"> 81</span>
+<span class="normal"> 82</span>
+<span class="normal"> 83</span>
+<span class="normal"> 84</span>
+<span class="normal"> 85</span>
+<span class="normal"> 86</span>
+<span class="normal"> 87</span>
+<span class="normal"> 88</span>
+<span class="normal"> 89</span>
+<span class="normal"> 90</span>
+<span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@app</span><span class="o">.</span><span class="n">command</span><span class="p">()</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span>
+    <span class="n">command_or_url_list</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span>
+        <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+        <span class="n">typer</span><span class="o">.</span><span class="n">Argument</span><span class="p">(</span>
+            <span class="o">...</span><span class="p">,</span>
+            <span class="n">metavar</span><span class="o">=</span><span class="s2">&quot;COMMAND_OR_URL&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+                <span class="s2">&quot;The URL of the MCP server to connect to for streamable HTTP or SSE servers, or the command and &quot;</span>
+                <span class="s2">&quot;arguments to run for stdio servers. Example: uvx mcp-server-fetch&quot;</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+    <span class="p">],</span>
+    <span class="n">cwd</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span>
+        <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+            <span class="o">...</span><span class="p">,</span>
+            <span class="s2">&quot;--cwd&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;The working directory to use when running stdio MCP servers.&quot;</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">env_list</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span>
+        <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+            <span class="o">...</span><span class="p">,</span>
+            <span class="s2">&quot;--env&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;-e&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+                <span class="s2">&quot;Environment variables to set when running stdio MCP servers, in the form VAR_NAME=VALUE. Can be used &quot;</span>
+                <span class="s2">&quot;multiple times. Supports environment variable expansion with $</span><span class="si">{VAR_NAME}</span><span class="s2"> syntax.&quot;</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+    <span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">header_list</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span>
+        <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+            <span class="o">...</span><span class="p">,</span>
+            <span class="s2">&quot;--header&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;-H&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+                <span class="s2">&quot;Headers to use for remote (HTTP/SSE) MCP server connections, in the form Header-Name=Header-Value. &quot;</span>
+                <span class="s2">&quot;Can be use multiple times. Supports environment variable expansion with $</span><span class="si">{VAR_NAME}</span><span class="s2"> syntax.&quot;</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+    <span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">timeout</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span>
+        <span class="nb">float</span><span class="p">,</span>
+        <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+            <span class="o">...</span><span class="p">,</span>
+            <span class="s2">&quot;--timeout&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;-t&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="s2">&quot;The timeout in seconds for connecting to the MCP server and making requests.&quot;</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">]</span> <span class="o">=</span> <span class="mf">10.0</span><span class="p">,</span>
+    <span class="n">compression_level</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span>
+        <span class="n">CompressionLevel</span><span class="p">,</span>
+        <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+            <span class="o">...</span><span class="p">,</span>
+            <span class="s2">&quot;--compression-level&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;-c&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;The level of compression to apply to tool the tools descriptions of the wrapped MCP server.&quot;</span><span class="p">),</span>
+            <span class="n">case_sensitive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">]</span> <span class="o">=</span> <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">MEDIUM</span><span class="p">,</span>
+    <span class="n">server_name</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span>
+        <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+            <span class="o">...</span><span class="p">,</span>
+            <span class="s2">&quot;--server-name&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;-n&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+                <span class="s2">&quot;Optional custom name to prefix the wrapper tool names (get_tool_schema, invoke_tool, list_tools). &quot;</span>
+                <span class="s2">&quot;The name will be sanitized to conform to MCP tool name specifications (only A-Z, a-z, 0-9, _, -, .).&quot;</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+    <span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">log_level</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span>
+        <span class="n">LogLevel</span><span class="p">,</span>
+        <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+            <span class="o">...</span><span class="p">,</span>
+            <span class="s2">&quot;--log-level&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;-l&quot;</span><span class="p">,</span>
+            <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+                <span class="s2">&quot;The logging level. Used for both the MCP Compressor server and the underlying MCP server if it is a &quot;</span>
+                <span class="s2">&quot;stdio server.&quot;</span>
+            <span class="p">),</span>
+            <span class="n">case_sensitive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">]</span> <span class="o">=</span> <span class="n">LogLevel</span><span class="o">.</span><span class="n">WARNING</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run the MCP Compressor proxy server.</span>
+
+<span class="sd">    This is the main entry point for the CLI application. It connects to an MCP server</span>
+<span class="sd">    (via stdio, HTTP, or SSE) and wraps it with a compressed tool interface.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">remove</span><span class="p">()</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">,</span> <span class="n">level</span><span class="o">=</span><span class="n">log_level</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">upper</span><span class="p">())</span>
+    <span class="n">setup_loguru_logging_intercept</span><span class="p">(</span><span class="n">modules</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;fastmcp&quot;</span><span class="p">,))</span>
+
+    <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+        <span class="n">_async_main</span><span class="p">(</span>
+            <span class="n">command_or_url_list</span><span class="o">=</span><span class="n">command_or_url_list</span><span class="p">,</span>
+            <span class="n">cwd</span><span class="o">=</span><span class="n">cwd</span><span class="p">,</span>
+            <span class="n">env_list</span><span class="o">=</span><span class="n">env_list</span><span class="p">,</span>
+            <span class="n">header_list</span><span class="o">=</span><span class="n">header_list</span><span class="p">,</span>
+            <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">,</span>
+            <span class="n">compression_level</span><span class="o">=</span><span class="n">compression_level</span><span class="p">,</span>
+            <span class="n">server_name</span><span class="o">=</span><span class="n">server_name</span><span class="p">,</span>
+            <span class="n">log_level</span><span class="o">=</span><span class="n">log_level</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div><h2 id="tools-module">Tools Module<a class="headerlink" href="#tools-module" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<a id="mcp_compressor.tools"></a>
+    <div class="doc doc-contents first">
+
+        <p>Tool compression middleware for MCP servers.</p>
+<p>This module provides the CompressedTools middleware that wraps MCP server tools and compresses their descriptions to
+reduce token consumption while maintaining full functionality through a two-step tool invocation pattern.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="mcp_compressor.tools.CompressedTools" class="doc doc-heading">
+            <code>CompressedTools</code>
+
+
+<a href="#mcp_compressor.tools.CompressedTools" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="fastmcp.server.middleware.Middleware">Middleware</span></code></p>
+
+
+
+        <p>Middleware that compresses MCP tool descriptions to reduce token consumption.</p>
+<p>This middleware wraps an MCP client and exposes its tools through a compressed interface.
+Instead of exposing tools directly with full schemas, it provides two or three wrapper tools:
+- get_tool_schema: Retrieves the full schema for a specific tool
+- invoke_tool: Executes a tool with the provided arguments
+- list_tools: (optional) Lists all available tools with brief descriptions (only if compression level is MAX)</p>
+<p>The compression level determines how much information is included in the get_tool_schema tool description.</p>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>mcp_compressor/tools.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 33</span>
+<span class="normal"> 34</span>
+<span class="normal"> 35</span>
+<span class="normal"> 36</span>
+<span class="normal"> 37</span>
+<span class="normal"> 38</span>
+<span class="normal"> 39</span>
+<span class="normal"> 40</span>
+<span class="normal"> 41</span>
+<span class="normal"> 42</span>
+<span class="normal"> 43</span>
+<span class="normal"> 44</span>
+<span class="normal"> 45</span>
+<span class="normal"> 46</span>
+<span class="normal"> 47</span>
+<span class="normal"> 48</span>
+<span class="normal"> 49</span>
+<span class="normal"> 50</span>
+<span class="normal"> 51</span>
+<span class="normal"> 52</span>
+<span class="normal"> 53</span>
+<span class="normal"> 54</span>
+<span class="normal"> 55</span>
+<span class="normal"> 56</span>
+<span class="normal"> 57</span>
+<span class="normal"> 58</span>
+<span class="normal"> 59</span>
+<span class="normal"> 60</span>
+<span class="normal"> 61</span>
+<span class="normal"> 62</span>
+<span class="normal"> 63</span>
+<span class="normal"> 64</span>
+<span class="normal"> 65</span>
+<span class="normal"> 66</span>
+<span class="normal"> 67</span>
+<span class="normal"> 68</span>
+<span class="normal"> 69</span>
+<span class="normal"> 70</span>
+<span class="normal"> 71</span>
+<span class="normal"> 72</span>
+<span class="normal"> 73</span>
+<span class="normal"> 74</span>
+<span class="normal"> 75</span>
+<span class="normal"> 76</span>
+<span class="normal"> 77</span>
+<span class="normal"> 78</span>
+<span class="normal"> 79</span>
+<span class="normal"> 80</span>
+<span class="normal"> 81</span>
+<span class="normal"> 82</span>
+<span class="normal"> 83</span>
+<span class="normal"> 84</span>
+<span class="normal"> 85</span>
+<span class="normal"> 86</span>
+<span class="normal"> 87</span>
+<span class="normal"> 88</span>
+<span class="normal"> 89</span>
+<span class="normal"> 90</span>
+<span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span>
+<span class="normal">201</span>
+<span class="normal">202</span>
+<span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span>
+<span class="normal">227</span>
+<span class="normal">228</span>
+<span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span>
+<span class="normal">234</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span>
+<span class="normal">284</span>
+<span class="normal">285</span>
+<span class="normal">286</span>
+<span class="normal">287</span>
+<span class="normal">288</span>
+<span class="normal">289</span>
+<span class="normal">290</span>
+<span class="normal">291</span>
+<span class="normal">292</span>
+<span class="normal">293</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">CompressedTools</span><span class="p">(</span><span class="n">Middleware</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Middleware that compresses MCP tool descriptions to reduce token consumption.</span>
+
+<span class="sd">    This middleware wraps an MCP client and exposes its tools through a compressed interface.</span>
+<span class="sd">    Instead of exposing tools directly with full schemas, it provides two or three wrapper tools:</span>
+<span class="sd">    - get_tool_schema: Retrieves the full schema for a specific tool</span>
+<span class="sd">    - invoke_tool: Executes a tool with the provided arguments</span>
+<span class="sd">    - list_tools: (optional) Lists all available tools with brief descriptions (only if compression level is MAX)</span>
+
+<span class="sd">    The compression level determines how much information is included in the get_tool_schema tool description.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">proxy_server</span><span class="p">:</span> <span class="n">FastMCP</span><span class="p">,</span> <span class="n">compression_level</span><span class="p">:</span> <span class="n">CompressionLevel</span><span class="p">,</span> <span class="n">server_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize the CompressedTools middleware.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            proxy_server: The MCP proxy server instance.</span>
+<span class="sd">            compression_level: The level of compression to apply to tool descriptions.</span>
+<span class="sd">            server_name: Optional custom name prefix for tool names (will be sanitized and used as prefix).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_server</span> <span class="o">=</span> <span class="n">proxy_server</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_compression_level</span> <span class="o">=</span> <span class="n">compression_level</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tool_name_prefix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">server_name</span><span class="si">}</span><span class="s2">_&quot;</span> <span class="k">if</span> <span class="n">server_name</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_server_description</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;the </span><span class="si">{</span><span class="n">server_name</span><span class="si">}</span><span class="s2"> toolset&quot;</span> <span class="k">if</span> <span class="n">server_name</span> <span class="k">else</span> <span class="s2">&quot;this toolset&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_all_tools</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tool</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">list_tools</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;List all available tools in {server_description}.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            A formatted string listing tool names and brief descriptions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_tool_descriptions</span><span class="p">(</span><span class="n">CompressionLevel</span><span class="o">.</span><span class="n">MEDIUM</span><span class="p">)</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_tool_schema</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tool_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get the input schema for a specific tool from {server_description}.</span>
+
+<span class="sd">        Available tools are:</span>
+<span class="sd">        {tool_descriptions}</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            tool_name: The name of the tool to get the schema for.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            The input schema for the specified tool.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If the tool name is not found in the server.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">tool</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_backend_tool</span><span class="p">(</span><span class="n">tool_name</span><span class="p">)</span>
+        <span class="n">tool_description</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_format_tool_description</span><span class="p">(</span><span class="n">tool</span><span class="p">,</span> <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">LOW</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">tool_description</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">tool</span><span class="o">.</span><span class="n">parameters</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">invoke_tool</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tool_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">tool_input</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">quiet</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Invoke a tool from {server_description}.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            tool_name: The name of the tool to invoke.</span>
+<span class="sd">            tool_input: The input to the tool. Schemas can be retrieved using the appropriate `get_tool_schema`</span>
+<span class="sd">                function.</span>
+<span class="sd">            quiet: If true, truncates large tool outputs for successful invocations. This is useful for reducing token</span>
+<span class="sd">                consumption when the output is not needed. Full responses will always be returned for tool errors.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            The output from the tool.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">on_call_tool</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">context</span><span class="p">:</span> <span class="n">MiddlewareContext</span><span class="p">[</span><span class="n">CallToolRequestParams</span><span class="p">],</span>
+        <span class="n">call_next</span><span class="p">:</span> <span class="n">CallNext</span><span class="p">[</span><span class="n">CallToolRequestParams</span><span class="p">,</span> <span class="n">ToolResult</span><span class="p">],</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ToolResult</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Middleware to clean up tool invocation arguments to invoke_tool and route to the underlying tool.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            context: The middleware context containing the call request.</span>
+<span class="sd">            call_next: The next middleware or handler in the chain.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            The result from calling the underlying tool.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">tool_args</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">message</span><span class="o">.</span><span class="n">arguments</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">context</span><span class="o">.</span><span class="n">message</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;invoke_tool&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">tool_args</span><span class="p">:</span>
+            <span class="k">return</span> <span class="k">await</span> <span class="n">call_next</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="s2">&quot;tool_input&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">tool_args</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">tool_args</span><span class="p">[</span><span class="s2">&quot;tool_input&quot;</span><span class="p">]:</span>
+            <span class="n">tool_input</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">tool_args</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;tool_name&quot;</span><span class="p">,</span> <span class="s2">&quot;quiet&quot;</span><span class="p">]}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">tool_input</span> <span class="o">=</span> <span class="n">tool_args</span><span class="p">[</span><span class="s2">&quot;tool_input&quot;</span><span class="p">]</span>
+        <span class="n">tool</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_backend_tool</span><span class="p">(</span><span class="n">tool_args</span><span class="p">[</span><span class="s2">&quot;tool_name&quot;</span><span class="p">])</span>
+        <span class="n">tool_result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">tool</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">tool_input</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">tool_args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;quiet&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">tool_result</span><span class="o">.</span><span class="n">content</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">tool_result</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">TextContent</span><span class="p">):</span>
+                <span class="n">return_text</span> <span class="o">=</span> <span class="n">tool_result</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">return_text</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">QUIET_MODE_THRESHOLD</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">tool_result</span>
+                <span class="n">preview_length</span> <span class="o">=</span> <span class="n">QUIET_MODE_THRESHOLD</span> <span class="o">//</span> <span class="mi">2</span>
+                <span class="n">return_text</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="n">return_text</span><span class="p">[:</span><span class="n">preview_length</span><span class="p">]</span>
+                    <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">...</span><span class="se">\n</span><span class="s2">(truncated due to quiet mode)</span><span class="se">\n</span><span class="s2">...</span><span class="se">\n</span><span class="s2">&quot;</span>
+                    <span class="o">+</span> <span class="n">return_text</span><span class="p">[</span><span class="o">-</span><span class="n">preview_length</span><span class="p">:]</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">return_text</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Successfully executed tool &#39;</span><span class="si">{</span><span class="n">tool</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39; without output.&quot;</span>
+            <span class="k">return</span> <span class="n">ToolResult</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="p">[</span><span class="n">TextContent</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="n">return_text</span><span class="p">)])</span>
+        <span class="k">return</span> <span class="n">tool_result</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">on_list_tools</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">:</span> <span class="n">MiddlewareContext</span><span class="p">[</span><span class="n">ListToolsRequest</span><span class="p">],</span> <span class="n">call_next</span><span class="p">:</span> <span class="n">CallNext</span><span class="p">[</span><span class="n">ListToolsRequest</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Tool</span><span class="p">]]</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Tool</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Middleware to inject compressed tool descriptions into the get_tool_schema tool and suppress backend tools.</span>
+
+<span class="sd">        This updates the get_tool_schema tool&#39;s description to include the list of available tools at the appropriate</span>
+<span class="sd">        compression level.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            The sequence of tools with updated descriptions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">prepared_tools</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">tool_name</span><span class="p">,</span> <span class="n">tool</span> <span class="ow">in</span> <span class="p">(</span><span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_built_in_tools</span><span class="p">())</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Preparing tool: </span><span class="si">{</span><span class="n">tool_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">prepared_tools</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tool</span><span class="p">)</span>
+            <span class="n">tool</span><span class="o">.</span><span class="n">description</span> <span class="o">=</span> <span class="n">cast</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">tool</span><span class="o">.</span><span class="n">description</span><span class="p">)</span>
+            <span class="n">tool</span><span class="o">.</span><span class="n">description</span> <span class="o">=</span> <span class="n">tool</span><span class="o">.</span><span class="n">description</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">tool_descriptions</span><span class="o">=</span><span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_tool_descriptions</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_compression_level</span><span class="p">),</span>
+                <span class="n">server_description</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_server_description</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">prepared_tools</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">configure_server</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Configure an MCP server with compressed tool wrappers.</span>
+
+<span class="sd">        This initializes the tools from the underlying server and registers the wrapper tools (get_tool_schema,</span>
+<span class="sd">        invoke_tool, and optionally list_tools) on the provided server.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            The number of tools registered on the server.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Create tool names with optional server name prefix</span>
+        <span class="n">get_schema_name</span> <span class="o">=</span> <span class="n">sanitize_tool_name</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_tool_name_prefix</span><span class="si">}</span><span class="s2">get_tool_schema&quot;</span><span class="p">)</span>
+        <span class="n">invoke_tool_name</span> <span class="o">=</span> <span class="n">sanitize_tool_name</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_tool_name_prefix</span><span class="si">}</span><span class="s2">invoke_tool&quot;</span><span class="p">)</span>
+        <span class="n">list_tools_name</span> <span class="o">=</span> <span class="n">sanitize_tool_name</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_tool_name_prefix</span><span class="si">}</span><span class="s2">list_tools&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_server</span><span class="o">.</span><span class="n">tool</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">get_schema_name</span><span class="p">)(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_tool_schema</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_server</span><span class="o">.</span><span class="n">tool</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">invoke_tool_name</span><span class="p">)(</span><span class="bp">self</span><span class="o">.</span><span class="n">invoke_tool</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compression_level</span> <span class="o">==</span> <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">MAX</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_server</span><span class="o">.</span><span class="n">tool</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">list_tools_name</span><span class="p">)(</span><span class="bp">self</span><span class="o">.</span><span class="n">list_tools</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_server</span><span class="o">.</span><span class="n">add_middleware</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_all_tools</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># Reset cached tools, if any</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_compression_stats</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get statistics about the compression of tool descriptions.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            A dictionary containing statistics about the original and compressed tool description sizes.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">backend_tools</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_backend_tools</span><span class="p">()</span>
+        <span class="n">proxy_tools</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_built_in_tools</span><span class="p">()</span>
+        <span class="n">original_tool_count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">backend_tools</span><span class="p">)</span>
+        <span class="n">compressed_tool_count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">proxy_tools</span><span class="p">)</span>
+        <span class="n">original_schema_size</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">tool</span> <span class="ow">in</span> <span class="n">backend_tools</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="n">original_schema_size</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">tool</span><span class="o">.</span><span class="n">parameters</span><span class="p">))</span>
+            <span class="n">original_schema_size</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">tool</span><span class="o">.</span><span class="n">output_schema</span><span class="p">))</span>
+            <span class="n">original_schema_size</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">tool</span><span class="o">.</span><span class="n">description</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="n">compressed_schema_sizes</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">compression_level</span> <span class="ow">in</span> <span class="p">[</span>
+            <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">LOW</span><span class="p">,</span>
+            <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">MEDIUM</span><span class="p">,</span>
+            <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">HIGH</span><span class="p">,</span>
+            <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">MAX</span><span class="p">,</span>
+        <span class="p">]:</span>
+            <span class="n">compressed_size</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">tool</span> <span class="ow">in</span> <span class="n">proxy_tools</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+                <span class="n">compressed_size</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">tool</span><span class="o">.</span><span class="n">parameters</span><span class="p">))</span>
+                <span class="n">compressed_size</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">tool</span><span class="o">.</span><span class="n">output_schema</span><span class="p">))</span>
+                <span class="n">compressed_size</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span>
+                    <span class="n">cast</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">tool</span><span class="o">.</span><span class="n">description</span><span class="p">)</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                        <span class="n">tool_descriptions</span><span class="o">=</span><span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_tool_descriptions</span><span class="p">(</span><span class="n">compression_level</span><span class="p">),</span>
+                        <span class="n">server_description</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_server_description</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="n">compressed_schema_sizes</span><span class="p">[</span><span class="n">compression_level</span><span class="p">]</span> <span class="o">=</span> <span class="n">compressed_size</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;original_tool_count&quot;</span><span class="p">:</span> <span class="n">original_tool_count</span><span class="p">,</span>
+            <span class="s2">&quot;compressed_tool_count&quot;</span><span class="p">:</span> <span class="n">compressed_tool_count</span><span class="p">,</span>
+            <span class="s2">&quot;original_schema_size&quot;</span><span class="p">:</span> <span class="n">original_schema_size</span><span class="p">,</span>
+            <span class="s2">&quot;compressed_schema_sizes&quot;</span><span class="p">:</span> <span class="n">compressed_schema_sizes</span><span class="p">,</span>
+        <span class="p">}</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_get_tool_descriptions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compression_level</span><span class="p">:</span> <span class="n">CompressionLevel</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Generate a formatted string of tool descriptions at the specified compression level.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            compression_level: The compression level to use for formatting.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            A newline-separated string of formatted tool descriptions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">compression_level</span> <span class="o">==</span> <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">MAX</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">tool_descriptions</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">tool</span> <span class="ow">in</span> <span class="p">(</span><span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_backend_tools</span><span class="p">())</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="n">tool_descriptions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_format_tool_description</span><span class="p">(</span><span class="n">tool</span><span class="p">,</span> <span class="n">compression_level</span><span class="p">))</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tool_descriptions</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_format_tool_description</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tool</span><span class="p">:</span> <span class="n">Tool</span><span class="p">,</span> <span class="n">compression_level</span><span class="p">:</span> <span class="n">CompressionLevel</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Format a single tool&#39;s description based on the compression level.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            tool: The tool to format.</span>
+<span class="sd">            compression_level: The compression level determining how much detail to include.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            A formatted string representation of the tool in the format:</span>
+<span class="sd">            &lt;tool&gt;tool_name(param1, param2): description&lt;/tool&gt;</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">tool_name</span> <span class="o">=</span> <span class="n">tool</span><span class="o">.</span><span class="n">name</span>
+        <span class="n">tool_arg_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">tool</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;properties&quot;</span><span class="p">,</span> <span class="p">{}))</span>
+        <span class="n">tool_description</span> <span class="o">=</span> <span class="p">(</span><span class="n">tool</span><span class="o">.</span><span class="n">description</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">compression_level</span> <span class="o">==</span> <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">HIGH</span><span class="p">:</span>
+            <span class="n">tool_description</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">elif</span> <span class="n">tool_description</span> <span class="ow">and</span> <span class="n">compression_level</span> <span class="o">==</span> <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">MEDIUM</span><span class="p">:</span>
+            <span class="n">tool_description</span> <span class="o">=</span> <span class="n">tool_description</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">tool_description</span> <span class="o">=</span> <span class="s2">&quot;: &quot;</span> <span class="o">+</span> <span class="n">tool_description</span> <span class="k">if</span> <span class="n">tool_description</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&lt;tool&gt;</span><span class="si">{</span><span class="n">tool_name</span><span class="si">}</span><span class="s2">(</span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tool_arg_names</span><span class="p">)</span><span class="si">}</span><span class="s2">)</span><span class="si">{</span><span class="n">tool_description</span><span class="si">}</span><span class="s2">&lt;/tool&gt;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_is_built_in_tool</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tool</span><span class="p">:</span> <span class="n">Tool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check if a tool is one of the built-in wrapper tools.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            tool: The tool to check.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            True if the tool is a built-in wrapper tool, False otherwise.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="n">tool</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="n">suffix</span><span class="p">)</span> <span class="k">for</span> <span class="n">suffix</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;get_tool_schema&quot;</span><span class="p">,</span> <span class="s2">&quot;invoke_tool&quot;</span><span class="p">,</span> <span class="s2">&quot;list_tools&quot;</span><span class="p">))</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_get_backend_tools</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tool</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Retrieve backend tools from the proxy server, caching the result.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_all_tools</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_all_tools</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_server</span><span class="o">.</span><span class="n">get_tools</span><span class="p">()</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">tool</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">tool</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_all_tools</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_built_in_tool</span><span class="p">(</span><span class="n">tool</span><span class="p">)}</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_get_built_in_tools</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tool</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Retrieve built-in wrapper tools from the proxy server, caching the result.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_all_tools</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_all_tools</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_server</span><span class="o">.</span><span class="n">get_tools</span><span class="p">()</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">tool</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">tool</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_all_tools</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_built_in_tool</span><span class="p">(</span><span class="n">tool</span><span class="p">)}</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_get_backend_tool</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tool_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Retrieve a specific backend tool from the proxy server.&quot;&quot;&quot;</span>
+        <span class="n">backend_tools</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_backend_tools</span><span class="p">()</span>
+        <span class="n">tool</span> <span class="o">=</span> <span class="n">backend_tools</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">tool_name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">tool</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Tool &#39;</span><span class="si">{</span><span class="n">tool_name</span><span class="si">}</span><span class="s2">&#39; not found in backend tools.&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">ToolNotFoundError</span><span class="p">(</span><span class="n">tool_name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">tool</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mcp_compressor.tools.CompressedTools.__init__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="n">proxy_server</span><span class="p">,</span> <span class="n">compression_level</span><span class="p">,</span> <span class="n">server_name</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+<a href="#mcp_compressor.tools.CompressedTools.__init__" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Initialize the CompressedTools middleware.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>proxy_server</code>
+            </td>
+            <td>
+                  <code><span title="fastmcp.FastMCP">FastMCP</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The MCP proxy server instance.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>compression_level</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="CompressionLevel (mcp_compressor.types.CompressionLevel)" href="#mcp_compressor.types.CompressionLevel">CompressionLevel</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The level of compression to apply to tool descriptions.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>server_name</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span> | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional custom name prefix for tool names (will be sanitized and used as prefix).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mcp_compressor/tools.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">45</span>
+<span class="normal">46</span>
+<span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span>
+<span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span>
+<span class="normal">55</span>
+<span class="normal">56</span>
+<span class="normal">57</span>
+<span class="normal">58</span>
+<span class="normal">59</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span> <span class="n">proxy_server</span><span class="p">:</span> <span class="n">FastMCP</span><span class="p">,</span> <span class="n">compression_level</span><span class="p">:</span> <span class="n">CompressionLevel</span><span class="p">,</span> <span class="n">server_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Initialize the CompressedTools middleware.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        proxy_server: The MCP proxy server instance.</span>
+<span class="sd">        compression_level: The level of compression to apply to tool descriptions.</span>
+<span class="sd">        server_name: Optional custom name prefix for tool names (will be sanitized and used as prefix).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_server</span> <span class="o">=</span> <span class="n">proxy_server</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_compression_level</span> <span class="o">=</span> <span class="n">compression_level</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_tool_name_prefix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">server_name</span><span class="si">}</span><span class="s2">_&quot;</span> <span class="k">if</span> <span class="n">server_name</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_server_description</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;the </span><span class="si">{</span><span class="n">server_name</span><span class="si">}</span><span class="s2"> toolset&quot;</span> <span class="k">if</span> <span class="n">server_name</span> <span class="k">else</span> <span class="s2">&quot;this toolset&quot;</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_all_tools</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tool</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mcp_compressor.tools.CompressedTools.configure_server" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">configure_server</span><span class="p">()</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-async"><code>async</code></small>
+  </span>
+
+<a href="#mcp_compressor.tools.CompressedTools.configure_server" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Configure an MCP server with compressed tool wrappers.</p>
+<p>This initializes the tools from the underlying server and registers the wrapper tools (get_tool_schema,
+invoke_tool, and optionally list_tools) on the provided server.</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The number of tools registered on the server.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mcp_compressor/tools.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">configure_server</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Configure an MCP server with compressed tool wrappers.</span>
+
+<span class="sd">    This initializes the tools from the underlying server and registers the wrapper tools (get_tool_schema,</span>
+<span class="sd">    invoke_tool, and optionally list_tools) on the provided server.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        The number of tools registered on the server.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Create tool names with optional server name prefix</span>
+    <span class="n">get_schema_name</span> <span class="o">=</span> <span class="n">sanitize_tool_name</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_tool_name_prefix</span><span class="si">}</span><span class="s2">get_tool_schema&quot;</span><span class="p">)</span>
+    <span class="n">invoke_tool_name</span> <span class="o">=</span> <span class="n">sanitize_tool_name</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_tool_name_prefix</span><span class="si">}</span><span class="s2">invoke_tool&quot;</span><span class="p">)</span>
+    <span class="n">list_tools_name</span> <span class="o">=</span> <span class="n">sanitize_tool_name</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_tool_name_prefix</span><span class="si">}</span><span class="s2">list_tools&quot;</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_server</span><span class="o">.</span><span class="n">tool</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">get_schema_name</span><span class="p">)(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_tool_schema</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_server</span><span class="o">.</span><span class="n">tool</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">invoke_tool_name</span><span class="p">)(</span><span class="bp">self</span><span class="o">.</span><span class="n">invoke_tool</span><span class="p">)</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compression_level</span> <span class="o">==</span> <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">MAX</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_server</span><span class="o">.</span><span class="n">tool</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">list_tools_name</span><span class="p">)(</span><span class="bp">self</span><span class="o">.</span><span class="n">list_tools</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_server</span><span class="o">.</span><span class="n">add_middleware</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_all_tools</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># Reset cached tools, if any</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mcp_compressor.tools.CompressedTools.get_compression_stats" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_compression_stats</span><span class="p">()</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-async"><code>async</code></small>
+  </span>
+
+<a href="#mcp_compressor.tools.CompressedTools.get_compression_stats" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Get statistics about the compression of tool descriptions.</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="dict">dict</span>[<span title="str">str</span>, <span title="typing.Any">Any</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A dictionary containing statistics about the original and compressed tool description sizes.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mcp_compressor/tools.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span>
+<span class="normal">201</span>
+<span class="normal">202</span>
+<span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_compression_stats</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get statistics about the compression of tool descriptions.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A dictionary containing statistics about the original and compressed tool description sizes.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">backend_tools</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_backend_tools</span><span class="p">()</span>
+    <span class="n">proxy_tools</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_built_in_tools</span><span class="p">()</span>
+    <span class="n">original_tool_count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">backend_tools</span><span class="p">)</span>
+    <span class="n">compressed_tool_count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">proxy_tools</span><span class="p">)</span>
+    <span class="n">original_schema_size</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">tool</span> <span class="ow">in</span> <span class="n">backend_tools</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+        <span class="n">original_schema_size</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">tool</span><span class="o">.</span><span class="n">parameters</span><span class="p">))</span>
+        <span class="n">original_schema_size</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">tool</span><span class="o">.</span><span class="n">output_schema</span><span class="p">))</span>
+        <span class="n">original_schema_size</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">tool</span><span class="o">.</span><span class="n">description</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="n">compressed_schema_sizes</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">compression_level</span> <span class="ow">in</span> <span class="p">[</span>
+        <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">LOW</span><span class="p">,</span>
+        <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">MEDIUM</span><span class="p">,</span>
+        <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">HIGH</span><span class="p">,</span>
+        <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">MAX</span><span class="p">,</span>
+    <span class="p">]:</span>
+        <span class="n">compressed_size</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">tool</span> <span class="ow">in</span> <span class="n">proxy_tools</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="n">compressed_size</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">tool</span><span class="o">.</span><span class="n">parameters</span><span class="p">))</span>
+            <span class="n">compressed_size</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">tool</span><span class="o">.</span><span class="n">output_schema</span><span class="p">))</span>
+            <span class="n">compressed_size</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span>
+                <span class="n">cast</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">tool</span><span class="o">.</span><span class="n">description</span><span class="p">)</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                    <span class="n">tool_descriptions</span><span class="o">=</span><span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_tool_descriptions</span><span class="p">(</span><span class="n">compression_level</span><span class="p">),</span>
+                    <span class="n">server_description</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_server_description</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="n">compressed_schema_sizes</span><span class="p">[</span><span class="n">compression_level</span><span class="p">]</span> <span class="o">=</span> <span class="n">compressed_size</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;original_tool_count&quot;</span><span class="p">:</span> <span class="n">original_tool_count</span><span class="p">,</span>
+        <span class="s2">&quot;compressed_tool_count&quot;</span><span class="p">:</span> <span class="n">compressed_tool_count</span><span class="p">,</span>
+        <span class="s2">&quot;original_schema_size&quot;</span><span class="p">:</span> <span class="n">original_schema_size</span><span class="p">,</span>
+        <span class="s2">&quot;compressed_schema_sizes&quot;</span><span class="p">:</span> <span class="n">compressed_schema_sizes</span><span class="p">,</span>
+    <span class="p">}</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mcp_compressor.tools.CompressedTools.get_tool_schema" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_tool_schema</span><span class="p">(</span><span class="n">tool_name</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-async"><code>async</code></small>
+  </span>
+
+<a href="#mcp_compressor.tools.CompressedTools.get_tool_schema" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Get the input schema for a specific tool from {server_description}.</p>
+<p>Available tools are:
+{tool_descriptions}</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>tool_name</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The name of the tool to get the schema for.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The input schema for the specified tool.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If the tool name is not found in the server.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mcp_compressor/tools.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">69</span>
+<span class="normal">70</span>
+<span class="normal">71</span>
+<span class="normal">72</span>
+<span class="normal">73</span>
+<span class="normal">74</span>
+<span class="normal">75</span>
+<span class="normal">76</span>
+<span class="normal">77</span>
+<span class="normal">78</span>
+<span class="normal">79</span>
+<span class="normal">80</span>
+<span class="normal">81</span>
+<span class="normal">82</span>
+<span class="normal">83</span>
+<span class="normal">84</span>
+<span class="normal">85</span>
+<span class="normal">86</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_tool_schema</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tool_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get the input schema for a specific tool from {server_description}.</span>
+
+<span class="sd">    Available tools are:</span>
+<span class="sd">    {tool_descriptions}</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        tool_name: The name of the tool to get the schema for.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        The input schema for the specified tool.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If the tool name is not found in the server.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">tool</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_backend_tool</span><span class="p">(</span><span class="n">tool_name</span><span class="p">)</span>
+    <span class="n">tool_description</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_format_tool_description</span><span class="p">(</span><span class="n">tool</span><span class="p">,</span> <span class="n">CompressionLevel</span><span class="o">.</span><span class="n">LOW</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">tool_description</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">tool</span><span class="o">.</span><span class="n">parameters</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mcp_compressor.tools.CompressedTools.invoke_tool" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">invoke_tool</span><span class="p">(</span><span class="n">tool_name</span><span class="p">,</span> <span class="n">tool_input</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">quiet</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-async"><code>async</code></small>
+  </span>
+
+<a href="#mcp_compressor.tools.CompressedTools.invoke_tool" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Invoke a tool from {server_description}.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>tool_name</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The name of the tool to invoke.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>tool_input</code>
+            </td>
+            <td>
+                  <code><span title="dict">dict</span>[<span title="str">str</span>, <span title="typing.Any">Any</span>] | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The input to the tool. Schemas can be retrieved using the appropriate <code>get_tool_schema</code>
+function.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>quiet</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If true, truncates large tool outputs for successful invocations. This is useful for reducing token
+consumption when the output is not needed. Full responses will always be returned for tool errors.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="typing.Any">Any</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The output from the tool.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mcp_compressor/tools.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 88</span>
+<span class="normal"> 89</span>
+<span class="normal"> 90</span>
+<span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">invoke_tool</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tool_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">tool_input</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">quiet</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Invoke a tool from {server_description}.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        tool_name: The name of the tool to invoke.</span>
+<span class="sd">        tool_input: The input to the tool. Schemas can be retrieved using the appropriate `get_tool_schema`</span>
+<span class="sd">            function.</span>
+<span class="sd">        quiet: If true, truncates large tool outputs for successful invocations. This is useful for reducing token</span>
+<span class="sd">            consumption when the output is not needed. Full responses will always be returned for tool errors.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        The output from the tool.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">pass</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mcp_compressor.tools.CompressedTools.list_tools" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">list_tools</span><span class="p">()</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-async"><code>async</code></small>
+  </span>
+
+<a href="#mcp_compressor.tools.CompressedTools.list_tools" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>List all available tools in {server_description}.</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A formatted string listing tool names and brief descriptions.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mcp_compressor/tools.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span>
+<span class="normal">65</span>
+<span class="normal">66</span>
+<span class="normal">67</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">list_tools</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;List all available tools in {server_description}.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A formatted string listing tool names and brief descriptions.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_tool_descriptions</span><span class="p">(</span><span class="n">CompressionLevel</span><span class="o">.</span><span class="n">MEDIUM</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mcp_compressor.tools.CompressedTools.on_call_tool" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">on_call_tool</span><span class="p">(</span><span class="n">context</span><span class="p">,</span> <span class="n">call_next</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-async"><code>async</code></small>
+  </span>
+
+<a href="#mcp_compressor.tools.CompressedTools.on_call_tool" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Middleware to clean up tool invocation arguments to invoke_tool and route to the underlying tool.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>context</code>
+            </td>
+            <td>
+                  <code><span title="fastmcp.server.middleware.MiddlewareContext">MiddlewareContext</span>[<span title="mcp.types.CallToolRequestParams">CallToolRequestParams</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The middleware context containing the call request.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>call_next</code>
+            </td>
+            <td>
+                  <code><span title="fastmcp.server.middleware.CallNext">CallNext</span>[<span title="mcp.types.CallToolRequestParams">CallToolRequestParams</span>, <span title="fastmcp.tools.tool.ToolResult">ToolResult</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The next middleware or handler in the chain.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="fastmcp.tools.tool.ToolResult">ToolResult</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The result from calling the underlying tool.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mcp_compressor/tools.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">on_call_tool</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span>
+    <span class="n">context</span><span class="p">:</span> <span class="n">MiddlewareContext</span><span class="p">[</span><span class="n">CallToolRequestParams</span><span class="p">],</span>
+    <span class="n">call_next</span><span class="p">:</span> <span class="n">CallNext</span><span class="p">[</span><span class="n">CallToolRequestParams</span><span class="p">,</span> <span class="n">ToolResult</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ToolResult</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Middleware to clean up tool invocation arguments to invoke_tool and route to the underlying tool.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        context: The middleware context containing the call request.</span>
+<span class="sd">        call_next: The next middleware or handler in the chain.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        The result from calling the underlying tool.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">tool_args</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">message</span><span class="o">.</span><span class="n">arguments</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">context</span><span class="o">.</span><span class="n">message</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;invoke_tool&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">tool_args</span><span class="p">:</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="n">call_next</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="s2">&quot;tool_input&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">tool_args</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">tool_args</span><span class="p">[</span><span class="s2">&quot;tool_input&quot;</span><span class="p">]:</span>
+        <span class="n">tool_input</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">tool_args</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;tool_name&quot;</span><span class="p">,</span> <span class="s2">&quot;quiet&quot;</span><span class="p">]}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">tool_input</span> <span class="o">=</span> <span class="n">tool_args</span><span class="p">[</span><span class="s2">&quot;tool_input&quot;</span><span class="p">]</span>
+    <span class="n">tool</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_backend_tool</span><span class="p">(</span><span class="n">tool_args</span><span class="p">[</span><span class="s2">&quot;tool_name&quot;</span><span class="p">])</span>
+    <span class="n">tool_result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">tool</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">tool_input</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">tool_args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;quiet&quot;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">tool_result</span><span class="o">.</span><span class="n">content</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">tool_result</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">TextContent</span><span class="p">):</span>
+            <span class="n">return_text</span> <span class="o">=</span> <span class="n">tool_result</span><span class="o">.</span><span class="n">content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">text</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">return_text</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">QUIET_MODE_THRESHOLD</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">tool_result</span>
+            <span class="n">preview_length</span> <span class="o">=</span> <span class="n">QUIET_MODE_THRESHOLD</span> <span class="o">//</span> <span class="mi">2</span>
+            <span class="n">return_text</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">return_text</span><span class="p">[:</span><span class="n">preview_length</span><span class="p">]</span>
+                <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">...</span><span class="se">\n</span><span class="s2">(truncated due to quiet mode)</span><span class="se">\n</span><span class="s2">...</span><span class="se">\n</span><span class="s2">&quot;</span>
+                <span class="o">+</span> <span class="n">return_text</span><span class="p">[</span><span class="o">-</span><span class="n">preview_length</span><span class="p">:]</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">return_text</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Successfully executed tool &#39;</span><span class="si">{</span><span class="n">tool</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39; without output.&quot;</span>
+        <span class="k">return</span> <span class="n">ToolResult</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="p">[</span><span class="n">TextContent</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="n">return_text</span><span class="p">)])</span>
+    <span class="k">return</span> <span class="n">tool_result</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mcp_compressor.tools.CompressedTools.on_list_tools" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">on_list_tools</span><span class="p">(</span><span class="n">context</span><span class="p">,</span> <span class="n">call_next</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-async"><code>async</code></small>
+  </span>
+
+<a href="#mcp_compressor.tools.CompressedTools.on_list_tools" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Middleware to inject compressed tool descriptions into the get_tool_schema tool and suppress backend tools.</p>
+<p>This updates the get_tool_schema tool's description to include the list of available tools at the appropriate
+compression level.</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="collections.abc.Sequence">Sequence</span>[<span title="fastmcp.tools.Tool">Tool</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The sequence of tools with updated descriptions.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mcp_compressor/tools.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">on_list_tools</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">:</span> <span class="n">MiddlewareContext</span><span class="p">[</span><span class="n">ListToolsRequest</span><span class="p">],</span> <span class="n">call_next</span><span class="p">:</span> <span class="n">CallNext</span><span class="p">[</span><span class="n">ListToolsRequest</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Tool</span><span class="p">]]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Tool</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Middleware to inject compressed tool descriptions into the get_tool_schema tool and suppress backend tools.</span>
+
+<span class="sd">    This updates the get_tool_schema tool&#39;s description to include the list of available tools at the appropriate</span>
+<span class="sd">    compression level.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        The sequence of tools with updated descriptions.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">prepared_tools</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">tool_name</span><span class="p">,</span> <span class="n">tool</span> <span class="ow">in</span> <span class="p">(</span><span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_built_in_tools</span><span class="p">())</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Preparing tool: </span><span class="si">{</span><span class="n">tool_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">prepared_tools</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tool</span><span class="p">)</span>
+        <span class="n">tool</span><span class="o">.</span><span class="n">description</span> <span class="o">=</span> <span class="n">cast</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">tool</span><span class="o">.</span><span class="n">description</span><span class="p">)</span>
+        <span class="n">tool</span><span class="o">.</span><span class="n">description</span> <span class="o">=</span> <span class="n">tool</span><span class="o">.</span><span class="n">description</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="n">tool_descriptions</span><span class="o">=</span><span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_tool_descriptions</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_compression_level</span><span class="p">),</span>
+            <span class="n">server_description</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_server_description</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">prepared_tools</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="mcp_compressor.tools.ToolNotFoundError" class="doc doc-heading">
+            <code>ToolNotFoundError</code>
+
+
+<a href="#mcp_compressor.tools.ToolNotFoundError" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="ValueError">ValueError</span></code></p>
+
+
+
+        <p>Exception raised when a requested tool is not found in the backend MCP server.</p>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>mcp_compressor/tools.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">ToolNotFoundError</span><span class="p">(</span><span class="ne">ValueError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Exception raised when a requested tool is not found in the backend MCP server.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tool_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Tool &#39;</span><span class="si">{</span><span class="n">tool_name</span><span class="si">}</span><span class="s2">&#39; not found in backend MCP server.&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tool_name</span> <span class="o">=</span> <span class="n">tool_name</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mcp_compressor.tools.sanitize_tool_name" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">sanitize_tool_name</span><span class="p">(</span><span class="n">name</span><span class="p">)</span></code>
+
+<a href="#mcp_compressor.tools.sanitize_tool_name" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Sanitize a tool name to conform to MCP tool name specifications.</p>
+<p>Tool names must:
+- Be between 1 and 128 characters (inclusive)
+- Only contain: A-Z, a-z, 0-9, underscore (_), hyphen (-), and dot (.)
+- Not contain spaces, commas, or other special characters</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>name</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The raw tool name to sanitize.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A sanitized tool name conforming to MCP specifications.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mcp_compressor/tools.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">296</span>
+<span class="normal">297</span>
+<span class="normal">298</span>
+<span class="normal">299</span>
+<span class="normal">300</span>
+<span class="normal">301</span>
+<span class="normal">302</span>
+<span class="normal">303</span>
+<span class="normal">304</span>
+<span class="normal">305</span>
+<span class="normal">306</span>
+<span class="normal">307</span>
+<span class="normal">308</span>
+<span class="normal">309</span>
+<span class="normal">310</span>
+<span class="normal">311</span>
+<span class="normal">312</span>
+<span class="normal">313</span>
+<span class="normal">314</span>
+<span class="normal">315</span>
+<span class="normal">316</span>
+<span class="normal">317</span>
+<span class="normal">318</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">sanitize_tool_name</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Sanitize a tool name to conform to MCP tool name specifications.</span>
+
+<span class="sd">    Tool names must:</span>
+<span class="sd">    - Be between 1 and 128 characters (inclusive)</span>
+<span class="sd">    - Only contain: A-Z, a-z, 0-9, underscore (_), hyphen (-), and dot (.)</span>
+<span class="sd">    - Not contain spaces, commas, or other special characters</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        name: The raw tool name to sanitize.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A sanitized tool name conforming to MCP specifications.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Replace spaces and invalid characters with underscores</span>
+    <span class="n">sanitized</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;[^A-Za-z0-9_\-.]&quot;</span><span class="p">,</span> <span class="s2">&quot;_&quot;</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+    <span class="c1"># Ensure the name is not empty after sanitization</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">sanitized</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Tool name must contain at least one valid character after sanitization.&quot;</span><span class="p">)</span>  <span class="c1"># noqa: TRY003</span>
+
+    <span class="c1"># Truncate to 128 characters if needed</span>
+    <span class="k">return</span> <span class="n">sanitized</span><span class="p">[:</span><span class="mi">128</span><span class="p">]</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div><h2 id="types-module">Types Module<a class="headerlink" href="#types-module" title="Permanent link">&para;</a></h2>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<a id="mcp_compressor.types"></a>
+    <div class="doc doc-contents first">
+
+        <p>Type definitions for MCP Compressor.</p>
+<p>This module defines enumerations and type aliases used throughout the MCP Compressor package.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h2 id="mcp_compressor.types.ToolResultBlock" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">ToolResultBlock</span> <span class="o">=</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Audio</span> <span class="o">|</span> <span class="n">File</span> <span class="o">|</span> <span class="n">Image</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#mcp_compressor.types.ToolResultBlock" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Type alias for possible tool result content blocks (text, audio, file, or image).</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h2 id="mcp_compressor.types.TransportType" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">TransportType</span> <span class="o">=</span> <span class="n">SSETransport</span> <span class="o">|</span> <span class="n">StdioTransport</span> <span class="o">|</span> <span class="n">StreamableHttpTransport</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+<a href="#mcp_compressor.types.TransportType" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Type alias for supported MCP transport types (SSE, stdio, or streamable HTTP).</p>
+
+    </div>
+
+</div>
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="mcp_compressor.types.CompressionLevel" class="doc doc-heading">
+            <code>CompressionLevel</code>
+
+
+<a href="#mcp_compressor.types.CompressionLevel" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="str">str</span></code>, <code><span title="enum.Enum">Enum</span></code></p>
+
+
+
+        <p>Compression levels for tool descriptions in the wrapped MCP server.</p>
+<p>Higher compression levels provide less verbose tool descriptions, reducing token usage.
+Lower compression levels provide more detailed information upfront.</p>
+
+
+<p><span class="doc-section-title">Attributes:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code><span title="mcp_compressor.types.CompressionLevel.MAX">MAX</span></code></td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum compression - exposes a list_tools function for viewing all tools.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="mcp_compressor.types.CompressionLevel.HIGH">HIGH</span></code></td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>High compression - only tool names and parameter names, no descriptions.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="mcp_compressor.types.CompressionLevel.MEDIUM">MEDIUM</span></code></td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Medium compression - first sentence of tool descriptions only.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="mcp_compressor.types.CompressionLevel.LOW">LOW</span></code></td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Low compression - complete tool descriptions and schemas.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>mcp_compressor/types.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">23</span>
+<span class="normal">24</span>
+<span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span>
+<span class="normal">34</span>
+<span class="normal">35</span>
+<span class="normal">36</span>
+<span class="normal">37</span>
+<span class="normal">38</span>
+<span class="normal">39</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">CompressionLevel</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compression levels for tool descriptions in the wrapped MCP server.</span>
+
+<span class="sd">    Higher compression levels provide less verbose tool descriptions, reducing token usage.</span>
+<span class="sd">    Lower compression levels provide more detailed information upfront.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        MAX: Maximum compression - exposes a list_tools function for viewing all tools.</span>
+<span class="sd">        HIGH: High compression - only tool names and parameter names, no descriptions.</span>
+<span class="sd">        MEDIUM: Medium compression - first sentence of tool descriptions only.</span>
+<span class="sd">        LOW: Low compression - complete tool descriptions and schemas.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">MAX</span> <span class="o">=</span> <span class="s2">&quot;max&quot;</span>
+    <span class="n">HIGH</span> <span class="o">=</span> <span class="s2">&quot;high&quot;</span>
+    <span class="n">MEDIUM</span> <span class="o">=</span> <span class="s2">&quot;medium&quot;</span>
+    <span class="n">LOW</span> <span class="o">=</span> <span class="s2">&quot;low&quot;</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="mcp_compressor.types.LogLevel" class="doc doc-heading">
+            <code>LogLevel</code>
+
+
+<a href="#mcp_compressor.types.LogLevel" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="str">str</span></code>, <code><span title="enum.Enum">Enum</span></code></p>
+
+
+
+        <p>Logging levels for the MCP Compressor server and wrapped MCP servers.</p>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>mcp_compressor/types.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">13</span>
+<span class="normal">14</span>
+<span class="normal">15</span>
+<span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span>
+<span class="normal">20</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">LogLevel</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Logging levels for the MCP Compressor server and wrapped MCP servers.&quot;&quot;&quot;</span>
+
+    <span class="n">DEBUG</span> <span class="o">=</span> <span class="s2">&quot;DEBUG&quot;</span>
+    <span class="n">INFO</span> <span class="o">=</span> <span class="s2">&quot;INFO&quot;</span>
+    <span class="n">WARNING</span> <span class="o">=</span> <span class="s2">&quot;WARNING&quot;</span>
+    <span class="n">ERROR</span> <span class="o">=</span> <span class="s2">&quot;ERROR&quot;</span>
+    <span class="n">CRITICAL</span> <span class="o">=</span> <span class="s2">&quot;CRITICAL&quot;</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Maintained by <a href="https://atlassian.com">atlassian</a>.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/atlassian-labs/mcp-compressor" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://pypi.org/project/mcp-compressor" target="_blank" rel="noopener" title="pypi.org" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.8 200.5c-7.7-30.9-22.3-54.2-53.4-54.2h-40.1v47.4c0 36.8-31.2 67.8-66.8 67.8H172.7c-29.2 0-53.4 25-53.4 54.3v101.8c0 29 25.2 46 53.4 54.3 33.8 9.9 66.3 11.7 106.8 0 26.9-7.8 53.4-23.5 53.4-54.3v-40.7H226.2v-13.6h160.2c31.1 0 42.6-21.7 53.4-54.2 11.2-33.5 10.7-65.7 0-108.6M286.2 444.7a20.4 20.4 0 1 1 0-40.7 20.4 20.4 0 1 1 0 40.7M167.8 248.1h106.8c29.7 0 53.4-24.5 53.4-54.3V91.9c0-29-24.4-50.7-53.4-55.6-35.8-5.9-74.7-5.6-106.8.1-45.2 8-53.4 24.7-53.4 55.6v40.7h106.9v13.6h-147c-31.1 0-58.3 18.7-66.8 54.2-9.8 40.7-10.2 66.1 0 108.6 7.6 31.6 25.7 54.2 56.8 54.2H101v-48.8c0-35.3 30.5-66.4 66.8-66.4m-6.6-183.4a20.4 20.4 0 1 1 0 40.8 20.4 20.4 0 1 1 0-40.8"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
+      
+    
+  </body>
+</html>
