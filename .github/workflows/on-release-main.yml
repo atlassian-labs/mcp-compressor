@@ -50,8 +50,6 @@ jobs:
 
       - name: Publish package
         run: uv publish --trusted-publishing always
-        env:
-          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
 
   deploy-docs:
     needs: publish
