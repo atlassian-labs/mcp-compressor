@@ -5,7 +5,6 @@ compresses their tool descriptions to reduce token consumption.
 """
 
 import asyncio
-import logging
 import os
 import sys
 from collections.abc import AsyncGenerator
@@ -27,8 +26,6 @@ from loguru_logging_intercept import setup_loguru_logging_intercept
 from .banner import print_banner
 from .tools import CompressedTools
 from .types import CompressionLevel, LogLevel, TransportType
-
-LOGGING_LEVEL_MAP = logging.getLevelNamesMapping()
 
 app = typer.Typer(name="MCP Compressor", help="An MCP server wrapper for reducing tokens consumed by MCP tools.")
 
