@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.10, <4.0"
 
 [[package]]
@@ -1179,7 +1179,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastmcp", specifier = ">=2.14.1" },
+    { name = "fastmcp", specifier = "==2.14.1" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "loguru-logging-intercept", specifier = ">=0.1.5" },
     { name = "mcp", specifier = ">=1.25.0" },
