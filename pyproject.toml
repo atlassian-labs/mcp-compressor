@@ -18,7 +18,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "fastmcp>=2.14.1",
+    "fastmcp==2.14.1",
     "loguru>=0.7.3",
     "loguru-logging-intercept>=0.1.5",
     "mcp>=1.25.0",
