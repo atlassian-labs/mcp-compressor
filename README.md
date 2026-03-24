@@ -37,6 +37,7 @@ With 30k+ tokens just for tool descriptions, costs can reach **1-10 cents per re
 - **Token Reduction**: Compress tool descriptions by up to 99% depending on compression level and tool count
 - **Multiple Compression Levels**: Choose between `low`, `medium`, `high`, or `max`
 - **Universal Compatibility**: Works with any MCP server (stdio, HTTP, SSE)
+- **TOON Output Conversion**: Optionally convert JSON backend tool results to [TOON](https://github.com/toon-format/spec) with `--toonify`
 - **Zero Functionality Loss**: All tools remain fully accessible through the wrapper interface
 - **Easy Integration**: Drop-in replacement for existing MCP servers
 
@@ -130,6 +131,22 @@ mcp-compressor uvx mcp-server-fetch --server-name "My Server!"
   # Results in: my_server__get_tool_schema, my_server__invoke_tool
 ```
 
+#### TOON Output Conversion
+
+Use `--toonify` to automatically convert JSON backend tool results into TOON format.
+
+```bash
+# Convert JSON backend tool results to TOON
+mcp-compressor https://api.example.com/mcp --toonify
+```
+
+When `--toonify` is enabled:
+- Successful backend tool results returned through direct tool calls are toonified if they are JSON objects or arrays
+- Successful backend tool results returned through `invoke_tool(...)` are also toonified
+- Wrapper responses from `get_tool_schema(...)` and `list_tools(...)` are never toonified
+- Wrapper-generated guidance or error text from `invoke_tool(...)` is never toonified
+- Non-JSON text is returned unchanged
+
 #### Logging
 
 ```bash
@@ -180,6 +197,8 @@ Available tools:
 ```
 
 When the LLM needs to use a tool, it first calls `get_tool_schema(tool_name)` to retrieve the full schema, then `invoke_tool(tool_name, tool_input)` to execute it.
+
+If `--toonify` is enabled, successful backend tool results are converted from JSON to TOON before being returned to the client. The wrapper helper responses themselves are not reformatted.
 
 ```mermaid
 sequenceDiagram
@@ -319,6 +338,8 @@ Options:
                                   Compressor server and the underlying MCP
                                   server if it is a stdio server.  \[default:
                                   WARNING]
+  --toonify                       Convert JSON backend tool responses to TOON
+                                  format automatically.
   --install-completion            Install completion for the current shell.
   --show-completion               Show completion for the current shell, to
                                   copy it or customize the installation.

@@ -47,7 +47,11 @@ class CompressedTools(Middleware):
     """
 
     def __init__(
-        self, proxy_server: FastMCP, compression_level: CompressionLevel, server_name: str | None = None
+        self,
+        proxy_server: FastMCP,
+        compression_level: CompressionLevel,
+        server_name: str | None = None,
+        toonify: bool = False,
     ) -> None:
         """Initialize the CompressedTools middleware.
 
@@ -55,11 +59,13 @@ class CompressedTools(Middleware):
             proxy_server: The MCP proxy server instance.
             compression_level: The level of compression to apply to tool descriptions.
             server_name: Optional custom name prefix for tool names (will be sanitized and used as prefix).
+            toonify: Whether to convert JSON text tool outputs to TOON format.
         """
         self._proxy_server = proxy_server
         self._compression_level = compression_level
         self._tool_name_prefix = f"{server_name}_" if server_name else ""
         self._server_description = f"the {server_name} toolset" if server_name else "this toolset"
+        self._toonify = toonify
         self._all_tools: dict[str, Tool] | None = None
 
     async def list_tools(self) -> str:
@@ -111,6 +117,8 @@ class CompressedTools(Middleware):
             if self._is_validation_error_message(str(exc)):
                 raise ToolError(await self._format_validation_error(tool_name, str(exc))) from exc
             raise
+        if self._toonify:
+            tool_result = self._toonify_tool_result(tool_result)
         if quiet:
             if len(tool_result.content) == 1 and isinstance(tool_result.content[0], TextContent):
                 return_text = tool_result.content[0].text
@@ -143,9 +151,12 @@ class CompressedTools(Middleware):
         """
         tool_args = context.message.arguments
         if not context.message.name.endswith("invoke_tool") or not tool_args:
-            return await call_next(context)
+            result = await call_next(context)
+            if self._toonify and not self._is_built_in_tool_name(context.message.name):
+                return self._toonify_tool_result(result)
+            return result
 
-        if "tool_input" not in tool_args or not tool_args["tool_input"]:
+        if "tool_input" not in tool_args or tool_args["tool_input"] is None:
             tool_input = {k: v for k, v in tool_args.items() if k not in ["tool_name", "quiet"]}
         else:
             tool_input = tool_args["tool_input"]
@@ -284,7 +295,11 @@ class CompressedTools(Middleware):
         Returns:
             True if the tool is a built-in wrapper tool, False otherwise.
         """
-        return any(tool.name.endswith(suffix) for suffix in ("get_tool_schema", "invoke_tool", "list_tools"))
+        return self._is_built_in_tool_name(tool.name)
+
+    def _is_built_in_tool_name(self, tool_name: str) -> bool:
+        """Check if a tool name refers to one of the built-in wrapper tools."""
+        return any(tool_name.endswith(suffix) for suffix in ("get_tool_schema", "invoke_tool", "list_tools"))
 
     async def _get_backend_tools(self) -> dict[str, Tool]:
         """Retrieve backend tools from the proxy server, caching the result."""
@@ -320,6 +335,38 @@ class CompressedTools(Middleware):
         """Return whether a tool error message appears to be an input validation failure."""
         lowered_message = error_message.lower()
         return "validation error" in lowered_message or "missing required argument" in lowered_message
+
+    def _toonify_tool_result(self, tool_result: ToolResult) -> ToolResult:
+        """Convert JSON text content blocks in a tool result to TOON format."""
+        converted_content = []
+        content_changed = False
+        for content_block in tool_result.content:
+            if isinstance(content_block, TextContent):
+                converted_text = self._toonify_json_text(content_block.text)
+                if converted_text != content_block.text:
+                    content_changed = True
+                    converted_content.append(TextContent(type="text", text=converted_text))
+                    continue
+            converted_content.append(content_block)
+        if not content_changed:
+            return tool_result
+        return ToolResult(
+            content=converted_content,
+            structured_content=tool_result.structured_content,
+            meta=tool_result.meta,
+        )
+
+    def _toonify_json_text(self, text: str) -> str:
+        """Convert a JSON object/array string to TOON; pass through other text unchanged."""
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return text
+        if not isinstance(parsed, dict | list):
+            return text
+        from toon_format import encode as encode_toon
+
+        return encode_toon(parsed)
 
 
 def sanitize_tool_name(name: str) -> str:

@@ -22,6 +22,7 @@ dependencies = [
     "loguru>=0.7.3",
     "loguru-logging-intercept>=0.1.5",
     "mcp>=1.25.0",
+    "toon_format @ git+https://github.com/toon-format/toon-python.git",
     "typer>=0.21.0",
 ]
 

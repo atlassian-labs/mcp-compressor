@@ -32,6 +32,26 @@ async def proxy_mcp_client(request) -> AsyncGenerator[Client, None]:
 
 
 @pytest.fixture
+async def proxy_mcp_client_toonify() -> AsyncGenerator[Client, None]:
+    """Fixture that provides a FastMCP client connected to a toonified MCP compressor server."""
+    server_path = Path(__file__).parent / "mcp_server.py"
+    async with (
+        _server(
+            command_or_url_list=["python", str(server_path)],
+            cwd=None,
+            env_list=None,
+            header_list=None,
+            timeout=10.0,
+            compression_level=CompressionLevel.LOW,
+            server_name="test_server",
+            toonify=True,
+        ) as mcp,
+        Client(mcp) as client,
+    ):
+        yield client
+
+
+@pytest.fixture
 async def backend_mcp_client() -> AsyncGenerator[Client, None]:
     """Fixture that provides a FastMCP client connected directly to the backend MCP server."""
     server_path = Path(__file__).parent / "mcp_server.py"

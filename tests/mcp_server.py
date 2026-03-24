@@ -64,6 +64,24 @@ def generate_long_output(length: int = 2000) -> str:
     return "X" * length
 
 
+@mcp.tool
+def return_object() -> dict[str, object]:
+    """A test tool that returns structured JSON-like data."""
+    return {"name": "Alice", "age": 30, "tags": ["admin", "user"]}
+
+
+@mcp.tool
+def return_json_string() -> str:
+    """A test tool that returns a JSON string."""
+    return '{"project":"mcp-compressor","stars":5}'
+
+
+@mcp.tool
+def return_plain_text() -> str:
+    """A test tool that returns plain text that should not be toonified."""
+    return "plain text"
+
+
 @mcp.resource("test://test-resource")
 def test_resource() -> str:
     """A test resource that returns a static string.

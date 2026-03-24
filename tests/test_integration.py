@@ -164,5 +164,58 @@ async def test_missing_tool_errors_include_available_tools(
     error_message = str(exc_info.value)
     assert "Tool 'missing_tool' not found in backend MCP server." in error_message
     assert "Available tools:" in error_message
-    for tool_name in ["add", "do_nothing", "empty_tool", "generate_long_output", "throw_error"]:
+    for tool_name in [
+        "add",
+        "do_nothing",
+        "empty_tool",
+        "generate_long_output",
+        "return_json_string",
+        "return_object",
+        "return_plain_text",
+        "throw_error",
+    ]:
         assert tool_name in error_message
+
+
+async def test_toonify_converts_json_outputs(proxy_mcp_client_toonify: Client) -> None:
+    """Test that toonify converts JSON object responses into TOON text."""
+    result = await proxy_mcp_client_toonify.call_tool("return_object", {})
+    assert result.content
+    assert isinstance(result.content[0], TextContent)
+    assert result.content[0].text == "name: Alice\nage: 30\ntags[2]: admin,user"
+
+    json_string_result = await proxy_mcp_client_toonify.call_tool("return_json_string", {})
+    assert json_string_result.content
+    assert isinstance(json_string_result.content[0], TextContent)
+    assert json_string_result.content[0].text == "project: mcp-compressor\nstars: 5"
+
+
+async def test_toonify_leaves_plain_text_unchanged(proxy_mcp_client_toonify: Client) -> None:
+    """Test that toonify does not alter non-JSON text outputs."""
+    result = await proxy_mcp_client_toonify.call_tool("return_plain_text", {})
+    assert result.content
+    assert isinstance(result.content[0], TextContent)
+    assert result.content[0].text == "plain text"
+
+
+async def test_toonify_applies_to_invoke_tool_success_response(proxy_mcp_client_toonify: Client) -> None:
+    """Test that toonify is applied to successful backend results returned via invoke_tool."""
+    result = await proxy_mcp_client_toonify.call_tool(
+        "test_server_invoke_tool", {"tool_name": "return_object", "tool_input": {}}
+    )
+    assert result.content
+    assert isinstance(result.content[0], TextContent)
+    assert result.content[0].text == "name: Alice\nage: 30\ntags[2]: admin,user"
+
+
+async def test_toonify_does_not_modify_invoke_tool_error_response(proxy_mcp_client_toonify: Client) -> None:
+    """Test that wrapper-generated invoke_tool errors are not toonified."""
+    with pytest.raises(ToolError) as exc_info:
+        await proxy_mcp_client_toonify.call_tool(
+            "test_server_invoke_tool", {"tool_name": "add", "tool_input": {"a": "wrong-type"}}
+        )
+
+    error_message = str(exc_info.value)
+    assert "Tool 'add' input validation failed:" in error_message
+    assert "Here is the result of get_tool_schema('add'):" in error_message
+    assert '"required": [' in error_message

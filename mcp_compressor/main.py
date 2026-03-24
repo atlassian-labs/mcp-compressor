@@ -118,6 +118,10 @@ def main(
             case_sensitive=False,
         ),
     ] = LogLevel.WARNING,
+    toonify: Annotated[
+        bool,
+        typer.Option(..., "--toonify", help="Convert JSON tool responses to TOON format automatically."),
+    ] = False,
 ):
     """Run the MCP Compressor proxy server.
 
@@ -138,6 +142,7 @@ def main(
             compression_level=compression_level,
             server_name=server_name,
             log_level=log_level,
+            toonify=toonify,
         )
     )
 
@@ -151,6 +156,7 @@ async def _async_main(
     compression_level: CompressionLevel,
     server_name: str | None,
     log_level: LogLevel,
+    toonify: bool,
 ) -> None:
     """Run the MCP Compressor proxy server asynchronously."""
     logger.info(f"Starting MCP Compressor with log level: {log_level.value}")
@@ -163,6 +169,7 @@ async def _async_main(
         timeout=timeout,
         compression_level=compression_level,
         server_name=server_name,
+        toonify=toonify,
     ) as mcp:
         logger.info("Starting MCP Compressor server")
         await mcp.run_async(show_banner=False, log_level=log_level.value)
@@ -177,6 +184,7 @@ async def _server(
     timeout: float,
     compression_level: CompressionLevel,
     server_name: str | None,
+    toonify: bool = False,
 ) -> AsyncGenerator[FastMCP, None]:
     if compression_level == CompressionLevel.MAX and server_name is None:
         raise ValueError("server_name must be provided when using MAX compression level")  # noqa: TRY003
@@ -199,7 +207,9 @@ async def _server(
     logger.info("Initializing proxy server")
     mcp = FastMCP.as_proxy(backend=transport, name="MCP Compressor Proxy", version="0.1.0")
     logger.info("Configuring compressed tools middleware")
-    compressed_tools = CompressedTools(mcp, compression_level=compression_level, server_name=server_name)
+    compressed_tools = CompressedTools(
+        mcp, compression_level=compression_level, server_name=server_name, toonify=toonify
+    )
     await compressed_tools.configure_server()
 
     if transport_type == "stdio":
