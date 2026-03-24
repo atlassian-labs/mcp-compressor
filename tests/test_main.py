@@ -1,6 +1,8 @@
 """Tests for mcp_compressor/main.py."""
 
 import pytest
+from fastmcp import FastMCP
+from fastmcp.client.auth.oauth import OAuth
 from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
 
 from mcp_compressor.main import (
@@ -8,7 +10,9 @@ from mcp_compressor.main import (
     _get_stdio_transport,
     _get_streamable_http_transport,
     _interpolate_string,
+    _server,
 )
+from mcp_compressor.types import CompressionLevel
 
 
 @pytest.fixture(autouse=True)
@@ -81,6 +85,7 @@ def test_get_streamable_http_transport() -> None:
         timeout=30.0,
     )
     assert isinstance(transport, StreamableHttpTransport)
+    assert isinstance(transport.auth, OAuth)
 
 
 def test_get_sse_transport() -> None:
@@ -91,3 +96,18 @@ def test_get_sse_transport() -> None:
         timeout=15.0,
     )
     assert isinstance(transport, SSETransport)
+    assert isinstance(transport.auth, OAuth)
+
+
+async def test_remote_server_starts_without_connecting_upstream() -> None:
+    """Test that remote proxy startup is lazy and does not require upstream auth immediately."""
+    async with _server(
+        command_or_url_list=["https://example.com/mcp"],
+        cwd=None,
+        env_list=None,
+        header_list=None,
+        timeout=10.0,
+        compression_level=CompressionLevel.MEDIUM,
+        server_name=None,
+    ) as mcp:
+        assert isinstance(mcp, FastMCP)

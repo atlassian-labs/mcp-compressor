@@ -114,11 +114,13 @@ class TestCompressedTools:
 class TestToolNotFoundError:
     """Tests for ToolNotFoundError."""
 
-    def test_error_message_contains_tool_name(self) -> None:
-        """Test that the error message includes the tool name."""
-        error = ToolNotFoundError("missing_tool")
+    def test_error_message_contains_tool_name_and_available_tools(self) -> None:
+        """Test that the error message includes the tool name and available tools."""
+        error = ToolNotFoundError("missing_tool", ["add", "do_nothing"])
         assert "missing_tool" in str(error)
+        assert "Available tools: add, do_nothing" in str(error)
         assert error.tool_name == "missing_tool"
+        assert error.available_tools == ("add", "do_nothing")
 
 
 async def test_on_call_tool_extracts_flat_args_as_tool_input(proxy_mcp_client) -> None:

@@ -127,3 +127,42 @@ async def test_invoke_tool_quiet_mode(proxy_mcp_client: Client, output_length: i
         # Should return full output without truncation
         assert "(truncated due to quiet mode)" not in result_text
         assert result_text == "X" * output_length
+
+
+async def test_invoke_tool_validation_errors_include_schema(proxy_mcp_client: Client) -> None:
+    """Test that validation failures include the tool schema in the error message."""
+    with pytest.raises(ToolError) as exc_info:
+        await proxy_mcp_client.call_tool(
+            "test_server_invoke_tool",
+            {"tool_name": "add", "tool_input": {"a": "wrong-type"}},
+        )
+
+    error_message = str(exc_info.value)
+    assert "Tool 'add' input validation failed:" in error_message
+    assert "Here is the result of get_tool_schema('add'):" in error_message
+    assert "<tool>add(a, b)" in error_message
+    assert '"required": [' in error_message
+    assert '"a"' in error_message
+    assert '"b"' in error_message
+    assert '"type": "object"' in error_message
+
+
+@pytest.mark.parametrize(
+    ("wrapper_tool_name", "wrapper_args"),
+    [
+        ("test_server_get_tool_schema", {"tool_name": "missing_tool"}),
+        ("test_server_invoke_tool", {"tool_name": "missing_tool", "tool_input": {}}),
+    ],
+)
+async def test_missing_tool_errors_include_available_tools(
+    proxy_mcp_client: Client, wrapper_tool_name: str, wrapper_args: dict
+) -> None:
+    """Test that missing-tool errors include a list of available backend tools."""
+    with pytest.raises(ToolError) as exc_info:
+        await proxy_mcp_client.call_tool(wrapper_tool_name, wrapper_args)
+
+    error_message = str(exc_info.value)
+    assert "Tool 'missing_tool' not found in backend MCP server." in error_message
+    assert "Available tools:" in error_message
+    for tool_name in ["add", "do_nothing", "empty_tool", "generate_long_output", "throw_error"]:
+        assert tool_name in error_message

@@ -10,11 +10,13 @@ from collections.abc import Sequence
 from typing import Any, cast
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools import Tool
 from fastmcp.tools.tool import ToolResult
 from loguru import logger
 from mcp.types import CallToolRequestParams, ListToolsRequest, TextContent
+from pydantic import ValidationError
 
 from .types import CompressionLevel
 
@@ -25,9 +27,11 @@ QUIET_MODE_THRESHOLD = 1000
 class ToolNotFoundError(ValueError):
     """Exception raised when a requested tool is not found in the backend MCP server."""
 
-    def __init__(self, tool_name: str) -> None:
-        super().__init__(f"Tool '{tool_name}' not found in backend MCP server.")
+    def __init__(self, tool_name: str, available_tools: Sequence[str]) -> None:
         self.tool_name = tool_name
+        self.available_tools = tuple(available_tools)
+        available_tools_text = ", ".join(self.available_tools) if self.available_tools else "(none)"
+        super().__init__(f"Tool '{tool_name}' not found in backend MCP server. Available tools: {available_tools_text}")
 
 
 class CompressedTools(Middleware):
@@ -98,7 +102,30 @@ class CompressedTools(Middleware):
         Returns:
             The output from the tool.
         """
-        pass
+        tool = await self._get_backend_tool(tool_name)
+        try:
+            tool_result = await tool.run(tool_input or {})
+        except ValidationError as exc:
+            raise ToolError(await self._format_validation_error(tool_name, str(exc))) from exc
+        except ToolError as exc:
+            if self._is_validation_error_message(str(exc)):
+                raise ToolError(await self._format_validation_error(tool_name, str(exc))) from exc
+            raise
+        if quiet:
+            if len(tool_result.content) == 1 and isinstance(tool_result.content[0], TextContent):
+                return_text = tool_result.content[0].text
+                if len(return_text) < QUIET_MODE_THRESHOLD:
+                    return tool_result
+                preview_length = QUIET_MODE_THRESHOLD // 2
+                return_text = (
+                    return_text[:preview_length]
+                    + "\n...\n(truncated due to quiet mode)\n...\n"
+                    + return_text[-preview_length:]
+                )
+            else:
+                return_text = f"Successfully executed tool '{tool.name}' without output."
+            return ToolResult(content=[TextContent(type="text", text=return_text)])
+        return tool_result
 
     async def on_call_tool(
         self,
@@ -122,23 +149,11 @@ class CompressedTools(Middleware):
             tool_input = {k: v for k, v in tool_args.items() if k not in ["tool_name", "quiet"]}
         else:
             tool_input = tool_args["tool_input"]
-        tool = await self._get_backend_tool(tool_args["tool_name"])
-        tool_result = await tool.run(tool_input)
-        if tool_args.get("quiet"):
-            if len(tool_result.content) == 1 and isinstance(tool_result.content[0], TextContent):
-                return_text = tool_result.content[0].text
-                if len(return_text) < QUIET_MODE_THRESHOLD:
-                    return tool_result
-                preview_length = QUIET_MODE_THRESHOLD // 2
-                return_text = (
-                    return_text[:preview_length]
-                    + "\n...\n(truncated due to quiet mode)\n...\n"
-                    + return_text[-preview_length:]
-                )
-            else:
-                return_text = f"Successfully executed tool '{tool.name}' without output."
-            return ToolResult(content=[TextContent(type="text", text=return_text)])
-        return tool_result
+        return await self.invoke_tool(
+            tool_name=tool_args["tool_name"],
+            tool_input=tool_input,
+            quiet=tool_args.get("quiet", False),
+        )
 
     async def on_list_tools(
         self, context: MiddlewareContext[ListToolsRequest], call_next: CallNext[ListToolsRequest, Sequence[Tool]]
@@ -288,9 +303,23 @@ class CompressedTools(Middleware):
         backend_tools = await self._get_backend_tools()
         tool = backend_tools.get(tool_name)
         if tool is None:
-            logger.error(f"Tool '{tool_name}' not found in backend tools.")
-            raise ToolNotFoundError(tool_name)
+            available_tools = tuple(sorted(backend_tools))
+            logger.error(f"Tool '{tool_name}' not found in backend tools. Available tools: {available_tools}")
+            raise ToolNotFoundError(tool_name, available_tools)
         return tool
+
+    async def _format_validation_error(self, tool_name: str, error_message: str) -> str:
+        """Format a validation failure with the tool schema for client guidance."""
+        tool_schema = await self.get_tool_schema(tool_name)
+        return (
+            f"Tool '{tool_name}' input validation failed: {error_message}\n\n"
+            f"Here is the result of get_tool_schema('{tool_name}'):\n{tool_schema}"
+        )
+
+    def _is_validation_error_message(self, error_message: str) -> bool:
+        """Return whether a tool error message appears to be an input validation failure."""
+        lowered_message = error_message.lower()
+        return "validation error" in lowered_message or "missing required argument" in lowered_message
 
 
 def sanitize_tool_name(name: str) -> str:

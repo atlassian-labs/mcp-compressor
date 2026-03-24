@@ -19,7 +19,6 @@ from fastmcp.client.transports import (
     StreamableHttpTransport,
     infer_transport_type_from_url,
 )
-from fastmcp.server.proxy import ProxyClient
 from loguru import logger
 from loguru_logging_intercept import setup_loguru_logging_intercept
 
@@ -197,17 +196,22 @@ async def _server(
     elif transport_type == "sse":
         transport = _get_sse_transport(url=command_or_url, header_list=header_list, timeout=timeout)
 
-    # Start the MCP client with the selected transport
-    logger.info("Initializing proxy client")
-    async with ProxyClient(transport=transport, timeout=timeout) as client:
-        logger.info("Initalizing proxy server")
-        mcp = FastMCP.as_proxy(backend=client, name="MCP Compressor Proxy", version="0.1.0")
-        logger.info("Configuring compressed tools middleware")
-        compressed_tools = CompressedTools(mcp, compression_level=compression_level, server_name=server_name)
-        await compressed_tools.configure_server()
+    logger.info("Initializing proxy server")
+    mcp = FastMCP.as_proxy(backend=transport, name="MCP Compressor Proxy", version="0.1.0")
+    logger.info("Configuring compressed tools middleware")
+    compressed_tools = CompressedTools(mcp, compression_level=compression_level, server_name=server_name)
+    await compressed_tools.configure_server()
+
+    if transport_type == "stdio":
         stats = await compressed_tools.get_compression_stats()
         print_banner(server_name, transport_type, stats, compression_level)
-        yield mcp
+    else:
+        logger.info(
+            "Skipping startup-time backend inspection for remote %s transport; tool discovery/auth will happen lazily",
+            transport_type,
+        )
+
+    yield mcp
 
 
 def _interpolate_string(value: str) -> str:
@@ -261,8 +265,9 @@ def _get_remote_transport(
         for header in header_list:
             key, val = header.split("=", 1)
             header_dict[key] = _interpolate_string(val)
-    transport_cls = StreamableHttpTransport if transport_type == "http" else SSETransport
-    return transport_cls(url=url, headers=header_dict)
+    if transport_type == "http":
+        return StreamableHttpTransport(url=url, headers=header_dict, auth="oauth")
+    return SSETransport(url=url, headers=header_dict, auth="oauth", sse_read_timeout=timeout)
 
 
 def _get_streamable_http_transport(url: str, header_list: list[str] | None, timeout: float) -> StreamableHttpTransport:
