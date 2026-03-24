@@ -25,6 +25,9 @@ def print_banner(
         # Terminal too narrow to display banner properly
         return
 
+    # Content width is the available space inside the box (columns - 6 for borders and padding)
+    content_width = columns - 6
+
     header = "╭" + "─" * (columns - 2) + "╮"
     footer = "╰" + "─" * (columns - 2) + "╯"
     separator = "├" + "─" * (columns - 2) + "┤"
@@ -32,20 +35,20 @@ def print_banner(
 
     banner = [header, blank_line]
     for line in TITLE.splitlines():
-        banner.append(_pad_line(line, columns + 9, center=True))
+        banner.append(_pad_line(line, content_width, center=True))
     if server_name:
         banner.append(blank_line)
-        banner.append(_pad_line(f"\033[32m●\033[0m Backend server name: {server_name}", columns + 9))
+        banner.append(_pad_line(f"\033[32m●\033[0m Backend server name: {server_name}", content_width))
     banner.append(blank_line)
-    banner.append(_pad_line(f"\033[32m●\033[0m Backend server transport: {transport_type.upper()}", columns + 9))
+    banner.append(_pad_line(f"\033[32m●\033[0m Backend server transport: {transport_type.upper()}", content_width))
     banner.append(blank_line)
-    banner.append(_pad_line("\033[32m●\033[0m Docs: https://atlassian-labs.github.io/mcp-compressor/", columns + 9))
+    banner.append(_pad_line("\033[32m●\033[0m Docs: https://atlassian-labs.github.io/mcp-compressor/", content_width))
     banner.append(blank_line)
     banner.append(separator)
     banner.append(blank_line)
-    banner.append(_pad_line(f"📊 Compression Statistics (current = {compression_level.capitalize()}):", columns - 1))
+    banner.append(_pad_line(f"📊 Compression Statistics (current = {compression_level.capitalize()}):", content_width))
     banner.append(blank_line)
-    for line in _format_compression_chart(stats, columns, compression_level):
+    for line in _format_compression_chart(stats, content_width, compression_level):
         banner.append(line)
     banner.append(blank_line)
     banner.append(footer)
@@ -64,27 +67,29 @@ def _format_compression_chart(stats: dict, width: int, compression_level: Compre
     Returns:
         Formatted strings with bar chart visualization.
     """
-    width -= 25
+    # Reserve space for label, percentage, and spacing: "Medium   " (9) + " " (1) + "100.0%" (6) = 16 chars
+    chart_width = width - 16
     original_size = stats["original_schema_size"]
     compressed_sizes = stats["compressed_schema_sizes"]
 
     lines = []
 
     # Original size bar (100%)
-    bar = "█" * width
-    lines.append(_pad_line(f"Original {bar} 100.0%", width + 25))
+    bar = "█" * chart_width
+    lines.append(_pad_line(f"Original {bar} 100.0%", width))
 
     # Compressed size bars for each level
     for level in [CompressionLevel.LOW, CompressionLevel.MEDIUM, CompressionLevel.HIGH, CompressionLevel.MAX]:
         size = compressed_sizes[level]
         ratio = size / original_size if original_size > 0 else 0
-        filled = int(ratio * width)
-        bar = "█" * filled + "░" * (width - filled)
+        # Clamp filled to not exceed chart_width
+        filled = min(int(ratio * chart_width), chart_width)
+        bar = "█" * filled + "░" * (chart_width - filled)
         pct = ratio * 100
         label = f"{level.value.capitalize():<8}"
-        line = _pad_line(f"{label} {bar} {pct:5.1f}%", width + 25)
+        line = _pad_line(f"{label} {bar} {pct:5.1f}%", width)
         if level == compression_level:
-            # Use blue color for the current compression level
+            # Use green color for the current compression level
             blue_end = line.find("░")
             if blue_end == -1:
                 blue_end = len(line) - 2
@@ -95,8 +100,27 @@ def _format_compression_chart(stats: dict, width: int, compression_level: Compre
 
 
 def _pad_line(line: str, total_width: int, center: bool = False) -> str:
+    """Pad a line to fit within a box of the given width.
+
+    Args:
+        line: The line content (may include ANSI codes).
+        total_width: Total width available for content (excluding box borders).
+        center: Whether to center the line.
+
+    Returns:
+        A padded line with box borders.
+    """
+    # Calculate actual content width (excluding ANSI codes)
+    import re
+
+    clean_line = re.sub(r"\033\[[0-9;]*m", "", line)
+    clean_width = len(clean_line)
+
     if center:
-        padding_total = total_width - 6 - len(line)
+        padding_total = total_width - clean_width
         padding_left = padding_total // 2
-        line = " " * padding_left + line
-    return "│  " + f"{line:<{total_width - 6}}" + "  │"
+        padding_right = padding_total - padding_left
+        return "│  " + " " * padding_left + line + " " * padding_right + "  │"
+    else:
+        padding_right = total_width - clean_width
+        return "│  " + line + " " * padding_right + "  │"
