@@ -1,8 +1,8 @@
 """Tests for mcp_compressor/tools.py."""
 
 import pytest
+import toons
 from fastmcp.tools import Tool
-from toon_format import encode as encode_toon
 
 from mcp_compressor.tools import CompressedTools, ToolNotFoundError, sanitize_tool_name
 from mcp_compressor.types import CompressionLevel
@@ -113,11 +113,11 @@ class TestCompressedTools:
 
     def test_toonify_json_text_converts_objects_and_arrays(self, compressed_tools: CompressedTools) -> None:
         """Test that toonify converts JSON object/array strings to TOON."""
-        assert compressed_tools._toonify_json_text('{"name":"Alice","age":30}') == encode_toon({
+        assert compressed_tools._toonify_json_text('{"name":"Alice","age":30}') == toons.dumps({
             "name": "Alice",
             "age": 30,
         })
-        assert compressed_tools._toonify_json_text('[{"id":1},{"id":2}]') == encode_toon([{"id": 1}, {"id": 2}])
+        assert compressed_tools._toonify_json_text('[{"id":1},{"id":2}]') == toons.dumps([{"id": 1}, {"id": 2}])
 
     def test_toonify_json_text_leaves_non_json_text_unchanged(self, compressed_tools: CompressedTools) -> None:
         """Test that toonify leaves non-JSON text unchanged."""
