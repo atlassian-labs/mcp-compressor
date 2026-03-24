@@ -1,6 +1,6 @@
 [project]
 name = "mcp-compressor"
-version = "0.0.5"
+version = "0.1.0"
 description = "An MCP server wrapper for reducing tokens consumed by MCP tools."
 authors = [{ name = "Tim Esler", email = "tesler@atlassian.com" }]
 readme = "README.md"
@@ -18,12 +18,16 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
+    "anyio>=4.0.0",
     "fastmcp==2.14.1",
     "loguru>=0.7.3",
     "loguru-logging-intercept>=0.1.5",
     "mcp>=1.25.0",
+    "pydantic>=2.0.0",
+    "starlette>=0.40.0",
     "toon_format @ git+https://github.com/toon-format/toon-python.git",
     "typer>=0.21.0",
+    "uvicorn>=0.30.0",
 ]
 
 [project.urls]
@@ -54,6 +58,9 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["mcp_compressor"]

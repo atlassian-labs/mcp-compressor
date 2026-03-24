@@ -6,11 +6,13 @@ compresses their tool descriptions to reduce token consumption.
 
 import asyncio
 import os
+import socket
 import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Annotated, Literal, overload
+from typing import Annotated, Any, Literal, overload
 
+import anyio
 import typer
 from fastmcp import FastMCP
 from fastmcp.client.transports import (
@@ -19,11 +21,18 @@ from fastmcp.client.transports import (
     StreamableHttpTransport,
     infer_transport_type_from_url,
 )
+from fastmcp.exceptions import ToolError
+from fastmcp.server.proxy import ProxyClient, ProxyTool
+from fastmcp.tools.tool import ToolResult
 from loguru import logger
 from loguru_logging_intercept import setup_loguru_logging_intercept
+from mcp.types import TextContent
 
 from .banner import print_banner
-from .tools import CompressedTools
+from .cli_bridge import CliBridge
+from .cli_script import generate_cli_script
+from .cli_tools import sanitize_cli_name
+from .tools import CliModeTools, CompressedTools
 from .types import CompressionLevel, LogLevel, TransportType
 
 app = typer.Typer(name="MCP Compressor", help="An MCP server wrapper for reducing tokens consumed by MCP tools.")
@@ -122,6 +131,26 @@ def main(
         bool,
         typer.Option(..., "--toonify", help="Convert JSON tool responses to TOON format automatically."),
     ] = False,
+    cli_mode: Annotated[
+        bool,
+        typer.Option(
+            ...,
+            "--cli-mode",
+            help=(
+                "Start in CLI mode: expose a single help MCP tool, start a local HTTP bridge, "
+                "and generate a shell script for interacting with the wrapped server via CLI. "
+                "--toonify is automatically enabled in this mode."
+            ),
+        ),
+    ] = False,
+    cli_port: Annotated[
+        int | None,
+        typer.Option(
+            ...,
+            "--cli-port",
+            help="Port for the local CLI bridge HTTP server (default: random free port).",
+        ),
+    ] = None,
 ):
     """Run the MCP Compressor proxy server.
 
@@ -142,7 +171,9 @@ def main(
             compression_level=compression_level,
             server_name=server_name,
             log_level=log_level,
-            toonify=toonify,
+            toonify=toonify or cli_mode,
+            cli_mode=cli_mode,
+            cli_port=cli_port,
         )
     )
 
@@ -157,6 +188,8 @@ async def _async_main(
     server_name: str | None,
     log_level: LogLevel,
     toonify: bool,
+    cli_mode: bool = False,
+    cli_port: int | None = None,
 ) -> None:
     """Run the MCP Compressor proxy server asynchronously."""
     logger.info(f"Starting MCP Compressor with log level: {log_level.value}")
@@ -170,6 +203,8 @@ async def _async_main(
         compression_level=compression_level,
         server_name=server_name,
         toonify=toonify,
+        cli_mode=cli_mode,
+        cli_port=cli_port,
     ) as mcp:
         logger.info("Starting MCP Compressor server")
         await mcp.run_async(show_banner=False, log_level=log_level.value)
@@ -185,8 +220,10 @@ async def _server(
     compression_level: CompressionLevel,
     server_name: str | None,
     toonify: bool = False,
+    cli_mode: bool = False,
+    cli_port: int | None = None,
 ) -> AsyncGenerator[FastMCP, None]:
-    if compression_level == CompressionLevel.MAX and server_name is None:
+    if compression_level == CompressionLevel.MAX and server_name is None and not cli_mode:
         raise ValueError("server_name must be provided when using MAX compression level")  # noqa: TRY003
 
     command_or_url = " ".join(command_or_url_list)
@@ -204,12 +241,28 @@ async def _server(
     elif transport_type == "sse":
         transport = _get_sse_transport(url=command_or_url, header_list=header_list, timeout=timeout)
 
+    if cli_mode:
+        cli_name = sanitize_cli_name(server_name or "mcp")
+        async with _cli_mode_server(
+            transport=transport,
+            cli_name=cli_name,
+            compression_level=compression_level,
+            server_name=server_name,
+            toonify=toonify,
+            cli_port=cli_port,
+        ) as mcp:
+            yield mcp
+        return
+
     logger.info("Initializing proxy server")
     mcp = FastMCP.as_proxy(backend=transport, name="MCP Compressor Proxy", version="0.1.0")
-    logger.info("Configuring compressed tools middleware")
+
+    # Shared compressed tools for backend access
     compressed_tools = CompressedTools(
         mcp, compression_level=compression_level, server_name=server_name, toonify=toonify
     )
+
+    logger.info("Configuring compressed tools middleware")
     await compressed_tools.configure_server()
 
     if transport_type == "stdio":
@@ -222,6 +275,92 @@ async def _server(
         )
 
     yield mcp
+
+
+@asynccontextmanager
+async def _cli_mode_server(
+    transport: TransportType,
+    cli_name: str,
+    compression_level: CompressionLevel,
+    server_name: str | None,
+    toonify: bool,
+    cli_port: int | None,
+) -> AsyncGenerator[FastMCP, None]:
+    """Set up and run the CLI mode server with a persistent authenticated backend session.
+
+    Connects once to the backend, starts a local HTTP bridge, generates a CLI
+    script, and yields the MCP server for the caller to run.
+    """
+    async with ProxyClient(transport=transport, init_timeout=None) as persistent_client:
+        logger.info("Initializing proxy server with persistent client for CLI mode")
+        mcp = FastMCP.as_proxy(backend=persistent_client, name="MCP Compressor Proxy", version="0.1.0")
+
+        compressed_tools = CompressedTools(
+            mcp, compression_level=compression_level, server_name=server_name, toonify=toonify
+        )
+        cli_mode_tools = CliModeTools(
+            proxy_server=mcp,
+            cli_name=cli_name,
+            server_name=server_name,
+            compressed_tools=compressed_tools,
+        )
+        await cli_mode_tools.configure_server()
+
+        port = cli_port or _find_free_port()
+
+        async def _get_tools() -> dict[str, Any]:
+            mcp_tools = await persistent_client.list_tools()
+            return {t.name: ProxyTool.from_mcp_tool(persistent_client, t) for t in mcp_tools}
+
+        async def _invoke(tool_name: str, tool_input: dict[str, Any] | None) -> ToolResult:
+            result = await persistent_client.call_tool_mcp(name=tool_name, arguments=tool_input or {})
+            if result.isError:
+                error_text = (
+                    result.content[0].text
+                    if result.content and isinstance(result.content[0], TextContent)
+                    else str(result.content)
+                )
+                raise ToolError(error_text)
+            tool_result = ToolResult(
+                content=result.content,
+                structured_content=result.structuredContent,
+                meta=result.meta,
+            )
+            if toonify:
+                tool_result = compressed_tools._toonify_tool_result(tool_result)
+            return tool_result
+
+        bridge = CliBridge(
+            cli_name=cli_name,
+            server_description=compressed_tools._server_description,
+            get_tools_fn=_get_tools,
+            invoke_fn=_invoke,
+            port=port,
+        )
+        bridge_server = bridge.make_server()
+
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(bridge_server.serve)
+            while not bridge_server.started:
+                await anyio.sleep(0.01)
+
+            script_path, on_path = generate_cli_script(cli_name=cli_name, bridge_port=port)
+            invoke_prefix = cli_name if on_path else f"./{cli_name}"
+            print("CLI mode active.")
+            print(f"  Script:  {script_path}")
+            print(f"  Bridge:  http://127.0.0.1:{port}")
+            print(f"  Run:     {invoke_prefix} --help")
+
+            logger.info("Starting MCP Compressor server in CLI mode")
+            yield mcp
+            tg.cancel_scope.cancel()
+
+
+def _find_free_port() -> int:
+    """Find a free port on the loopback interface."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 def _interpolate_string(value: str) -> str:
