@@ -30,6 +30,11 @@ OPTIONS:
 {options}
 """
 
+SCHEMA_PREFIX = """\
+Functionality associated with the {cli_name} toolset is provided via the `{cli_name}` CLI. Access the functionality \
+below via the CLI rather than through structured tool/function calling.\
+"""
+
 
 def tool_name_to_subcommand(tool_name: str) -> str:
     """Convert a snake_case or camelCase MCP tool name to a kebab-case CLI subcommand.
@@ -79,7 +84,7 @@ def format_top_level_help(
     """Format top-level --help output listing all subcommands."""
     prefix = ""
     if for_tool_schema:
-        prefix = "Functionality associated with the {cli_name} toolset is provided via the `{cli_name}` CLI. "
+        prefix = SCHEMA_PREFIX.format(cli_name=cli_name)
     subcommand_table = []
     for tool in sorted(tools, key=lambda t: t.name):
         subcommand = tool_name_to_subcommand(tool.name)
