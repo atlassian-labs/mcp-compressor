@@ -9,6 +9,7 @@ import re
 from collections.abc import Sequence
 from typing import Any, cast
 
+import toons
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
@@ -366,9 +367,7 @@ class CompressedTools(Middleware):
             return text
         if not isinstance(parsed, dict | list):
             return text
-        from toon_format import encode as encode_toon
-
-        return encode_toon(parsed)
+        return toons.dumps(parsed)
 
 
 class CliModeTools(Middleware):

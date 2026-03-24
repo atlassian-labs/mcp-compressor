@@ -1,6 +1,6 @@
 [project]
 name = "mcp-compressor"
-version = "0.1.0"
+version = "0.1.1"
 description = "An MCP server wrapper for reducing tokens consumed by MCP tools."
 authors = [{ name = "Tim Esler", email = "tesler@atlassian.com" }]
 readme = "README.md"
@@ -25,7 +25,7 @@ dependencies = [
     "mcp>=1.25.0",
     "pydantic>=2.0.0",
     "starlette>=0.40.0",
-    "toon_format @ git+https://github.com/toon-format/toon-python.git",
+    "toons>=0.5.3",
     "typer>=0.21.0",
     "uvicorn>=0.30.0",
 ]
