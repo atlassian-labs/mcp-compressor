@@ -1153,12 +1153,16 @@ name = "mcp-compressor"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "anyio" },
     { name = "fastmcp" },
     { name = "loguru" },
     { name = "loguru-logging-intercept" },
     { name = "mcp" },
+    { name = "pydantic" },
+    { name = "starlette" },
     { name = "toon-format" },
     { name = "typer" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -1180,12 +1184,16 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.0.0" },
     { name = "fastmcp", specifier = "==2.14.1" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "loguru-logging-intercept", specifier = ">=0.1.5" },
     { name = "mcp", specifier = ">=1.25.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "starlette", specifier = ">=0.40.0" },
     { name = "toon-format", git = "https://github.com/toon-format/toon-python.git" },
     { name = "typer", specifier = ">=0.21.0" },
+    { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 
 [package.metadata.requires-dev]
