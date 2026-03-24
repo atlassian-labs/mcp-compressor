@@ -1,3 +1,4 @@
+import re
 import shutil
 
 from .types import CompressionLevel
@@ -111,8 +112,6 @@ def _pad_line(line: str, total_width: int, center: bool = False) -> str:
         A padded line with box borders.
     """
     # Calculate actual content width (excluding ANSI codes)
-    import re
-
     clean_line = re.sub(r"\033\[[0-9;]*m", "", line)
     clean_width = len(clean_line)
 

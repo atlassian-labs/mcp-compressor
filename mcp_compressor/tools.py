@@ -15,9 +15,11 @@ from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools import Tool
 from fastmcp.tools.tool import ToolResult
 from loguru import logger
-from mcp.types import CallToolRequestParams, ListToolsRequest, TextContent
+from mcp.types import CallToolRequestParams, ContentBlock, ListToolsRequest, TextContent
 from pydantic import ValidationError
 
+from .cli_script import find_script_dir
+from .cli_tools import build_help_tool_description
 from .types import CompressionLevel
 
 # Minimum output length before quiet mode truncation applies
@@ -338,7 +340,7 @@ class CompressedTools(Middleware):
 
     def _toonify_tool_result(self, tool_result: ToolResult) -> ToolResult:
         """Convert JSON text content blocks in a tool result to TOON format."""
-        converted_content = []
+        converted_content: list[ContentBlock] = []
         content_changed = False
         for content_block in tool_result.content:
             if isinstance(content_block, TextContent):
@@ -367,6 +369,53 @@ class CompressedTools(Middleware):
         from toon_format import encode as encode_toon
 
         return encode_toon(parsed)
+
+
+class CliModeTools(Middleware):
+    """Middleware for CLI mode: exposes only the single <server_name>_help tool via MCP."""
+
+    def __init__(
+        self,
+        proxy_server: FastMCP,
+        cli_name: str,
+        server_name: str | None,
+        compressed_tools: "CompressedTools",
+    ) -> None:
+        self._proxy_server = proxy_server
+        self._cli_name = cli_name
+        self._server_name = server_name
+        self._compressed_tools = compressed_tools
+        self._help_tool_name = sanitize_tool_name(f"{server_name}_help" if server_name else "help")
+
+    async def _build_description(self) -> str:
+        """Build the full help description — same content as the CLI --help output."""
+        _, on_path = find_script_dir()
+        tools = list((await self._compressed_tools._get_backend_tools()).values())
+        return build_help_tool_description(
+            self._cli_name, self._compressed_tools._server_description, tools, on_path=on_path
+        )
+
+    async def on_list_tools(
+        self, context: MiddlewareContext[ListToolsRequest], call_next: CallNext[ListToolsRequest, Sequence[Tool]]
+    ) -> Sequence[Tool]:
+        """Return only the help tool with its full description — suppress all backend tools."""
+        all_tools = await call_next(context)
+        help_tools = [t for t in all_tools if t.name == self._help_tool_name]
+        # Update the description dynamically so it matches the CLI --help output
+        description = await self._build_description()
+        for t in help_tools:
+            t.description = description
+        return help_tools
+
+    async def configure_server(self) -> None:
+        """Register the single <server_name>_help tool and add this middleware."""
+
+        async def help_tool() -> str:
+            return await self._build_description()
+
+        help_tool.__doc__ = f"Get help for the '{self._cli_name}' CLI. Lists all available subcommands."
+        self._proxy_server.tool(name=self._help_tool_name)(help_tool)
+        self._proxy_server.add_middleware(self)
 
 
 def sanitize_tool_name(name: str) -> str:

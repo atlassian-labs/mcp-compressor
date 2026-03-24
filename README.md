@@ -38,6 +38,7 @@ With 30k+ tokens just for tool descriptions, costs can reach **1-10 cents per re
 - **Multiple Compression Levels**: Choose between `low`, `medium`, `high`, or `max`
 - **Universal Compatibility**: Works with any MCP server (stdio, HTTP, SSE)
 - **TOON Output Conversion**: Optionally convert JSON backend tool results to [TOON](https://github.com/toon-format/spec) with `--toonify`
+- **CLI Mode**: Convert any MCP server into a local CLI with `--cli-mode` — generates a shell script that lets you (or an AI agent) interact with the backend via familiar command-line syntax
 - **Zero Functionality Loss**: All tools remain fully accessible through the wrapper interface
 - **Easy Integration**: Drop-in replacement for existing MCP servers
 
@@ -147,6 +148,47 @@ When `--toonify` is enabled:
 - Wrapper-generated guidance or error text from `invoke_tool(...)` is never toonified
 - Non-JSON text is returned unchanged
 
+#### CLI Mode
+
+Use `--cli-mode` to turn any wrapped MCP server into a local CLI. This is useful when you want to interact with a backend server using familiar shell commands, or expose it to an AI agent as a CLI tool rather than a collection of MCP tools.
+
+```bash
+mcp-compressor https://mcp.atlassian.com/v1/mcp --server-name atlassian --cli-mode
+```
+
+When CLI mode starts, it:
+
+1. Connects to the wrapped backend server (performing OAuth if required)
+2. Starts a local HTTP bridge on `127.0.0.1:<random-port>`
+3. Generates an executable script — on Unix, a Python3 script written to `~/.local/bin/<name>` (or the current directory if no candidate is on `PATH`); on Windows, a `.cmd` batch file written to a suitable directory on `PATH`
+4. Exposes a single MCP tool `<server_name>_help` to the MCP client describing the CLI and its subcommands
+
+The generated script forwards all arguments to the local bridge and prints the result. **The script only works while `mcp-compressor --cli-mode` is running.**
+
+```bash
+# Top-level help — lists all subcommands (one per backend tool)
+atlassian --help
+
+# Per-tool help — shows flags derived from the tool's JSON schema
+atlassian get-confluence-page --help
+
+# Invoke a tool — flags are automatically mapped to tool input
+atlassian get-confluence-page --cloud-id abc123 --page-id 456
+
+# Universal escape hatch for complex inputs
+atlassian create-jira-issue --json '{"cloudId":"abc","projectKey":"PROJ","summary":"Bug"}'
+```
+
+CLI subcommand names are the snake_case → kebab-case conversion of the backend tool names (e.g. `getConfluencePage` → `get-confluence-page`).
+
+`--toonify` is automatically enabled in CLI mode — all successful backend tool results are returned in TOON format.
+
+Use `--cli-port` to pin the bridge to a specific port instead of a random one:
+
+```bash
+mcp-compressor https://mcp.atlassian.com/v1/mcp --server-name atlassian --cli-mode --cli-port 8765
+```
+
 #### Logging
 
 ```bash
@@ -199,6 +241,8 @@ Available tools:
 When the LLM needs to use a tool, it first calls `get_tool_schema(tool_name)` to retrieve the full schema, then `invoke_tool(tool_name, tool_input)` to execute it.
 
 If `--toonify` is enabled, successful backend tool results are converted from JSON to TOON before being returned to the client. The wrapper helper responses themselves are not reformatted.
+
+In CLI mode (`--cli-mode`), the compressor exposes a single `<server_name>_help` tool instead of the usual wrappers. All actual tool interaction happens through the generated shell script via a local HTTP bridge.
 
 ```mermaid
 sequenceDiagram
@@ -340,6 +384,13 @@ Options:
                                   WARNING]
   --toonify                       Convert JSON backend tool responses to TOON
                                   format automatically.
+  --cli-mode                      Start in CLI mode: expose a single help MCP
+                                  tool, start a local HTTP bridge, and generate
+                                  a shell script for interacting with the
+                                  wrapped server via CLI. --toonify is
+                                  automatically enabled in this mode.
+  --cli-port INTEGER              Port for the local CLI bridge HTTP server
+                                  (default: random free port).
   --install-completion            Install completion for the current shell.
   --show-completion               Show completion for the current shell, to
                                   copy it or customize the installation.
