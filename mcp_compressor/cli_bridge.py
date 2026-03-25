@@ -8,9 +8,10 @@ Exposes two endpoints:
 from __future__ import annotations
 
 from collections.abc import Coroutine
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import uvicorn
+from fastmcp.server.context import Context
 from fastmcp.tools import Tool
 from loguru import logger
 from mcp.types import TextContent
@@ -20,6 +21,9 @@ from starlette.responses import PlainTextResponse, Response
 from starlette.routing import Route
 
 from .cli_tools import format_tool_help, format_top_level_help, parse_argv_to_tool_input, tool_name_to_subcommand
+
+if TYPE_CHECKING:
+    from fastmcp import FastMCP
 
 # Type alias for the direct backend call callable — receives tool_name + arguments,
 # returns a ToolResult (not a CallToolResult)
@@ -42,12 +46,14 @@ class CliBridge:
         get_tools_fn: GetToolsFn,
         invoke_fn: InvokeFn,
         port: int,
+        fastmcp: FastMCP | None = None,
     ) -> None:
         self._cli_name = cli_name
         self._server_description = server_description
         self._get_tools_fn = get_tools_fn
         self._invoke_fn = invoke_fn
         self._port = port
+        self._fastmcp = fastmcp
 
         # Lazily populated on first request
         self._tools: dict[str, Tool] | None = None
@@ -146,7 +152,15 @@ class CliBridge:
             )
 
         try:
-            result = await self._invoke_fn(tool_name, tool_input)
+            if self._fastmcp is not None:
+                # Establish a FastMCP Context so that proxy tools (which call
+                # get_context()) can access the server state.  Without this,
+                # stateful backends like chrome-devtools-mcp fail with
+                # "No active context found".
+                async with Context(fastmcp=self._fastmcp):
+                    result = await self._invoke_fn(tool_name, tool_input)
+            else:
+                result = await self._invoke_fn(tool_name, tool_input)
         except Exception as exc:
             return PlainTextResponse(f"error: {exc}\n", status_code=400)
 
