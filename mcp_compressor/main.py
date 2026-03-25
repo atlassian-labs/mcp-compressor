@@ -395,6 +395,7 @@ async def _cli_mode_server(
             get_tools_fn=compressed_tools._get_backend_tools,
             invoke_fn=compressed_tools.invoke_tool,
             port=port,
+            fastmcp=mcp,
         )
         bridge_server = bridge.make_server()
 
