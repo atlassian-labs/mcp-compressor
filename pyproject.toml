@@ -21,6 +21,7 @@ dependencies = [
     "anyio>=4.0.0",
     "cryptography>=42.0.0",
     "keyring>=25.0.0",
+    "py-key-value-aio>=0.3.0",
     "fastmcp==2.14.5",
     "loguru>=0.7.3",
     "loguru-logging-intercept>=0.1.5",
