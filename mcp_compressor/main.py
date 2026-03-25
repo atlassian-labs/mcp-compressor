@@ -5,35 +5,51 @@ compresses their tool descriptions to reduce token consumption.
 """
 
 import asyncio
+import contextlib
 import os
+import shutil
+import signal
 import socket
 import sys
+import threading
+import warnings
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Annotated, Any, Literal, overload
+from pathlib import Path
+from typing import Annotated, Literal, overload
 
 import anyio
+import keyring
+import keyring.errors
+import psutil
 import typer
+from cryptography.fernet import Fernet
 from fastmcp import FastMCP
+from fastmcp.client.auth import OAuth
 from fastmcp.client.transports import (
     SSETransport,
     StdioTransport,
     StreamableHttpTransport,
     infer_transport_type_from_url,
 )
-from fastmcp.exceptions import ToolError
-from fastmcp.server.proxy import ProxyClient, ProxyTool
-from fastmcp.tools.tool import ToolResult
+from fastmcp.server.proxy import ProxyClient
+from key_value.aio.protocols import AsyncKeyValue
+from key_value.aio.stores.disk import DiskStore
+from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 from loguru import logger
 from loguru_logging_intercept import setup_loguru_logging_intercept
-from mcp.types import TextContent
 
 from .banner import print_banner
 from .cli_bridge import CliBridge
-from .cli_script import generate_cli_script
+from .cli_script import generate_cli_script, remove_cli_script_entry
 from .cli_tools import sanitize_cli_name
-from .tools import CliModeTools, CompressedTools
+from .tools import CompressedTools
 from .types import CompressionLevel, LogLevel, TransportType
+
+# Suppress known third-party deprecation warnings that are not actionable from this project.
+# uvicorn's websockets implementation uses WebSocketServerProtocol which was deprecated in websockets 14.0.
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="uvicorn")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="websockets")
 
 app = typer.Typer(name="MCP Compressor", help="An MCP server wrapper for reducing tokens consumed by MCP tools.")
 
@@ -161,6 +177,29 @@ def main(
     logger.add(sys.stderr, level=log_level.value.upper())
     setup_loguru_logging_intercept(modules=("fastmcp",))
 
+    if threading.current_thread() is threading.main_thread():
+        shutting_down = False
+
+        def _handle_interrupt(signum: int, frame: object) -> None:
+            nonlocal shutting_down
+            if shutting_down:
+                logger.debug("Ignoring additional interrupt signal during shutdown")
+                return
+            shutting_down = True
+            logger.info("Server stopped")
+            # Terminate child processes (stdio backend server) to avoid zombies
+            with contextlib.suppress(Exception):
+                current = psutil.Process()
+                for child in current.children(recursive=True):
+                    with contextlib.suppress(Exception):
+                        child.terminate()
+            # os._exit(0) bypasses daemon thread join hangs (both stdio stdin-read
+            # threads and HTTP transport threads can block interpreter shutdown)
+            os._exit(0)
+
+        signal.signal(signal.SIGINT, _handle_interrupt)
+        signal.signal(signal.SIGTERM, _handle_interrupt)
+
     asyncio.run(
         _async_main(
             command_or_url_list=command_or_url_list,
@@ -176,6 +215,48 @@ def main(
             cli_port=cli_port,
         )
     )
+
+
+clear_oauth_app = typer.Typer(name="clear-oauth", help="Clear stored OAuth tokens.")
+
+
+@clear_oauth_app.callback(invoke_without_command=True)
+def clear_oauth(
+    all_tokens: Annotated[
+        bool,
+        typer.Option("--all", help="Also delete the encryption key, forcing full re-authentication next run."),
+    ] = False,
+) -> None:
+    """Clear stored OAuth tokens for all servers.
+
+    Removes cached OAuth tokens so the next connection will re-authenticate.
+    By default the encryption key is preserved so new tokens are stored under
+    the same key.  Pass --all to also remove the key itself.
+    """
+    token_dir = _OAUTH_CONFIG_DIR / "oauth-tokens"
+    key_file = _OAUTH_CONFIG_DIR / ".key"
+    removed: list[str] = []
+
+    if token_dir.exists():
+        shutil.rmtree(token_dir)
+        removed.append(str(token_dir))
+
+    if all_tokens and key_file.exists():
+        key_file.unlink()
+        removed.append(str(key_file))
+
+    if removed:
+        print("Removed:")
+        for path in removed:
+            print(f"  {path}")
+        # Also clear from keyring if present
+        if all_tokens:
+            with contextlib.suppress(Exception):
+                keyring.delete_password("mcp-compressor", "encryption-key")
+                print("  keyring entry: mcp-compressor / encryption-key")
+        print("OAuth credentials cleared. You will be prompted to authenticate on next connection.")
+    else:
+        print("No stored OAuth credentials found.")
 
 
 async def _async_main(
@@ -245,6 +326,7 @@ async def _server(
         cli_name = sanitize_cli_name(server_name or "mcp")
         async with _cli_mode_server(
             transport=transport,
+            transport_type=transport_type,
             cli_name=cli_name,
             compression_level=compression_level,
             server_name=server_name,
@@ -255,86 +337,63 @@ async def _server(
         return
 
     logger.info("Initializing proxy server")
-    mcp = FastMCP.as_proxy(backend=transport, name="MCP Compressor Proxy", version="0.1.0")
+    async with ProxyClient(transport=transport, init_timeout=None) as client:
+        mcp = FastMCP.as_proxy(backend=client, name="MCP Compressor Proxy", version="0.1.0")
 
-    # Shared compressed tools for backend access
-    compressed_tools = CompressedTools(
-        mcp, compression_level=compression_level, server_name=server_name, toonify=toonify
-    )
-
-    logger.info("Configuring compressed tools middleware")
-    await compressed_tools.configure_server()
-
-    if transport_type == "stdio":
-        stats = await compressed_tools.get_compression_stats()
-        print_banner(server_name, transport_type, stats, compression_level)
-    else:
-        logger.info(
-            "Skipping startup-time backend inspection for remote %s transport; tool discovery/auth will happen lazily",
-            transport_type,
+        # Shared compressed tools for backend access
+        compressed_tools = CompressedTools(
+            mcp, compression_level=compression_level, server_name=server_name, toonify=toonify
         )
 
-    yield mcp
+        logger.info("Configuring compressed tools middleware")
+        await compressed_tools.configure_server()
+
+        stats = await compressed_tools.get_compression_stats()
+        print_banner(server_name, transport_type, stats, compression_level)
+
+        yield mcp
 
 
 @asynccontextmanager
 async def _cli_mode_server(
     transport: TransportType,
+    transport_type: str,
     cli_name: str,
     compression_level: CompressionLevel,
     server_name: str | None,
     toonify: bool,
     cli_port: int | None,
 ) -> AsyncGenerator[FastMCP, None]:
-    """Set up and run the CLI mode server with a persistent authenticated backend session.
+    """Set up and run the CLI mode server.
 
-    Connects once to the backend, starts a local HTTP bridge, generates a CLI
-    script, and yields the MCP server for the caller to run.
+    Architecture is identical to normal mode — ProxyClient + CompressedTools —
+    with cli_mode=True so CompressedTools registers the single help tool instead
+    of the wrapper tools, and the bridge calls invoke_tool directly.
     """
-    async with ProxyClient(transport=transport, init_timeout=None) as persistent_client:
-        logger.info("Initializing proxy server with persistent client for CLI mode")
-        mcp = FastMCP.as_proxy(backend=persistent_client, name="MCP Compressor Proxy", version="0.1.0")
+    async with ProxyClient(transport=transport, init_timeout=None) as client:
+        logger.info("Initializing proxy server for CLI mode")
+        mcp = FastMCP.as_proxy(backend=client, name="MCP Compressor Proxy", version="0.1.0")
 
         compressed_tools = CompressedTools(
-            mcp, compression_level=compression_level, server_name=server_name, toonify=toonify
-        )
-        cli_mode_tools = CliModeTools(
-            proxy_server=mcp,
-            cli_name=cli_name,
+            mcp,
+            compression_level=compression_level,
             server_name=server_name,
-            compressed_tools=compressed_tools,
+            toonify=toonify,
+            cli_mode=True,
+            cli_name=cli_name,
         )
-        await cli_mode_tools.configure_server()
+        await compressed_tools.configure_server()
+
+        stats = await compressed_tools.get_compression_stats()
 
         port = cli_port or _find_free_port()
-
-        async def _get_tools() -> dict[str, Any]:
-            mcp_tools = await persistent_client.list_tools()
-            return {t.name: ProxyTool.from_mcp_tool(persistent_client, t) for t in mcp_tools}
-
-        async def _invoke(tool_name: str, tool_input: dict[str, Any] | None) -> ToolResult:
-            result = await persistent_client.call_tool_mcp(name=tool_name, arguments=tool_input or {})
-            if result.isError:
-                error_text = (
-                    result.content[0].text
-                    if result.content and isinstance(result.content[0], TextContent)
-                    else str(result.content)
-                )
-                raise ToolError(error_text)
-            tool_result = ToolResult(
-                content=result.content,
-                structured_content=result.structuredContent,
-                meta=result.meta,
-            )
-            if toonify:
-                tool_result = compressed_tools._toonify_tool_result(tool_result)
-            return tool_result
+        session_pid = os.getppid()
 
         bridge = CliBridge(
             cli_name=cli_name,
             server_description=compressed_tools._server_description,
-            get_tools_fn=_get_tools,
-            invoke_fn=_invoke,
+            get_tools_fn=compressed_tools._get_backend_tools,
+            invoke_fn=compressed_tools.invoke_tool,
             port=port,
         )
         bridge_server = bridge.make_server()
@@ -344,16 +403,84 @@ async def _cli_mode_server(
             while not bridge_server.started:
                 await anyio.sleep(0.01)
 
-            script_path, on_path = generate_cli_script(cli_name=cli_name, bridge_port=port)
+            script_path, on_path = generate_cli_script(cli_name=cli_name, bridge_port=port, session_pid=session_pid)
             invoke_prefix = cli_name if on_path else f"./{cli_name}"
-            print("CLI mode active.")
-            print(f"  Script:  {script_path}")
-            print(f"  Bridge:  http://127.0.0.1:{port}")
-            print(f"  Run:     {invoke_prefix} --help")
+            print_banner(
+                server_name,
+                transport_type,
+                stats,
+                compression_level,
+                cli_mode=True,
+                cli_script_path=str(script_path),
+                cli_bridge_url=f"http://127.0.0.1:{port}",
+                cli_invoke_prefix=invoke_prefix,
+            )
 
             logger.info("Starting MCP Compressor server in CLI mode")
-            yield mcp
-            tg.cancel_scope.cancel()
+            try:
+                yield mcp
+            finally:
+                bridge_server.should_exit = True
+                tg.cancel_scope.cancel()
+                remove_cli_script_entry(cli_name=cli_name, session_pid=session_pid)
+                logger.debug("Removed CLI script entry for session_pid={}", session_pid)
+
+
+_OAUTH_CONFIG_DIR = Path.home() / ".config" / "mcp-compressor"
+_OAUTH_TOKEN_DIR = _OAUTH_CONFIG_DIR / "oauth-tokens"
+_OAUTH_KEY_FILE = _OAUTH_CONFIG_DIR / ".key"
+_KEYRING_SERVICE = "mcp-compressor"
+_KEYRING_USERNAME = "oauth-encryption-key"
+
+
+def _get_or_create_encryption_key() -> bytes:
+    """Return a persistent Fernet encryption key for OAuth token storage.
+
+    Tries the OS keychain first (macOS Keychain, Windows Credential Manager,
+    GNOME Keyring).  Falls back to a file at
+    ``~/.config/mcp-compressor/.key`` with 0o600 permissions if the keychain
+    is unavailable (e.g. headless/server environments).
+    """
+    # 1. Try OS keychain
+    try:
+        stored = keyring.get_password(_KEYRING_SERVICE, _KEYRING_USERNAME)
+        if stored:
+            logger.debug("OAuth encryption key loaded from OS keychain")
+            return stored.encode()
+        # Generate and store a new key
+        new_key = Fernet.generate_key()
+        keyring.set_password(_KEYRING_SERVICE, _KEYRING_USERNAME, new_key.decode())
+        logger.debug("OAuth encryption key generated and stored in OS keychain")
+    except keyring.errors.NoKeyringError:
+        logger.debug("No OS keychain available; falling back to file-based encryption key")
+    else:
+        return new_key
+
+    # 2. File-based fallback
+    _OAUTH_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    if _OAUTH_KEY_FILE.exists():
+        key = _OAUTH_KEY_FILE.read_bytes().strip()
+        logger.debug("OAuth encryption key loaded from {}", _OAUTH_KEY_FILE)
+        return key
+    new_key = Fernet.generate_key()
+    _OAUTH_KEY_FILE.write_bytes(new_key)
+    _OAUTH_KEY_FILE.chmod(0o600)
+    logger.debug("OAuth encryption key generated and stored at {}", _OAUTH_KEY_FILE)
+    return new_key
+
+
+def _build_token_storage() -> AsyncKeyValue:
+    """Build an encrypted persistent OAuth token storage backend.
+
+    Tokens are stored in ``~/.config/mcp-compressor/oauth-tokens``, always
+    encrypted with a Fernet key obtained from :func:`_get_or_create_encryption_key`.
+    """
+    _OAUTH_TOKEN_DIR.mkdir(parents=True, exist_ok=True)
+    store: AsyncKeyValue = DiskStore(directory=_OAUTH_TOKEN_DIR)
+    fernet_key = _get_or_create_encryption_key()
+    encrypted_store = FernetEncryptionWrapper(key_value=store, fernet=Fernet(fernet_key))
+    logger.debug("OAuth token storage: encrypted disk store at {}", _OAUTH_TOKEN_DIR)
+    return encrypted_store
 
 
 def _find_free_port() -> int:
@@ -414,9 +541,12 @@ def _get_remote_transport(
         for header in header_list:
             key, val = header.split("=", 1)
             header_dict[key] = _interpolate_string(val)
+
+    oauth = OAuth(mcp_url=url, token_storage=_build_token_storage())
+
     if transport_type == "http":
-        return StreamableHttpTransport(url=url, headers=header_dict, auth="oauth")
-    return SSETransport(url=url, headers=header_dict, auth="oauth", sse_read_timeout=timeout)
+        return StreamableHttpTransport(url=url, headers=header_dict, auth=oauth)
+    return SSETransport(url=url, headers=header_dict, auth=oauth, sse_read_timeout=timeout)
 
 
 def _get_streamable_http_transport(url: str, header_list: list[str] | None, timeout: float) -> StreamableHttpTransport:
@@ -467,5 +597,18 @@ def _get_stdio_transport(command: str, args: list[str], cwd: str | None, env_lis
     return StdioTransport(command=command, args=args, env=env, cwd=cwd)
 
 
+def entrypoint() -> None:
+    """Main entrypoint for the mcp-compressor CLI.
+
+    Handles the 'clear-oauth' subcommand manually before delegating to the
+    main Typer app, so that 'mcp-compressor <url>' works without a subcommand.
+    """
+    if len(sys.argv) > 1 and sys.argv[1] == "clear-oauth":
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        clear_oauth_app()
+    else:
+        app()
+
+
 if __name__ == "__main__":
-    app()
+    entrypoint()

@@ -172,4 +172,9 @@ class CliBridge:
             port=self._port,
             log_level="warning",
         )
-        return uvicorn.Server(config)
+        server = uvicorn.Server(config)
+        # Disable uvicorn's signal handlers — anyio and the MCP server manage
+        # SIGINT/SIGTERM for the process.  Without this, uvicorn's signal thread
+        # blocks interpreter shutdown and requires multiple Ctrl+C presses.
+        server.install_signal_handlers = lambda: None  # type: ignore[method-assign]
+        return server

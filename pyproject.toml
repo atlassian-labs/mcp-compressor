@@ -19,11 +19,14 @@ classifiers = [
 ]
 dependencies = [
     "anyio>=4.0.0",
-    "fastmcp==2.14.1",
+    "cryptography>=42.0.0",
+    "keyring>=25.0.0",
+    "fastmcp==2.14.5",
     "loguru>=0.7.3",
     "loguru-logging-intercept>=0.1.5",
     "mcp>=1.25.0",
     "pydantic>=2.0.0",
+    "psutil>=5.9.0",
     "starlette>=0.40.0",
     "toons>=0.5.3",
     "typer>=0.21.0",
@@ -36,7 +39,7 @@ Repository = "https://github.com/atlassian-labs/mcp-compressor"
 Documentation = "https://atlassian-labs.github.io/mcp-compressor/"
 
 [project.scripts]
-mcp-compressor = "mcp_compressor.main:app"
+mcp-compressor = "mcp_compressor.main:entrypoint"
 
 [dependency-groups]
 dev = [

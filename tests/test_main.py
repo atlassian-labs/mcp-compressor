@@ -1,7 +1,6 @@
 """Tests for mcp_compressor/main.py."""
 
 import pytest
-from fastmcp import FastMCP
 from fastmcp.client.auth.oauth import OAuth
 from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
 
@@ -99,15 +98,21 @@ def test_get_sse_transport() -> None:
     assert isinstance(transport.auth, OAuth)
 
 
-async def test_remote_server_starts_without_connecting_upstream() -> None:
-    """Test that remote proxy startup is lazy and does not require upstream auth immediately."""
-    async with _server(
-        command_or_url_list=["https://example.com/mcp"],
-        cwd=None,
-        env_list=None,
-        header_list=None,
-        timeout=10.0,
-        compression_level=CompressionLevel.MEDIUM,
-        server_name=None,
-    ) as mcp:
-        assert isinstance(mcp, FastMCP)
+async def test_remote_server_connects_eagerly() -> None:
+    """Test that remote proxy startup eagerly connects to the upstream backend."""
+    import pytest
+    from fastmcp.exceptions import McpError
+
+    # The server should attempt to connect to the upstream backend eagerly,
+    # which means it will raise a connection error for an unreachable URL.
+    with pytest.raises((McpError, Exception)):
+        async with _server(
+            command_or_url_list=["https://example.com/mcp"],
+            cwd=None,
+            env_list=None,
+            header_list=None,
+            timeout=10.0,
+            compression_level=CompressionLevel.MEDIUM,
+            server_name=None,
+        ) as _:
+            pass

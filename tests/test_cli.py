@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import stat
 from pathlib import Path
 
@@ -9,7 +10,7 @@ import pytest
 from fastmcp.tools import Tool
 
 from mcp_compressor.cli_bridge import CliBridge
-from mcp_compressor.cli_script import generate_cli_script
+from mcp_compressor.cli_script import generate_cli_script, remove_cli_script_entry
 from mcp_compressor.cli_tools import (
     build_help_tool_description,
     format_tool_help,
@@ -270,14 +271,14 @@ def test_parse_argv_kebab_to_snake() -> None:
 
 
 def test_generate_cli_script_is_executable(tmp_path: Path) -> None:
-    script_path, _ = generate_cli_script("atlassian", bridge_port=12345, script_dir=tmp_path)
+    script_path, _ = generate_cli_script("atlassian", bridge_port=12345, session_pid=os.getpid(), script_dir=tmp_path)
     assert script_path.exists()
     assert script_path.name == "atlassian"
     assert script_path.stat().st_mode & stat.S_IXUSR
 
 
 def test_generate_cli_script_contains_bridge_url(tmp_path: Path) -> None:
-    script_path, _ = generate_cli_script("mycli", bridge_port=54321, script_dir=tmp_path)
+    script_path, _ = generate_cli_script("mycli", bridge_port=54321, session_pid=os.getpid(), script_dir=tmp_path)
     content = script_path.read_text()
     assert "http://127.0.0.1:54321" in content
     assert "mycli" in content
@@ -298,9 +299,66 @@ def test_generate_cli_script_cwd_fallback(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(cli_script, "_UNIX_CANDIDATE_SCRIPT_DIRS", [])
     monkeypatch.setattr(cli_script, "_WINDOWS_CANDIDATE_SCRIPT_DIRS", [])
     monkeypatch.chdir(tmp_path)
-    script_path, on_path = generate_cli_script("mycli", bridge_port=1234)
+    script_path, on_path = generate_cli_script("mycli", bridge_port=1234, session_pid=os.getpid())
     assert script_path.parent == tmp_path
     assert on_path is False
+
+
+def test_generate_cli_script_multi_instance(tmp_path: Path) -> None:
+    """Two instances with different session PIDs should both appear in BRIDGES."""
+    from mcp_compressor import cli_script as cs
+
+    original = cs._live_bridges
+
+    def no_prune(bridges: dict) -> dict:
+        return bridges
+
+    cs._live_bridges = no_prune  # type: ignore[assignment]
+    try:
+        generate_cli_script("mycli", bridge_port=1111, session_pid=100, script_dir=tmp_path)
+        generate_cli_script("mycli", bridge_port=2222, session_pid=200, script_dir=tmp_path)
+    finally:
+        cs._live_bridges = original  # type: ignore[assignment]
+
+    content = (tmp_path / "mycli").read_text()
+    assert "127.0.0.1:1111" in content
+    assert "127.0.0.1:2222" in content
+    assert "100" in content
+    assert "200" in content
+
+
+def test_remove_cli_script_entry_last_entry_deletes_file(tmp_path: Path) -> None:
+    """Removing the only entry deletes the script file."""
+    generate_cli_script("mycli", bridge_port=1111, session_pid=42, script_dir=tmp_path)
+    assert (tmp_path / "mycli").exists()
+    remove_cli_script_entry("mycli", session_pid=42, script_dir=tmp_path)
+    assert not (tmp_path / "mycli").exists()
+
+
+def test_remove_cli_script_entry_other_entries_preserved(tmp_path: Path) -> None:
+    """Removing one entry keeps the other in the script."""
+    generate_cli_script("mycli", bridge_port=1111, session_pid=100, script_dir=tmp_path)
+    generate_cli_script("mycli", bridge_port=2222, session_pid=200, script_dir=tmp_path)
+    # Port 2222 is not alive, so it will be pruned by _live_bridges on next write.
+    # We just check that after removing 100's entry, 200's port stays.
+    # Patch _live_bridges to not prune so test is deterministic.
+    from mcp_compressor import cli_script as cs
+
+    original = cs._live_bridges
+
+    def no_prune(bridges: dict) -> dict:
+        return bridges
+
+    cs._live_bridges = no_prune  # type: ignore[assignment]
+    try:
+        remove_cli_script_entry("mycli", session_pid=100, script_dir=tmp_path)
+    finally:
+        cs._live_bridges = original  # type: ignore[assignment]
+
+    content = (tmp_path / "mycli").read_text()
+    assert "127.0.0.1:1111" not in content
+    assert "127.0.0.1:2222" in content
+    assert (tmp_path / "mycli").exists()
 
 
 def test_generate_windows_cmd_script(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -308,7 +366,7 @@ def test_generate_windows_cmd_script(tmp_path: Path, monkeypatch: pytest.MonkeyP
     from mcp_compressor import cli_script
 
     monkeypatch.setattr(cli_script, "_IS_WINDOWS", True)
-    script_path, _ = generate_cli_script("atlassian", bridge_port=9999, script_dir=tmp_path)
+    script_path, _ = generate_cli_script("atlassian", bridge_port=9999, session_pid=os.getpid(), script_dir=tmp_path)
     assert script_path.suffix == ".cmd"
     assert script_path.name == "atlassian.cmd"
     content = script_path.read_text()

@@ -10,7 +10,14 @@ TITLE = """\
 
 
 def print_banner(
-    server_name: str | None, transport_type: str, stats: dict, compression_level: CompressionLevel
+    server_name: str | None,
+    transport_type: str,
+    stats: dict,
+    compression_level: CompressionLevel,
+    cli_mode: bool = False,
+    cli_script_path: str | None = None,
+    cli_bridge_url: str | None = None,
+    cli_invoke_prefix: str | None = None,
 ) -> None:
     """Print the startup banner with server information and compression stats.
 
@@ -37,33 +44,85 @@ def print_banner(
     banner = [header, blank_line]
     for line in TITLE.splitlines():
         banner.append(_pad_line(line, content_width, center=True))
+    banner.append(blank_line)
+    banner.append(_pad_line("https://atlassian-labs.github.io/mcp-compressor/", content_width, center=True))
     if server_name:
         banner.append(blank_line)
         banner.append(_pad_line(f"\033[32m●\033[0m Backend server name: {server_name}", content_width))
-    banner.append(blank_line)
     banner.append(_pad_line(f"\033[32m●\033[0m Backend server transport: {transport_type.upper()}", content_width))
-    banner.append(blank_line)
-    banner.append(_pad_line("\033[32m●\033[0m Docs: https://atlassian-labs.github.io/mcp-compressor/", content_width))
     banner.append(blank_line)
     banner.append(separator)
     banner.append(blank_line)
-    banner.append(_pad_line(f"📊 Compression Statistics (current = {compression_level.capitalize()}):", content_width))
-    banner.append(blank_line)
-    for line in _format_compression_chart(stats, content_width, compression_level):
-        banner.append(line)
+    if cli_mode:
+        banner.extend(
+            _format_cli_section(
+                stats,
+                content_width,
+                blank_line,
+                separator,
+                compression_level,
+                cli_script_path,
+                cli_bridge_url,
+                cli_invoke_prefix,
+            )
+        )
+    else:
+        banner.extend(_format_standard_section(stats, content_width, blank_line, compression_level))
     banner.append(blank_line)
     banner.append(footer)
 
     print("\n".join(banner))
 
 
-def _format_compression_chart(stats: dict, width: int, compression_level: CompressionLevel) -> list[str]:
+def _format_cli_section(
+    stats: dict,
+    content_width: int,
+    blank_line: str,
+    separator: str,
+    compression_level: CompressionLevel,
+    cli_script_path: str | None,
+    cli_bridge_url: str | None,
+    cli_invoke_prefix: str | None,
+) -> list[str]:
+    lines = [
+        _pad_line("📊 Compression Statistics (current = CLI mode):", content_width - 1),
+        blank_line,
+    ]
+    lines.extend(_format_compression_chart(stats, content_width, compression_level, cli_mode=True))
+    if cli_script_path or cli_bridge_url or cli_invoke_prefix:
+        lines.append(blank_line)
+        lines.append(separator)
+        lines.append(blank_line)
+        if cli_script_path:
+            lines.append(_pad_line(f"Script:  {cli_script_path}", content_width))
+        if cli_bridge_url:
+            lines.append(_pad_line(f"Bridge:  {cli_bridge_url}", content_width))
+        if cli_invoke_prefix:
+            lines.append(_pad_line(f"Run:     {cli_invoke_prefix} --help", content_width))
+    return lines
+
+
+def _format_standard_section(
+    stats: dict, content_width: int, blank_line: str, compression_level: CompressionLevel
+) -> list[str]:
+    lines = [
+        _pad_line(f"📊 Compression Statistics (current = {compression_level.capitalize()}):", content_width - 1),
+        blank_line,
+    ]
+    lines.extend(_format_compression_chart(stats, content_width, compression_level))
+    return lines
+
+
+def _format_compression_chart(
+    stats: dict, width: int, compression_level: CompressionLevel, cli_mode: bool = False
+) -> list[str]:
     """Format compression statistics as a visual bar chart.
 
     Args:
         stats: Dictionary containing compression statistics from get_compression_stats().
         width: Total width of the chart area.
         compression_level: The compression level being used.
+        cli_mode: Whether CLI mode is active (adds a CLI mode bar, highlighted as current).
 
     Returns:
         Formatted strings with bar chart visualization.
@@ -83,14 +142,29 @@ def _format_compression_chart(stats: dict, width: int, compression_level: Compre
     for level in [CompressionLevel.LOW, CompressionLevel.MEDIUM, CompressionLevel.HIGH, CompressionLevel.MAX]:
         size = compressed_sizes[level]
         ratio = size / original_size if original_size > 0 else 0
-        # Clamp filled to not exceed chart_width
         filled = min(int(ratio * chart_width), chart_width)
         bar = "█" * filled + "░" * (chart_width - filled)
         pct = ratio * 100
         label = f"{level.value.capitalize():<8}"
         line = _pad_line(f"{label} {bar} {pct:5.1f}%", width)
-        if level == compression_level:
-            # Use green color for the current compression level
+        if level == compression_level and not cli_mode:
+            # Highlight the active compression level in green (only in non-CLI mode)
+            blue_end = line.find("░")
+            if blue_end == -1:
+                blue_end = len(line) - 2
+            line = line[:2] + "\033[1;32m" + line[2:blue_end] + "\033[0m" + line[blue_end:]
+        lines.append(line)
+
+    if "cli" in compressed_sizes:
+        # Add CLI mode bar — shown in both CLI mode and normal mode for comparison
+        cli_size = compressed_sizes["cli"]
+        ratio = cli_size / original_size if original_size > 0 else 0
+        filled = min(int(ratio * chart_width), chart_width)
+        bar = "█" * filled + "░" * (chart_width - filled)
+        pct = ratio * 100
+        line = _pad_line(f"CLI mode {bar} {pct:5.1f}%", width)
+        if cli_mode:
+            # Highlight CLI mode bar in green only when it's the active mode
             blue_end = line.find("░")
             if blue_end == -1:
                 blue_end = len(line) - 2
