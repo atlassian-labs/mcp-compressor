@@ -10,6 +10,23 @@ An MCP server wrapper for reducing tokens consumed by MCP tools.
 - **Github repository**: <https://github.com/atlassian-labs/mcp-compressor/>
 - **Documentation** <https://atlassian-labs.github.io/mcp-compressor/>
 
+---
+
+## 📋 What's New
+
+#### 2026-03-24 — CLI Mode
+
+> `--cli-mode` — Converts any wrapped MCP server into a local CLI. Generates an executable shell
+> script (Unix) or `.cmd` file (Windows) so agents and users can interact with the backend via
+> familiar command-line conventions rather than structured tool calls.
+
+#### 2026-03-24 — TOON Output
+
+> `--toonify` — Automatically converts JSON responses from wrapped backend tools into
+> [TOON format](https://github.com/toon-format/toon), a compact human- and LLM-readable alternative to JSON.
+
+---
+
 ## Overview
 
 MCP Compressor is a proxy server that wraps existing [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers and compresses their tool descriptions to significantly reduce token consumption. Instead of exposing all tools with full schemas directly to language models, it provides a two-step interface:
