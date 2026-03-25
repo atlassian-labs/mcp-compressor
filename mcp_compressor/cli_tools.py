@@ -11,6 +11,8 @@ from fastmcp.tools import Tool
 TOP_LEVEL_HELP_TEMPLATE = """\
 {prefix}{cli_name} - {server_description}
 
+When relevant, outputs from this CLI will prefer using the TOON format for more efficient representation of data.
+
 USAGE:
   {cli_name} <subcommand> [options]
 
@@ -116,8 +118,9 @@ def format_tool_help(cli_name: str, tool: Tool) -> str:
         options_list.append(f"  {flag} {prop_type:<10} {req_label} {prop_desc}".rstrip())
 
         # For JSON types, inline the schema immediately below the option line
-        raw_type = prop_schema.get("type")
-        if raw_type == "object" or (raw_type is None and prop_schema.get("properties")):
+        unwrapped = _unwrap_nullable(prop_schema)
+        raw_type = unwrapped.get("type")
+        if raw_type == "object" or (raw_type is None and unwrapped.get("properties")):
             # Strip fields that are noisy / not useful for CLI users
             schema_display = {k: v for k, v in prop_schema.items() if k not in ("description", "title")}
             if schema_display:
@@ -132,8 +135,25 @@ def format_tool_help(cli_name: str, tool: Tool) -> str:
     )
 
 
+def _unwrap_nullable(schema: dict[str, Any]) -> dict[str, Any]:
+    """If schema is anyOf/oneOf with one null and one other type, return the non-null schema.
+
+    This handles Pydantic's rendering of ``str | None`` as
+    ``{"anyOf": [{"type": "string"}, {"type": "null"}]}``.
+    Returns the original schema unchanged if the pattern doesn't match.
+    """
+    for key in ("anyOf", "oneOf"):
+        variants = schema.get(key)
+        if isinstance(variants, list):
+            non_null = [v for v in variants if v.get("type") != "null"]
+            if len(non_null) == 1:
+                return non_null[0]
+    return schema
+
+
 def _schema_type_label(schema: dict[str, Any]) -> str:
     """Return a short type label for a JSON Schema property."""
+    schema = _unwrap_nullable(schema)
     t = schema.get("type")
     if t is None:
         return "JSON"
@@ -240,7 +260,7 @@ def _parse_single_arg(
     if prop_name is None:
         raise ValueError(f"Unknown option: --{flag}")  # noqa: TRY003
 
-    prop_schema = properties[prop_name]
+    prop_schema = _unwrap_nullable(properties[prop_name])
     # Use sentinel None so we can distinguish "no type key" from "type: string"
     prop_type = prop_schema.get("type")
 
