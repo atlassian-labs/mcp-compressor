@@ -41,10 +41,13 @@ class CompressedTools(Middleware):
     """Middleware that compresses MCP tool descriptions to reduce token consumption.
 
     This middleware wraps an MCP client and exposes its tools through a compressed interface.
-    In normal mode it provides two or three wrapper tools:
+    In normal mode it provides two or three public wrapper tools:
     - get_tool_schema: Retrieves the full schema for a specific tool
     - invoke_tool: Executes a tool with the provided arguments
     - list_tools: (optional) Lists all available tools with brief descriptions (only if compression level is MAX)
+
+    It also registers a hidden helper tool for MCP-aware clients that need the upstream server's original
+    list_tools payload in machine-readable form.
 
     In CLI mode it provides a single help tool (<server_name>_help) that lists all CLI subcommands.
     The compression level determines how much information is included in the get_tool_schema tool description.
@@ -77,6 +80,18 @@ class CompressedTools(Middleware):
         self._cli_mode = cli_mode
         self._cli_name = cli_name or (server_name or "mcp")
         self._help_tool_name = sanitize_tool_name(f"{server_name}_help" if server_name else "help")
+        self._get_schema_tool_name = sanitize_tool_name(f"{self._tool_name_prefix}get_tool_schema")
+        self._invoke_tool_name = sanitize_tool_name(f"{self._tool_name_prefix}invoke_tool")
+        self._invoke_tool_alias_name = sanitize_tool_name("invoke_tool")
+        self._list_tools_name = sanitize_tool_name(f"{self._tool_name_prefix}list_tools")
+        self._hidden_schema_tool_name = sanitize_tool_name("list_uncompressed_tools")
+        self._hidden_tool_names = {self._hidden_schema_tool_name}
+        self._built_in_tool_names = {self._get_schema_tool_name, self._invoke_tool_name, self._hidden_schema_tool_name}
+        if self._invoke_tool_alias_name != self._invoke_tool_name:
+            self._built_in_tool_names.add(self._invoke_tool_alias_name)
+            self._hidden_tool_names.add(self._invoke_tool_alias_name)
+        if self._compression_level == CompressionLevel.MAX:
+            self._built_in_tool_names.add(self._list_tools_name)
         self._all_tools: dict[str, Tool] | None = None
 
     async def list_tools(self) -> str:
@@ -146,6 +161,30 @@ class CompressedTools(Middleware):
             return ToolResult(content=[TextContent(type="text", text=return_text)])
         return tool_result
 
+    async def list_uncompressed_tools(self) -> str:
+        """Return the upstream server's original list_tools payload as JSON.
+
+        This hidden helper is intended for MCP-aware clients that need the backend server's uncompressed tool
+        inventory, including the same descriptions and schemas exposed by the upstream list_tools endpoint.
+
+        Returns:
+            A JSON array matching the upstream server's list_tools response.
+        """
+        tools = []
+        for tool in (await self._get_backend_tools()).values():
+            tools.append({
+                "name": tool.name,
+                "title": tool.title,
+                "description": tool.description,
+                "inputSchema": tool.parameters,
+                "outputSchema": tool.output_schema,
+                "icons": tool.icons,
+                "annotations": tool.annotations,
+                "meta": tool.meta,
+                "execution": tool.execution,
+            })
+        return json.dumps(tools, indent=2)
+
     async def on_call_tool(
         self,
         context: MiddlewareContext[CallToolRequestParams],
@@ -188,7 +227,9 @@ class CompressedTools(Middleware):
         Returns:
             The sequence of built-in wrapper tools with updated descriptions.
         """
-        built_in_tools = list((await self._get_built_in_tools()).values())
+        built_in_tools = [
+            tool for tool in (await self._get_built_in_tools()).values() if not self._is_hidden_tool_name(tool.name)
+        ]
         if self._cli_mode:
             description = await self._build_cli_description()
             for tool in built_in_tools:
@@ -219,14 +260,13 @@ class CompressedTools(Middleware):
             self._proxy_server.tool(name=self._help_tool_name)(help_tool)
         else:
             # Create tool names with optional server name prefix
-            get_schema_name = sanitize_tool_name(f"{self._tool_name_prefix}get_tool_schema")
-            invoke_tool_name = sanitize_tool_name(f"{self._tool_name_prefix}invoke_tool")
-            list_tools_name = sanitize_tool_name(f"{self._tool_name_prefix}list_tools")
-
-            self._proxy_server.tool(name=get_schema_name)(self.get_tool_schema)
-            self._proxy_server.tool(name=invoke_tool_name)(self.invoke_tool)
+            self._proxy_server.tool(name=self._get_schema_tool_name)(self.get_tool_schema)
+            self._proxy_server.tool(name=self._invoke_tool_name)(self.invoke_tool)
+            if self._invoke_tool_alias_name != self._invoke_tool_name:
+                self._proxy_server.tool(name=self._invoke_tool_alias_name)(self.invoke_tool)
+            self._proxy_server.tool(name=self._hidden_schema_tool_name)(self.list_uncompressed_tools)
             if self._compression_level == CompressionLevel.MAX:
-                self._proxy_server.tool(name=list_tools_name)(self.list_tools)
+                self._proxy_server.tool(name=self._list_tools_name)(self.list_tools)
         self._proxy_server.add_middleware(self)
         self._all_tools = None  # Reset cached tools, if any
 
@@ -332,7 +372,11 @@ class CompressedTools(Middleware):
         """Check if a tool name refers to one of the built-in wrapper tools."""
         if self._cli_mode:
             return tool_name == self._help_tool_name
-        return any(tool_name.endswith(suffix) for suffix in ("get_tool_schema", "invoke_tool", "list_tools"))
+        return tool_name in self._built_in_tool_names
+
+    def _is_hidden_tool_name(self, tool_name: str) -> bool:
+        """Check if a built-in tool should be omitted from list_tools responses."""
+        return tool_name in self._hidden_tool_names
 
     async def _get_backend_tools(self) -> dict[str, Tool]:
         """Retrieve backend tools from the proxy server, caching the result."""

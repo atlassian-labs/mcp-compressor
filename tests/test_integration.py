@@ -74,6 +74,36 @@ async def test_get_tool_schema_returns_backend_schemas(proxy_mcp_client: Client,
         assert json.dumps(backend_tool.inputSchema, indent=2) in result.content[0].text
 
 
+async def test_hidden_uncompressed_tools_are_not_listed(proxy_mcp_client: Client) -> None:
+    """Test that hidden helper tools are omitted from advertised tools."""
+    tools = await proxy_mcp_client.list_tools()
+    tool_names = {tool.name for tool in tools}
+    assert "invoke_tool" not in tool_names
+    assert all(not tool.name.endswith("list_uncompressed_tools") for tool in tools)
+
+
+async def test_hidden_uncompressed_schema_tool_returns_upstream_list_tools_payload(
+    proxy_mcp_client: Client, backend_mcp_client: Client
+) -> None:
+    """Test that the hidden helper returns the same payload as the upstream list_tools endpoint."""
+    backend_tools = await backend_mcp_client.list_tools()
+    result = await proxy_mcp_client.call_tool("list_uncompressed_tools", {})
+
+    assert result.content
+    assert isinstance(result.content[0], TextContent)
+    payload = json.loads(result.content[0].text)
+    assert payload == [tool.model_dump(mode="json") for tool in backend_tools]
+
+
+async def test_hidden_invoke_tool_alias_can_invoke_backend_tools(proxy_mcp_client: Client) -> None:
+    """Test that the hidden bare invoke_tool alias remains callable."""
+    result = await proxy_mcp_client.call_tool("invoke_tool", {"tool_name": "add", "tool_input": {"a": 5, "b": 7}})
+
+    assert result.content
+    assert isinstance(result.content[0], TextContent)
+    assert result.content[0].text == "12"
+
+
 @pytest.mark.parametrize(
     "tool_name,tool_args,expected_result",
     [
