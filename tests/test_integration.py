@@ -93,6 +93,9 @@ async def test_hidden_uncompressed_schema_tool_returns_upstream_list_tools_paylo
     assert isinstance(result.content[0], TextContent)
     payload = json.loads(result.content[0].text)
     assert payload == [tool.model_dump(mode="json") for tool in backend_tools]
+    annotated_tool = next(tool for tool in payload if tool["name"] == "annotated_tool")
+    assert annotated_tool["annotations"]["destructiveHint"] is False
+    assert annotated_tool["annotations"]["readOnlyHint"] is True
 
 
 async def test_hidden_invoke_tool_alias_can_invoke_backend_tools(proxy_mcp_client: Client) -> None:

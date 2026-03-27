@@ -1,4 +1,5 @@
 from fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 mcp = FastMCP("Test MCP Server")
 
@@ -80,6 +81,12 @@ def return_json_string() -> str:
 def return_plain_text() -> str:
     """A test tool that returns plain text that should not be toonified."""
     return "plain text"
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False))
+def annotated_tool() -> str:
+    """A test tool with annotations metadata."""
+    return "annotated"
 
 
 @mcp.resource("test://test-resource")

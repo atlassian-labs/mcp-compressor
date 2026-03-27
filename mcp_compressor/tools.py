@@ -172,16 +172,17 @@ class CompressedTools(Middleware):
         """
         tools = []
         for tool in (await self._get_backend_tools()).values():
+            tool_data = tool.model_dump(mode="json")
             tools.append({
-                "name": tool.name,
-                "title": tool.title,
-                "description": tool.description,
-                "inputSchema": tool.parameters,
-                "outputSchema": tool.output_schema,
-                "icons": tool.icons,
-                "annotations": tool.annotations,
-                "meta": tool.meta,
-                "execution": tool.execution,
+                "name": tool_data["name"],
+                "title": tool_data["title"],
+                "description": tool_data["description"],
+                "inputSchema": tool_data["parameters"],
+                "outputSchema": tool_data["output_schema"],
+                "icons": tool_data["icons"],
+                "annotations": tool_data["annotations"],
+                "meta": tool_data["meta"],
+                "execution": tool_data["execution"],
             })
         return json.dumps(tools, indent=2)
 
