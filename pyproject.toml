@@ -1,6 +1,6 @@
 [project]
 name = "mcp-compressor"
-version = "0.1.8"
+version = "0.1.9"
 description = "An MCP server wrapper for reducing tokens consumed by MCP tools."
 authors = [{ name = "Tim Esler", email = "tesler@atlassian.com" }]
 readme = "README.md"

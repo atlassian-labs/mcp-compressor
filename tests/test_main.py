@@ -76,6 +76,40 @@ def test_get_stdio_transport_no_env() -> None:
     assert isinstance(transport, StdioTransport)
 
 
+def test_get_stdio_transport_inherits_parent_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that stdio transport inherits environment variables from parent process."""
+    # Set an environment variable in the parent process
+    monkeypatch.setenv("PARENT_VAR", "parent_value")
+
+    # Create transport without explicit env_list
+    transport = _get_stdio_transport(command="python", args=[], cwd=None, env_list=None)
+
+    # Verify the transport has env configured and includes parent environment
+    assert isinstance(transport, StdioTransport)
+    assert transport.env is not None
+    assert "PARENT_VAR" in transport.env
+    assert transport.env["PARENT_VAR"] == "parent_value"
+
+
+def test_get_stdio_transport_explicit_env_overrides_parent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that explicit -e args override parent environment variables."""
+    # Set an environment variable in the parent process
+    monkeypatch.setenv("MY_VAR", "parent_value")
+    monkeypatch.setenv("KEEP_VAR", "keep_this")
+
+    # Create transport with explicit env that overrides MY_VAR
+    transport = _get_stdio_transport(
+        command="python", args=[], cwd=None, env_list=["MY_VAR=overridden_value", "NEW_VAR=new_value"]
+    )
+
+    # Verify the transport has the overridden value
+    assert isinstance(transport, StdioTransport)
+    assert transport.env is not None
+    assert transport.env["MY_VAR"] == "overridden_value"  # Overridden
+    assert transport.env["NEW_VAR"] == "new_value"  # New variable
+    assert transport.env["KEEP_VAR"] == "keep_this"  # Inherited from parent
+
+
 def test_get_streamable_http_transport() -> None:
     """Test that HTTP transport is created with correct parameters."""
     transport = _get_streamable_http_transport(

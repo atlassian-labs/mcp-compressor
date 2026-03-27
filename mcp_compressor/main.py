@@ -590,7 +590,10 @@ def _get_stdio_transport(command: str, args: list[str], cwd: str | None, env_lis
     Returns:
         Configured StdioTransport instance.
     """
-    env = {}
+    # Start with the entire environment from the current process - this is appropriate because mcp-compressor is already
+    # a stdio MCP proxy itself, so clients have applied any necessary environment filtering already
+    env = os.environ.copy()
+    # Update with any explicitly provided environment variables
     if env_list:
         for var in env_list:
             key, val = var.split("=", 1)
