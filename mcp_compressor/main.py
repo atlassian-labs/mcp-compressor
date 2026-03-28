@@ -259,6 +259,56 @@ def clear_oauth(
         print("No stored OAuth credentials found.")
 
 
+def _should_retry_stale_oauth_connect_error(exception: Exception, transport: TransportType) -> bool:
+    """Return whether a connection error looks like a stale cached OAuth state issue."""
+    if not isinstance(transport, StreamableHttpTransport | SSETransport):
+        return False
+
+    auth = getattr(transport, "auth", None)
+    if not isinstance(auth, OAuth):
+        return False
+
+    return "Unexpected authorization response: 500" in str(exception)
+
+
+async def _clear_transport_oauth_cache(transport: TransportType) -> None:
+    """Clear cached OAuth state associated with a transport, if available."""
+    auth = getattr(transport, "auth", None)
+    if not isinstance(auth, OAuth) or not hasattr(auth, "token_storage_adapter"):
+        return
+
+    auth._initialized = False
+    await auth.token_storage_adapter.clear()
+
+
+@asynccontextmanager
+async def _proxy_client(transport: TransportType) -> AsyncGenerator[ProxyClient, None]:
+    """Connect a proxy client, retrying once after clearing stale cached OAuth state."""
+    try:
+        async with ProxyClient(transport=transport, init_timeout=None) as client:
+            yield client
+            return
+    except RuntimeError as exc:
+        if not _should_retry_stale_oauth_connect_error(exc, transport):
+            raise
+
+        logger.warning(
+            "OAuth connection failed with an upstream 500 during authorization; "
+            "clearing cached OAuth state and retrying once"
+        )
+        await _clear_transport_oauth_cache(transport)
+
+    try:
+        async with ProxyClient(transport=transport, init_timeout=None) as client:
+            yield client
+    except RuntimeError as exc:
+        raise RuntimeError(  # noqa: TRY003
+            f"{exc}\n\nCached OAuth credentials may be stale. "
+            "mcp-compressor cleared cached OAuth state and retried once. "
+            "If the problem persists, run 'mcp-compressor clear-oauth' and try again."
+        ) from exc
+
+
 async def _async_main(
     command_or_url_list: list[str],
     cwd: str | None,
@@ -337,7 +387,7 @@ async def _server(
         return
 
     logger.info("Initializing proxy server")
-    async with ProxyClient(transport=transport, init_timeout=None) as client:
+    async with _proxy_client(transport) as client:
         mcp = FastMCP.as_proxy(backend=client, name="MCP Compressor Proxy", version="0.1.0")
 
         # Shared compressed tools for backend access
@@ -370,7 +420,7 @@ async def _cli_mode_server(
     with cli_mode=True so CompressedTools registers the single help tool instead
     of the wrapper tools, and the bridge calls invoke_tool directly.
     """
-    async with ProxyClient(transport=transport, init_timeout=None) as client:
+    async with _proxy_client(transport) as client:
         logger.info("Initializing proxy server for CLI mode")
         mcp = FastMCP.as_proxy(backend=client, name="MCP Compressor Proxy", version="0.1.0")
 

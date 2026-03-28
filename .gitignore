@@ -148,6 +148,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Local dependency clones for coding agents
+/dependencies/
+
 # Spyder project settings
 .spyderproject
 .spyproject

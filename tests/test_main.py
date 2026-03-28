@@ -4,11 +4,13 @@ import pytest
 from fastmcp.client.auth.oauth import OAuth
 from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
 
+import mcp_compressor.main as main_module
 from mcp_compressor.main import (
     _get_sse_transport,
     _get_stdio_transport,
     _get_streamable_http_transport,
     _interpolate_string,
+    _proxy_client,
     _server,
 )
 from mcp_compressor.types import CompressionLevel
@@ -150,3 +152,114 @@ async def test_remote_server_connects_eagerly() -> None:
             server_name=None,
         ) as _:
             pass
+
+
+async def test_proxy_client_retries_once_after_stale_oauth_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that a narrow OAuth 500 signature clears cached OAuth state and retries once."""
+    transport = _get_streamable_http_transport(url="https://example.com/mcp", header_list=None, timeout=30.0)
+    assert isinstance(transport.auth, OAuth)
+
+    class FakeAdapter:
+        def __init__(self) -> None:
+            self.cleared = False
+
+        async def clear(self) -> None:
+            self.cleared = True
+
+    adapter = FakeAdapter()
+    transport.auth.token_storage_adapter = adapter
+    transport.auth._initialized = True
+
+    attempts = 0
+
+    class FakeProxyClient:
+        def __init__(self, transport, init_timeout=None) -> None:
+            self.transport = transport
+            self.init_timeout = init_timeout
+
+        async def __aenter__(self):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError("Client failed to connect: Unexpected authorization response: 500")  # noqa: TRY003
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+    monkeypatch.setattr(main_module, "ProxyClient", FakeProxyClient)
+
+    async with _proxy_client(transport) as client:
+        assert isinstance(client, FakeProxyClient)
+
+    assert attempts == 2
+    assert adapter.cleared is True
+    assert transport.auth._initialized is False
+
+
+async def test_proxy_client_surfaces_helpful_hint_after_retry_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that a repeated stale OAuth failure suggests clearing cached OAuth state."""
+    transport = _get_streamable_http_transport(url="https://example.com/mcp", header_list=None, timeout=30.0)
+    assert isinstance(transport.auth, OAuth)
+
+    class FakeAdapter:
+        def __init__(self) -> None:
+            self.clear_calls = 0
+
+        async def clear(self) -> None:
+            self.clear_calls += 1
+
+    adapter = FakeAdapter()
+    transport.auth.token_storage_adapter = adapter
+
+    attempts = 0
+
+    class FakeProxyClient:
+        def __init__(self, transport, init_timeout=None) -> None:
+            self.transport = transport
+            self.init_timeout = init_timeout
+
+        async def __aenter__(self):
+            nonlocal attempts
+            attempts += 1
+            raise RuntimeError("Client failed to connect: Unexpected authorization response: 500")  # noqa: TRY003
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+    monkeypatch.setattr(main_module, "ProxyClient", FakeProxyClient)
+
+    with pytest.raises(RuntimeError, match="mcp-compressor clear-oauth"):
+        async with _proxy_client(transport):
+            pass
+
+    assert attempts == 2
+    assert adapter.clear_calls == 1
+
+
+async def test_proxy_client_does_not_retry_non_oauth_transports(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that non-OAuth transports are not retried on the same error signature."""
+    transport = _get_stdio_transport(command="python", args=[], cwd=None, env_list=None)
+
+    attempts = 0
+
+    class FakeProxyClient:
+        def __init__(self, transport, init_timeout=None) -> None:
+            self.transport = transport
+            self.init_timeout = init_timeout
+
+        async def __aenter__(self):
+            nonlocal attempts
+            attempts += 1
+            raise RuntimeError("Client failed to connect: Unexpected authorization response: 500")  # noqa: TRY003
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+    monkeypatch.setattr(main_module, "ProxyClient", FakeProxyClient)
+
+    with pytest.raises(RuntimeError, match="Unexpected authorization response: 500"):
+        async with _proxy_client(transport):
+            pass
+
+    assert attempts == 1
