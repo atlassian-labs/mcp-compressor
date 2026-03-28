@@ -46,8 +46,8 @@ class CompressedTools(Middleware):
     - invoke_tool: Executes a tool with the provided arguments
     - list_tools: (optional) Lists all available tools with brief descriptions (only if compression level is MAX)
 
-    It also registers a hidden helper tool for MCP-aware clients that need the upstream server's original
-    list_tools payload in machine-readable form.
+    It also registers a resource (``compressor://uncompressed-tools``) that exposes the upstream server's
+    original list_tools payload in machine-readable JSON form.
 
     In CLI mode it provides a single help tool (<server_name>_help) that lists all CLI subcommands.
     The compression level determines how much information is included in the get_tool_schema tool description.
@@ -84,9 +84,9 @@ class CompressedTools(Middleware):
         self._invoke_tool_name = sanitize_tool_name(f"{self._tool_name_prefix}invoke_tool")
         self._invoke_tool_alias_name = sanitize_tool_name("invoke_tool")
         self._list_tools_name = sanitize_tool_name(f"{self._tool_name_prefix}list_tools")
-        self._hidden_schema_tool_name = sanitize_tool_name("list_uncompressed_tools")
-        self._hidden_tool_names = {self._hidden_schema_tool_name}
-        self._built_in_tool_names = {self._get_schema_tool_name, self._invoke_tool_name, self._hidden_schema_tool_name}
+        self._uncompressed_tools_resource_uri = "compressor://uncompressed-tools"
+        self._hidden_tool_names: set[str] = set()
+        self._built_in_tool_names = {self._get_schema_tool_name, self._invoke_tool_name}
         if self._invoke_tool_alias_name != self._invoke_tool_name:
             self._built_in_tool_names.add(self._invoke_tool_alias_name)
             self._hidden_tool_names.add(self._invoke_tool_alias_name)
@@ -265,7 +265,11 @@ class CompressedTools(Middleware):
             self._proxy_server.tool(name=self._invoke_tool_name)(self.invoke_tool)
             if self._invoke_tool_alias_name != self._invoke_tool_name:
                 self._proxy_server.tool(name=self._invoke_tool_alias_name)(self.invoke_tool)
-            self._proxy_server.tool(name=self._hidden_schema_tool_name)(self.list_uncompressed_tools)
+            self._proxy_server.resource(
+                uri=self._uncompressed_tools_resource_uri,
+                description="The upstream server's original uncompressed tool list as JSON.",
+                mime_type="application/json",
+            )(self.list_uncompressed_tools)
             if self._compression_level == CompressionLevel.MAX:
                 self._proxy_server.tool(name=self._list_tools_name)(self.list_tools)
         self._proxy_server.add_middleware(self)

@@ -50,18 +50,25 @@ async def test_get_tool_schema_description(proxy_mcp_client: Client, backend_mcp
         assert backend_tool.name in get_tool_schema_description
 
 
-@pytest.mark.parametrize("passthrough_method", ["list_prompts", "list_resources"])
-async def test_passthrough_methods(
-    proxy_mcp_client: Client, backend_mcp_client: Client, passthrough_method: str
-) -> None:
-    """Test that passthrough methods work correctly."""
-    proxy_method = getattr(proxy_mcp_client, passthrough_method)
-    backend_method = getattr(backend_mcp_client, passthrough_method)
-
-    proxy_result = await proxy_method()
-    backend_result = await backend_method()
-
+async def test_passthrough_list_prompts(proxy_mcp_client: Client, backend_mcp_client: Client) -> None:
+    """Test that list_prompts passes through correctly."""
+    proxy_result = await proxy_mcp_client.list_prompts()
+    backend_result = await backend_mcp_client.list_prompts()
     assert proxy_result == backend_result
+
+
+async def test_passthrough_list_resources(proxy_mcp_client: Client, backend_mcp_client: Client) -> None:
+    """Test that backend resources are passed through and the compressor resource is added."""
+    proxy_result = await proxy_mcp_client.list_resources()
+    backend_result = await backend_mcp_client.list_resources()
+
+    # All backend resources should be present in the proxy
+    backend_uris = {str(r.uri) for r in backend_result}
+    proxy_uris = {str(r.uri) for r in proxy_result}
+    assert backend_uris.issubset(proxy_uris)
+
+    # The compressor resource should also be present
+    assert "compressor://uncompressed-tools" in proxy_uris
 
 
 async def test_get_tool_schema_returns_backend_schemas(proxy_mcp_client: Client, backend_mcp_client: Client) -> None:
@@ -74,24 +81,30 @@ async def test_get_tool_schema_returns_backend_schemas(proxy_mcp_client: Client,
         assert json.dumps(backend_tool.inputSchema, indent=2) in result.content[0].text
 
 
-async def test_hidden_uncompressed_tools_are_not_listed(proxy_mcp_client: Client) -> None:
-    """Test that hidden helper tools are omitted from advertised tools."""
+async def test_uncompressed_tools_not_listed_as_tool(proxy_mcp_client: Client) -> None:
+    """Test that list_uncompressed_tools is not exposed as a tool."""
     tools = await proxy_mcp_client.list_tools()
     tool_names = {tool.name for tool in tools}
     assert "invoke_tool" not in tool_names
     assert all(not tool.name.endswith("list_uncompressed_tools") for tool in tools)
 
 
-async def test_hidden_uncompressed_schema_tool_returns_upstream_list_tools_payload(
+async def test_uncompressed_tools_resource_is_listed(proxy_mcp_client: Client) -> None:
+    """Test that the uncompressed tools resource is advertised in list_resources."""
+    resources = await proxy_mcp_client.list_resources()
+    resource_names = {r.name for r in resources}
+    assert "list_uncompressed_tools" in resource_names
+
+
+async def test_uncompressed_tools_resource_returns_upstream_list_tools_payload(
     proxy_mcp_client: Client, backend_mcp_client: Client
 ) -> None:
-    """Test that the hidden helper returns the same payload as the upstream list_tools endpoint."""
+    """Test that the uncompressed tools resource returns the same payload as the upstream list_tools endpoint."""
     backend_tools = await backend_mcp_client.list_tools()
-    result = await proxy_mcp_client.call_tool("list_uncompressed_tools", {})
+    result = await proxy_mcp_client.read_resource("compressor://uncompressed-tools")
 
-    assert result.content
-    assert isinstance(result.content[0], TextContent)
-    payload = json.loads(result.content[0].text)
+    assert result
+    payload = json.loads(result[0].text)
     assert payload == [tool.model_dump(mode="json") for tool in backend_tools]
     annotated_tool = next(tool for tool in payload if tool["name"] == "annotated_tool")
     assert annotated_tool["annotations"]["destructiveHint"] is False
