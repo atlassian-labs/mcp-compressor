@@ -1169,7 +1169,7 @@ wheels = [
 
 [[package]]
 name = "mcp-compressor"
-version = "0.1.11"
+version = "0.1.12"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },

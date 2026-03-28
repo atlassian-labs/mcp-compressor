@@ -167,6 +167,22 @@ def main(
             help="Port for the local CLI bridge HTTP server (default: random free port).",
         ),
     ] = None,
+    include_tools: Annotated[
+        str | None,
+        typer.Option(
+            ...,
+            "--include-tools",
+            help=("Comma-separated list of wrapped server tool names to expose. If omitted, all tools are included."),
+        ),
+    ] = None,
+    exclude_tools: Annotated[
+        str | None,
+        typer.Option(
+            ...,
+            "--exclude-tools",
+            help="Comma-separated list of wrapped server tool names to hide.",
+        ),
+    ] = None,
 ):
     """Run the MCP Compressor proxy server.
 
@@ -213,6 +229,8 @@ def main(
             toonify=toonify or cli_mode,
             cli_mode=cli_mode,
             cli_port=cli_port,
+            include_tools=_parse_tool_name_list(include_tools),
+            exclude_tools=_parse_tool_name_list(exclude_tools),
         )
     )
 
@@ -321,6 +339,8 @@ async def _async_main(
     toonify: bool,
     cli_mode: bool = False,
     cli_port: int | None = None,
+    include_tools: list[str] | None = None,
+    exclude_tools: list[str] | None = None,
 ) -> None:
     """Run the MCP Compressor proxy server asynchronously."""
     logger.info(f"Starting MCP Compressor with log level: {log_level.value}")
@@ -336,6 +356,8 @@ async def _async_main(
         toonify=toonify,
         cli_mode=cli_mode,
         cli_port=cli_port,
+        include_tools=include_tools,
+        exclude_tools=exclude_tools,
     ) as mcp:
         logger.info("Starting MCP Compressor server")
         await mcp.run_async(show_banner=False, log_level=log_level.value)
@@ -353,6 +375,8 @@ async def _server(
     toonify: bool = False,
     cli_mode: bool = False,
     cli_port: int | None = None,
+    include_tools: list[str] | None = None,
+    exclude_tools: list[str] | None = None,
 ) -> AsyncGenerator[FastMCP, None]:
     if compression_level == CompressionLevel.MAX and server_name is None and not cli_mode:
         raise ValueError("server_name must be provided when using MAX compression level")  # noqa: TRY003
@@ -382,6 +406,8 @@ async def _server(
             server_name=server_name,
             toonify=toonify,
             cli_port=cli_port,
+            include_tools=include_tools,
+            exclude_tools=exclude_tools,
         ) as mcp:
             yield mcp
         return
@@ -392,7 +418,12 @@ async def _server(
 
         # Shared compressed tools for backend access
         compressed_tools = CompressedTools(
-            mcp, compression_level=compression_level, server_name=server_name, toonify=toonify
+            mcp,
+            compression_level=compression_level,
+            server_name=server_name,
+            toonify=toonify,
+            include_tools=include_tools,
+            exclude_tools=exclude_tools,
         )
 
         logger.info("Configuring compressed tools middleware")
@@ -413,6 +444,8 @@ async def _cli_mode_server(
     server_name: str | None,
     toonify: bool,
     cli_port: int | None,
+    include_tools: list[str] | None,
+    exclude_tools: list[str] | None,
 ) -> AsyncGenerator[FastMCP, None]:
     """Set up and run the CLI mode server.
 
@@ -431,6 +464,8 @@ async def _cli_mode_server(
             toonify=toonify,
             cli_mode=True,
             cli_name=cli_name,
+            include_tools=include_tools,
+            exclude_tools=exclude_tools,
         )
         await compressed_tools.configure_server()
 
@@ -539,6 +574,15 @@ def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+def _parse_tool_name_list(tool_name_group: str | None) -> list[str] | None:
+    """Parse a comma-separated tool name list into a normalized list."""
+    if not tool_name_group:
+        return None
+
+    tool_names = [tool_name.strip() for tool_name in tool_name_group.split(",")]
+    return [tool_name for tool_name in tool_names if tool_name] or None
 
 
 def _interpolate_string(value: str) -> str:

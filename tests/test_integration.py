@@ -1,10 +1,12 @@
 import json
+from pathlib import Path
 
 import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from mcp.types import TextContent
 
+from mcp_compressor.main import _server
 from mcp_compressor.tools import QUIET_MODE_THRESHOLD
 from mcp_compressor.types import CompressionLevel
 
@@ -265,3 +267,38 @@ async def test_toonify_does_not_modify_invoke_tool_error_response(proxy_mcp_clie
     assert "Tool 'add' input validation failed:" in error_message
     assert "Here is the result of get_tool_schema('add'):" in error_message
     assert '"required": [' in error_message
+
+
+async def test_include_and_exclude_tools_filters_exposed_backend_tools() -> None:
+    """Test that include/exclude filters limit which backend tools are exposed."""
+    server_path = Path(__file__).parent / "mcp_server.py"
+
+    async with (
+        _server(
+            command_or_url_list=["python", str(server_path)],
+            cwd=None,
+            env_list=None,
+            header_list=None,
+            timeout=10.0,
+            compression_level=CompressionLevel.LOW,
+            server_name="test_server",
+            include_tools=["add", "do_nothing"],
+            exclude_tools=["do_nothing"],
+        ) as mcp,
+        Client(mcp) as client,
+    ):
+        schema = await client.call_tool("test_server_get_tool_schema", {"tool_name": "add"})
+        assert schema.content
+        assert "add(a, b)" in schema.content[0].text
+
+        result = await client.call_tool("test_server_invoke_tool", {"tool_name": "add", "a": 2, "b": 3})
+        assert result.content[0].text == "5"
+
+        with pytest.raises(ToolError) as exc_info:
+            await client.call_tool("test_server_get_tool_schema", {"tool_name": "do_nothing"})
+        assert "Available tools: add" in str(exc_info.value)
+
+        resource = await client.read_resource("compressor://uncompressed-tools")
+        assert resource[0].text is not None
+        tool_payload = json.loads(resource[0].text)
+        assert [tool["name"] for tool in tool_payload] == ["add"]

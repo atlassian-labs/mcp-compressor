@@ -125,6 +125,35 @@ class TestCompressedTools:
         assert compressed_tools._toonify_json_text("123") == "123"
 
 
+async def test_get_backend_tools_applies_include_and_exclude_filters() -> None:
+    """Test that backend tools are filtered by include/exclude lists."""
+
+    def add(a: int, b: int) -> int:
+        return a + b
+
+    def do_nothing(arg: str) -> str:
+        return arg
+
+    def empty_tool() -> None:
+        return None
+
+    compressed_tools = CompressedTools(
+        None,  # type: ignore[arg-type]
+        CompressionLevel.LOW,
+        include_tools=["add", "do_nothing"],
+        exclude_tools=["do_nothing"],
+    )
+    compressed_tools._all_tools = {
+        "add": Tool.from_function(add),
+        "do_nothing": Tool.from_function(do_nothing),
+        "empty_tool": Tool.from_function(empty_tool),
+    }
+
+    backend_tools = await compressed_tools._get_backend_tools()
+
+    assert set(backend_tools) == {"add"}
+
+
 class TestToolNotFoundError:
     """Tests for ToolNotFoundError."""
 

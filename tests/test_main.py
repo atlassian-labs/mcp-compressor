@@ -1,5 +1,7 @@
 """Tests for mcp_compressor/main.py."""
 
+from typing import Any, cast
+
 import pytest
 from fastmcp.client.auth.oauth import OAuth
 from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
@@ -10,6 +12,7 @@ from mcp_compressor.main import (
     _get_stdio_transport,
     _get_streamable_http_transport,
     _interpolate_string,
+    _parse_tool_name_list,
     _proxy_client,
     _server,
 )
@@ -56,6 +59,21 @@ def test_interpolate_string_partial_missing_returns_original() -> None:
     """Test that partial interpolation failure returns original string."""
     result = _interpolate_string("${TEST_VAR}_${NONEXISTENT}")
     assert result == "${TEST_VAR}_${NONEXISTENT}"
+
+
+@pytest.mark.parametrize(
+    ("tool_name_group", "expected"),
+    [
+        (None, None),
+        ("", None),
+        ("add,do_nothing", ["add", "do_nothing"]),
+        (" add , do_nothing , empty_tool ", ["add", "do_nothing", "empty_tool"]),
+        ("add,,do_nothing", ["add", "do_nothing"]),
+    ],
+)
+def test_parse_tool_name_list(tool_name_group: str | None, expected: list[str] | None) -> None:
+    """Test parsing comma-separated tool lists from CLI options."""
+    assert _parse_tool_name_list(tool_name_group) == expected
 
 
 # Tests for transport creation functions
@@ -167,7 +185,7 @@ async def test_proxy_client_retries_once_after_stale_oauth_error(monkeypatch: py
             self.cleared = True
 
     adapter = FakeAdapter()
-    transport.auth.token_storage_adapter = adapter
+    cast(Any, transport.auth).token_storage_adapter = adapter
     transport.auth._initialized = True
 
     attempts = 0
@@ -210,7 +228,7 @@ async def test_proxy_client_surfaces_helpful_hint_after_retry_failure(monkeypatc
             self.clear_calls += 1
 
     adapter = FakeAdapter()
-    transport.auth.token_storage_adapter = adapter
+    cast(Any, transport.auth).token_storage_adapter = adapter
 
     attempts = 0
 

@@ -61,6 +61,8 @@ class CompressedTools(Middleware):
         toonify: bool = False,
         cli_mode: bool = False,
         cli_name: str | None = None,
+        include_tools: Sequence[str] | None = None,
+        exclude_tools: Sequence[str] | None = None,
     ) -> None:
         """Initialize the CompressedTools middleware.
 
@@ -71,6 +73,8 @@ class CompressedTools(Middleware):
             toonify: Whether to convert JSON text tool outputs to TOON format.
             cli_mode: Whether to run in CLI mode (exposes a single help tool instead of wrapper tools).
             cli_name: The CLI script name (used in CLI mode for help text).
+            include_tools: Optional allowlist of backend tool names to expose.
+            exclude_tools: Optional denylist of backend tool names to hide.
         """
         self._proxy_server = proxy_server
         self._compression_level = compression_level
@@ -79,6 +83,8 @@ class CompressedTools(Middleware):
         self._toonify = toonify
         self._cli_mode = cli_mode
         self._cli_name = cli_name or (server_name or "mcp")
+        self._include_tools = set(include_tools or [])
+        self._exclude_tools = set(exclude_tools or [])
         self._help_tool_name = sanitize_tool_name(f"{server_name}_help" if server_name else "help")
         self._get_schema_tool_name = sanitize_tool_name(f"{self._tool_name_prefix}get_tool_schema")
         self._invoke_tool_name = sanitize_tool_name(f"{self._tool_name_prefix}invoke_tool")
@@ -384,10 +390,17 @@ class CompressedTools(Middleware):
         return tool_name in self._hidden_tool_names
 
     async def _get_backend_tools(self) -> dict[str, Tool]:
-        """Retrieve backend tools from the proxy server, caching the result."""
+        """Retrieve filtered backend tools from the proxy server, caching the full tool set."""
         if self._all_tools is None:
             self._all_tools = await self._proxy_server.get_tools()
-        return {name: tool for name, tool in self._all_tools.items() if not self._is_built_in_tool(tool)}
+
+        backend_tools = {name: tool for name, tool in self._all_tools.items() if not self._is_built_in_tool(tool)}
+        filtered_tools = {
+            name: tool
+            for name, tool in backend_tools.items()
+            if not self._include_tools or tool.name in self._include_tools
+        }
+        return {name: tool for name, tool in filtered_tools.items() if tool.name not in self._exclude_tools}
 
     async def _get_built_in_tools(self) -> dict[str, Tool]:
         """Retrieve built-in wrapper tools from the proxy server, caching the result."""
