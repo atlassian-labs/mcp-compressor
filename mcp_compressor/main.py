@@ -7,6 +7,7 @@ compresses their tool descriptions to reduce token consumption.
 import asyncio
 import contextlib
 import os
+import re
 import shutil
 import signal
 import socket
@@ -26,13 +27,9 @@ import typer
 from cryptography.fernet import Fernet
 from fastmcp import FastMCP
 from fastmcp.client.auth import OAuth
-from fastmcp.client.transports import (
-    SSETransport,
-    StdioTransport,
-    StreamableHttpTransport,
-    infer_transport_type_from_url,
-)
-from fastmcp.server.proxy import ProxyClient
+from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
+from fastmcp.server import create_proxy
+from fastmcp.server.providers.proxy import ProxyClient
 from key_value.aio.protocols import AsyncKeyValue
 from key_value.aio.stores.disk import DiskStore
 from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
@@ -382,7 +379,7 @@ async def _server(
         raise ValueError("server_name must be provided when using MAX compression level")  # noqa: TRY003
 
     command_or_url = " ".join(command_or_url_list)
-    transport_type = infer_transport_type_from_url(command_or_url) if command_or_url.startswith("http") else "stdio"
+    transport_type = _infer_transport_type(command_or_url)
     logger.info(f"Inferred transport type: {transport_type}")
 
     # Handle different transport types
@@ -414,7 +411,7 @@ async def _server(
 
     logger.info("Initializing proxy server")
     async with _proxy_client(transport) as client:
-        mcp = FastMCP.as_proxy(backend=client, name="MCP Compressor Proxy", version="0.1.0")
+        mcp = create_proxy(client, name="MCP Compressor Proxy", version="0.1.0")
 
         # Shared compressed tools for backend access
         compressed_tools = CompressedTools(
@@ -455,7 +452,7 @@ async def _cli_mode_server(
     """
     async with _proxy_client(transport) as client:
         logger.info("Initializing proxy server for CLI mode")
-        mcp = FastMCP.as_proxy(backend=client, name="MCP Compressor Proxy", version="0.1.0")
+        mcp = create_proxy(client, name="MCP Compressor Proxy", version="0.1.0")
 
         compressed_tools = CompressedTools(
             mcp,
@@ -477,7 +474,7 @@ async def _cli_mode_server(
         bridge = CliBridge(
             cli_name=cli_name,
             server_description=compressed_tools._server_description,
-            get_tools_fn=compressed_tools._get_backend_tools,
+            get_tools_fn=compressed_tools.get_backend_tools,
             invoke_fn=compressed_tools.invoke_tool,
             port=port,
             fastmcp=mcp,
@@ -603,6 +600,13 @@ def _interpolate_string(value: str) -> str:
     except Exception as e:
         logger.warning(f"Failed to interpolate environment variable {value}: {e}, using uninterpolated value")
         return value
+
+
+def _infer_transport_type(command_or_url: str) -> Literal["stdio", "http", "sse"]:
+    """Infer a transport type from a command or URL string."""
+    if not command_or_url.startswith(("http://", "https://")):
+        return "stdio"
+    return "sse" if re.search(r"/sse(/|\?|&|$)", command_or_url) else "http"
 
 
 @overload

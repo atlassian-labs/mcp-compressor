@@ -1,22 +1,29 @@
-"""Tool compression middleware for MCP servers.
+"""Tool compression helpers built on FastMCP v3 transforms.
 
-This module provides the CompressedTools middleware that wraps MCP server tools and compresses their descriptions to
-reduce token consumption while maintaining full functionality through a two-step tool invocation pattern.
+This module provides a transform-first implementation that replaces the visible tool
+catalog with a compressed wrapper interface while keeping backend tools available for
+passthrough access.
 """
+
+from __future__ import annotations
 
 import json
 import re
 from collections.abc import Sequence
-from typing import Any, cast
+from typing import Any
 
 import toons
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
+from fastmcp.resources import Resource
+from fastmcp.server.context import Context
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
+from fastmcp.server.transforms import GetResourceNext, GetToolNext
+from fastmcp.server.transforms.catalog import CatalogTransform
 from fastmcp.tools import Tool
 from fastmcp.tools.tool import ToolResult
 from loguru import logger
-from mcp.types import CallToolRequestParams, ContentBlock, ListToolsRequest, TextContent
+from mcp.types import CallToolRequestParams, ContentBlock, TextContent
 from pydantic import ValidationError
 
 from .cli_script import find_script_dir
@@ -37,20 +44,50 @@ class ToolNotFoundError(ValueError):
         super().__init__(f"Tool '{tool_name}' not found in backend MCP server. Available tools: {available_tools_text}")
 
 
-class CompressedTools(Middleware):
-    """Middleware that compresses MCP tool descriptions to reduce token consumption.
+class InvokeToolCompatibilityMiddleware(Middleware):
+    """Small compatibility shim for flattened invoke_tool arguments and direct toonify."""
 
-    This middleware wraps an MCP client and exposes its tools through a compressed interface.
-    In normal mode it provides two or three public wrapper tools:
+    def __init__(self, compressed_tools: CompressedTools) -> None:
+        self._compressed_tools = compressed_tools
+
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext[CallToolRequestParams],
+        call_next: CallNext[CallToolRequestParams, ToolResult],
+    ) -> ToolResult:
+        tool_name = context.message.name
+        tool_args = context.message.arguments or {}
+        if (
+            tool_name in self._compressed_tools.invoke_tool_names
+            and tool_args
+            and ("tool_input" not in tool_args or tool_args["tool_input"] is None)
+        ):
+            flat_input = {k: v for k, v in tool_args.items() if k not in {"tool_name", "quiet"}}
+            if flat_input and "tool_name" in tool_args:
+                return await self._compressed_tools.invoke_tool(
+                    tool_name=tool_args["tool_name"],
+                    tool_input=flat_input,
+                    quiet=tool_args.get("quiet", False),
+                )
+
+        result = await call_next(context)
+        if self._compressed_tools.should_toonify_tool(tool_name):
+            return self._compressed_tools._toonify_tool_result(result)
+        return result
+
+
+class CompressedTools(CatalogTransform):
+    """Transform that replaces the tool catalog with compressed wrapper tools.
+
+    In normal mode it exposes two or three public wrapper tools:
     - get_tool_schema: Retrieves the full schema for a specific tool
     - invoke_tool: Executes a tool with the provided arguments
     - list_tools: (optional) Lists all available tools with brief descriptions (only if compression level is MAX)
 
-    It also registers a resource (``compressor://uncompressed-tools``) that exposes the upstream server's
-    original list_tools payload in machine-readable JSON form.
+    It also exposes a resource (``compressor://uncompressed-tools``) that returns the upstream server's original
+    list_tools payload in machine-readable JSON form.
 
-    In CLI mode it provides a single help tool (<server_name>_help) that lists all CLI subcommands.
-    The compression level determines how much information is included in the get_tool_schema tool description.
+    In CLI mode it exposes a single help tool (<server_name>_help) instead of the wrapper tool catalog.
     """
 
     def __init__(
@@ -64,18 +101,7 @@ class CompressedTools(Middleware):
         include_tools: Sequence[str] | None = None,
         exclude_tools: Sequence[str] | None = None,
     ) -> None:
-        """Initialize the CompressedTools middleware.
-
-        Args:
-            proxy_server: The MCP proxy server instance.
-            compression_level: The level of compression to apply to tool descriptions.
-            server_name: Optional custom name prefix for tool names (will be sanitized and used as prefix).
-            toonify: Whether to convert JSON text tool outputs to TOON format.
-            cli_mode: Whether to run in CLI mode (exposes a single help tool instead of wrapper tools).
-            cli_name: The CLI script name (used in CLI mode for help text).
-            include_tools: Optional allowlist of backend tool names to expose.
-            exclude_tools: Optional denylist of backend tool names to hide.
-        """
+        super().__init__()
         self._proxy_server = proxy_server
         self._compression_level = compression_level
         self._tool_name_prefix = f"{server_name}_" if server_name else ""
@@ -91,218 +117,159 @@ class CompressedTools(Middleware):
         self._invoke_tool_alias_name = sanitize_tool_name("invoke_tool")
         self._list_tools_name = sanitize_tool_name(f"{self._tool_name_prefix}list_tools")
         self._uncompressed_tools_resource_uri = "compressor://uncompressed-tools"
-        self._hidden_tool_names: set[str] = set()
-        self._built_in_tool_names = {self._get_schema_tool_name, self._invoke_tool_name}
-        if self._invoke_tool_alias_name != self._invoke_tool_name:
-            self._built_in_tool_names.add(self._invoke_tool_alias_name)
-            self._hidden_tool_names.add(self._invoke_tool_alias_name)
+
+    @property
+    def invoke_tool_names(self) -> set[str]:
+        """All invoke_tool wrapper names, including the hidden alias."""
+        return {self._invoke_tool_name, self._invoke_tool_alias_name}
+
+    def should_toonify_tool(self, tool_name: str) -> bool:
+        """Return whether direct calls to a tool should be toonified."""
+        if not self._toonify:
+            return False
+        return tool_name not in self._wrapper_tool_names()
+
+    def _wrapper_tool_names(self) -> set[str]:
+        if self._cli_mode:
+            return {self._help_tool_name}
+        tool_names = {self._get_schema_tool_name, self._invoke_tool_name, self._invoke_tool_alias_name}
         if self._compression_level == CompressionLevel.MAX:
-            self._built_in_tool_names.add(self._list_tools_name)
-        self._all_tools: dict[str, Tool] | None = None
+            tool_names.add(self._list_tools_name)
+        return tool_names
 
-    async def list_tools(self) -> str:
-        """List all available tools in {server_description}.
+    async def configure_server(self) -> None:
+        """Attach the transform and any small compatibility middleware to the server."""
+        await self._configure_backend_tool_visibility()
+        self._proxy_server.add_transform(self)
+        if not self._cli_mode:
+            self._proxy_server.add_middleware(InvokeToolCompatibilityMiddleware(self))
 
-        Returns:
-            A formatted string listing tool names and brief descriptions.
-        """
-        return await self._get_tool_descriptions(CompressionLevel.MEDIUM)
+    async def _configure_backend_tool_visibility(self) -> None:
+        """Apply FastMCP visibility rules for backend tool allow/deny filtering."""
+        if self._include_tools:
+            all_tool_names = {tool.name for tool in await self._proxy_server.list_tools(run_middleware=False)}
+            names_to_disable = all_tool_names - self._include_tools
+            if names_to_disable:
+                self._proxy_server.disable(names=names_to_disable, components={"tool"})
+        if self._exclude_tools:
+            self._proxy_server.disable(names=self._exclude_tools, components={"tool"})
 
-    async def get_tool_schema(self, tool_name: str) -> str:
-        """Get the input schema for a specific tool from {server_description}.
+    async def transform_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
+        """Replace the visible tool catalog with compressed wrapper tools."""
+        if self._cli_mode:
+            return [self._make_help_tool(await self._build_cli_description_from(tools))]
 
-        Available tools are:
-        {tool_descriptions}
+        visible_tools = [
+            self._make_get_schema_tool(await self._get_tool_descriptions_from(tools, self._compression_level)),
+            self._make_invoke_tool(self._invoke_tool_name),
+        ]
+        if self._compression_level == CompressionLevel.MAX:
+            visible_tools.append(self._make_list_tools_tool())
+        return visible_tools
 
-        Args:
-            tool_name: The name of the tool to get the schema for.
+    async def get_tool(self, name: str, call_next: GetToolNext, *, version: Any | None = None) -> Tool | None:
+        """Return synthetic wrapper tools and delegate backend tool lookups unchanged."""
+        if self._cli_mode and name == self._help_tool_name:
+            return self._make_help_tool()
+        if name == self._get_schema_tool_name:
+            return self._make_get_schema_tool()
+        if name in self.invoke_tool_names:
+            return self._make_invoke_tool(name)
+        if name == self._list_tools_name and self._compression_level == CompressionLevel.MAX:
+            return self._make_list_tools_tool()
+        return await call_next(name, version=version)
 
-        Returns:
-            The input schema for the specified tool.
+    async def transform_resources(self, resources: Sequence[Resource]) -> Sequence[Resource]:
+        """Append the synthetic uncompressed-tools resource in normal mode."""
+        if self._cli_mode:
+            return resources
+        return [*resources, self._make_uncompressed_tools_resource()]
 
-        Raises:
-            ValueError: If the tool name is not found in the server.
-        """
-        tool = await self._get_backend_tool(tool_name)
+    async def get_resource(
+        self, uri: str, call_next: GetResourceNext, *, version: Any | None = None
+    ) -> Resource | None:
+        """Return the synthetic resource when requested, else delegate."""
+        if not self._cli_mode and uri == self._uncompressed_tools_resource_uri:
+            return self._make_uncompressed_tools_resource()
+        return await call_next(uri, version=version)
+
+    async def list_tools_tool(self, ctx: Context = None) -> str:  # type: ignore[assignment]
+        """List all available tools in {server_description}."""
+        if ctx is None:
+            async with Context(fastmcp=self._proxy_server) as active_ctx:
+                return await self.list_tools_tool(active_ctx)
+        backend_tools = await self._get_backend_tools(ctx)
+        return await self._get_tool_descriptions_from(list(backend_tools.values()), CompressionLevel.MEDIUM)
+
+    async def get_tool_schema(self, tool_name: str, ctx: Context = None) -> str:  # type: ignore[assignment]
+        """Get the input schema for a specific tool from {server_description}."""
+        if ctx is None:
+            async with Context(fastmcp=self._proxy_server) as active_ctx:
+                return await self.get_tool_schema(tool_name, active_ctx)
+        tool = await self._get_backend_tool(ctx, tool_name)
         tool_description = self._format_tool_description(tool, CompressionLevel.LOW)
         return tool_description + "\n\n" + json.dumps(tool.parameters, indent=2)
 
-    async def invoke_tool(self, tool_name: str, tool_input: dict[str, Any] | None = None, quiet: bool = False) -> Any:
-        """Invoke a tool from {server_description}.
-
-        Args:
-            tool_name: The name of the tool to invoke.
-            tool_input: The input to the tool. Schemas can be retrieved using the appropriate `get_tool_schema`
-                function.
-            quiet: If true, truncates large tool outputs for successful invocations. This is useful for reducing token
-                consumption when the output is not needed. Full responses will always be returned for tool errors.
-
-        Returns:
-            The output from the tool.
-        """
-        tool = await self._get_backend_tool(tool_name)
+    async def invoke_tool(
+        self,
+        tool_name: str,
+        tool_input: dict[str, Any] | None = None,
+        quiet: bool = False,
+        ctx: Context = None,  # type: ignore[assignment]
+    ) -> ToolResult:
+        """Invoke a backend tool from the compressed catalog."""
+        if ctx is None:
+            async with Context(fastmcp=self._proxy_server) as active_ctx:
+                return await self.invoke_tool(tool_name, tool_input, quiet, active_ctx)
+        tool = await self._get_backend_tool(ctx, tool_name)
         try:
             tool_result = await tool.run(tool_input or {})
         except ValidationError as exc:
-            raise ToolError(await self._format_validation_error(tool_name, str(exc))) from exc
+            raise ToolError(await self._format_validation_error(ctx, tool_name, str(exc))) from exc
         except ToolError as exc:
             if self._is_validation_error_message(str(exc)):
-                raise ToolError(await self._format_validation_error(tool_name, str(exc))) from exc
+                raise ToolError(await self._format_validation_error(ctx, tool_name, str(exc))) from exc
             raise
         if self._toonify:
             tool_result = self._toonify_tool_result(tool_result)
-        if quiet:
-            if len(tool_result.content) == 1 and isinstance(tool_result.content[0], TextContent):
-                return_text = tool_result.content[0].text
-                if len(return_text) < QUIET_MODE_THRESHOLD:
-                    return tool_result
-                preview_length = QUIET_MODE_THRESHOLD // 2
-                return_text = (
-                    return_text[:preview_length]
-                    + "\n...\n(truncated due to quiet mode)\n...\n"
-                    + return_text[-preview_length:]
-                )
-            else:
-                return_text = f"Successfully executed tool '{tool.name}' without output."
-            return ToolResult(content=[TextContent(type="text", text=return_text)])
-        return tool_result
-
-    async def list_uncompressed_tools(self) -> str:
-        """Return the upstream server's original list_tools payload as JSON.
-
-        This hidden helper is intended for MCP-aware clients that need the backend server's uncompressed tool
-        inventory, including the same descriptions and schemas exposed by the upstream list_tools endpoint.
-
-        Returns:
-            A JSON array matching the upstream server's list_tools response.
-        """
-        tools = []
-        for tool in (await self._get_backend_tools()).values():
-            tool_data = tool.model_dump(mode="json")
-            tools.append({
-                "name": tool_data["name"],
-                "title": tool_data["title"],
-                "description": tool_data["description"],
-                "inputSchema": tool_data["parameters"],
-                "outputSchema": tool_data["output_schema"],
-                "icons": tool_data["icons"],
-                "annotations": tool_data["annotations"],
-                "meta": tool_data["meta"],
-                "execution": tool_data["execution"],
-            })
-        return json.dumps(tools, indent=2)
-
-    async def on_call_tool(
-        self,
-        context: MiddlewareContext[CallToolRequestParams],
-        call_next: CallNext[CallToolRequestParams, ToolResult],
-    ) -> ToolResult:
-        """Middleware to clean up tool invocation arguments to invoke_tool and route to the underlying tool.
-
-        Args:
-            context: The middleware context containing the call request.
-            call_next: The next middleware or handler in the chain.
-
-        Returns:
-            The result from calling the underlying tool.
-        """
-        tool_args = context.message.arguments
-        if not context.message.name.endswith("invoke_tool") or not tool_args:
-            result = await call_next(context)
-            if self._toonify and not self._is_built_in_tool_name(context.message.name):
-                return self._toonify_tool_result(result)
-            return result
-
-        if "tool_input" not in tool_args or tool_args["tool_input"] is None:
-            tool_input = {k: v for k, v in tool_args.items() if k not in ["tool_name", "quiet"]}
-        else:
-            tool_input = tool_args["tool_input"]
-        return await self.invoke_tool(
-            tool_name=tool_args["tool_name"],
-            tool_input=tool_input,
-            quiet=tool_args.get("quiet", False),
-        )
-
-    async def on_list_tools(
-        self, context: MiddlewareContext[ListToolsRequest], call_next: CallNext[ListToolsRequest, Sequence[Tool]]
-    ) -> Sequence[Tool]:
-        """Middleware to inject compressed tool descriptions and suppress backend tools.
-
-        In normal mode, updates get_tool_schema's description with the tool list.
-        In CLI mode, updates the help tool's description with the full CLI help text.
-
-        Returns:
-            The sequence of built-in wrapper tools with updated descriptions.
-        """
-        built_in_tools = [
-            tool for tool in (await self._get_built_in_tools()).values() if not self._is_hidden_tool_name(tool.name)
-        ]
-        if self._cli_mode:
-            description = await self._build_cli_description()
-            for tool in built_in_tools:
-                tool.description = description
-            return built_in_tools
-        prepared_tools = []
-        for tool in built_in_tools:
-            logger.info(f"Preparing tool: {tool.name}")
-            prepared_tools.append(tool)
-            tool.description = cast(str, tool.description).format(
-                tool_descriptions=await self._get_tool_descriptions(self._compression_level),
-                server_description=self._server_description,
+        if not quiet:
+            return tool_result
+        if len(tool_result.content) == 1 and isinstance(tool_result.content[0], TextContent):
+            return_text = tool_result.content[0].text
+            if len(return_text) < QUIET_MODE_THRESHOLD:
+                return tool_result
+            preview_length = QUIET_MODE_THRESHOLD // 2
+            return_text = (
+                return_text[:preview_length]
+                + "\n...\n(truncated due to quiet mode)\n...\n"
+                + return_text[-preview_length:]
             )
-        return prepared_tools
-
-    async def configure_server(self) -> None:
-        """Configure an MCP server with compressed tool wrappers.
-
-        In normal mode, registers get_tool_schema, invoke_tool, and optionally list_tools.
-        In CLI mode, registers a single <server_name>_help tool.
-        """
-        if self._cli_mode:
-
-            async def help_tool() -> str:
-                return await self._build_cli_description()
-
-            help_tool.__doc__ = f"Get help for the '{self._cli_name}' CLI. Lists all available subcommands."
-            self._proxy_server.tool(name=self._help_tool_name)(help_tool)
         else:
-            # Create tool names with optional server name prefix
-            self._proxy_server.tool(name=self._get_schema_tool_name)(self.get_tool_schema)
-            self._proxy_server.tool(name=self._invoke_tool_name)(self.invoke_tool)
-            if self._invoke_tool_alias_name != self._invoke_tool_name:
-                self._proxy_server.tool(name=self._invoke_tool_alias_name)(self.invoke_tool)
-            self._proxy_server.resource(
-                uri=self._uncompressed_tools_resource_uri,
-                description="The upstream server's original uncompressed tool list as JSON.",
-                mime_type="application/json",
-            )(self.list_uncompressed_tools)
-            if self._compression_level == CompressionLevel.MAX:
-                self._proxy_server.tool(name=self._list_tools_name)(self.list_tools)
-        self._proxy_server.add_middleware(self)
-        self._all_tools = None  # Reset cached tools, if any
+            return_text = f"Successfully executed tool '{tool.name}' without output."
+        return ToolResult(content=[TextContent(type="text", text=return_text)])
+
+    async def list_uncompressed_tools(self, ctx: Context = None) -> str:  # type: ignore[assignment]
+        """Return the upstream server's original list_tools payload as JSON."""
+        if ctx is None:
+            async with Context(fastmcp=self._proxy_server) as active_ctx:
+                return await self.list_uncompressed_tools(active_ctx)
+        backend_tools = await self._get_backend_tools(ctx)
+        return json.dumps([tool.to_mcp_tool().model_dump(mode="json") for tool in backend_tools.values()], indent=2)
+
+    async def get_backend_tools(self) -> dict[str, Tool]:
+        """Return the current backend tool catalog keyed by name."""
+        async with Context(fastmcp=self._proxy_server) as ctx:
+            return await self._get_backend_tools(ctx)
 
     async def get_compression_stats(self) -> dict[str, Any]:
-        """Get statistics about the compression of tool descriptions.
-
-        Computes the original backend schema size vs the compressed proxy tool size
-        for all compression levels. Works identically in both normal and CLI mode —
-        the only difference is which tools _get_built_in_tools() returns.
-
-        Returns:
-            A dictionary containing statistics about the original and compressed tool description sizes.
-        """
-        backend_tools = await self._get_backend_tools()
+        """Get statistics about the compression of tool descriptions."""
+        backend_tools = await self.get_backend_tools()
         original_tool_count = len(backend_tools)
         original_schema_size = sum(
             len(json.dumps(tool.parameters)) + len(json.dumps(tool.output_schema)) + len(tool.description or "")
             for tool in backend_tools.values()
         )
-        # Low/Medium/High/Max: always measured from the backend tools compressed at each level.
-        # This is what a non-CLI agent would see in the get_tool_schema description,
-        # and it gives meaningful differentiation between levels in both modes.
-        compressed_tool_count = len(backend_tools)
         compressed_schema_sizes: dict[CompressionLevel | str, int] = {}
-
         for compression_level in [
             CompressionLevel.LOW,
             CompressionLevel.MEDIUM,
@@ -312,52 +279,88 @@ class CompressedTools(Middleware):
             compressed_schema_sizes[compression_level] = sum(
                 len(self._format_tool_description(tool, compression_level)) for tool in backend_tools.values()
             )
-
-        # "cli" key: the help tool description — what the agent sees in CLI mode.
         compressed_schema_sizes["cli"] = len(await self._build_cli_description())
         return {
             "original_tool_count": original_tool_count,
-            "compressed_tool_count": compressed_tool_count,
+            "compressed_tool_count": original_tool_count,
             "original_schema_size": original_schema_size,
             "compressed_schema_sizes": compressed_schema_sizes,
         }
 
     async def _build_cli_description(self) -> str:
-        """Build the full help description for CLI mode — same content as the CLI --help output."""
+        """Build the full help description for CLI mode."""
+        backend_tools = await self.get_backend_tools()
+        return await self._build_cli_description_from(list(backend_tools.values()))
+
+    async def _build_cli_description_from(self, tools: Sequence[Tool]) -> str:
         _, on_path = find_script_dir()
-        tools = list((await self._get_backend_tools()).values())
-        return build_help_tool_description(self._cli_name, self._server_description, tools, on_path=on_path)
+        return build_help_tool_description(self._cli_name, self._server_description, list(tools), on_path=on_path)
 
-    async def _get_tool_descriptions(self, compression_level: CompressionLevel) -> str:
-        """Generate a formatted string of tool descriptions at the specified compression level.
-
-        Args:
-            compression_level: The compression level to use for formatting.
-
-        Returns:
-            A newline-separated string of formatted tool descriptions.
-        """
+    async def _get_tool_descriptions_from(self, tools: Sequence[Tool], compression_level: CompressionLevel) -> str:
+        """Generate formatted tool descriptions for a set of tools."""
         if compression_level == CompressionLevel.MAX:
             return ""
-        tool_descriptions = []
-        for tool in (await self._get_backend_tools()).values():
-            tool_descriptions.append(self._format_tool_description(tool, compression_level))
-        return "\n".join(tool_descriptions)
+        return "\n".join(self._format_tool_description(tool, compression_level) for tool in tools)
+
+    async def _get_backend_tools(self, ctx: Context) -> dict[str, Tool]:
+        """Retrieve backend tools, bypassing this transform while keeping visibility filters."""
+        return {tool.name: tool for tool in await self.get_tool_catalog(ctx, run_middleware=False)}
+
+    async def _get_backend_tool(self, ctx: Context, tool_name: str) -> Tool:
+        """Retrieve a specific backend tool from the proxy server."""
+        backend_tools = await self._get_backend_tools(ctx)
+        tool = backend_tools.get(tool_name)
+        if tool is None:
+            available_tools = tuple(sorted(backend_tools))
+            logger.error(f"Tool '{tool_name}' not found in backend tools. Available tools: {available_tools}")
+            raise ToolNotFoundError(tool_name, available_tools)
+        return tool
+
+    async def _format_validation_error(self, ctx: Context, tool_name: str, error_message: str) -> str:
+        """Format a validation failure with the tool schema for client guidance."""
+        tool_schema = await self.get_tool_schema(tool_name, ctx)
+        return (
+            f"Tool '{tool_name}' input validation failed: {error_message}\n\n"
+            f"Here is the result of get_tool_schema('{tool_name}'):\n{tool_schema}"
+        )
+
+    def _make_help_tool(self, description: str | None = None) -> Tool:
+        async def help_tool() -> str:
+            return await self._build_cli_description()
+
+        return Tool.from_function(
+            help_tool,
+            name=self._help_tool_name,
+            description=description or f"Get help for the '{self._cli_name}' CLI. Lists all available subcommands.",
+        )
+
+    def _make_get_schema_tool(self, tool_descriptions: str | None = None) -> Tool:
+        description = (
+            f"Get the input schema for a specific tool from {self._server_description}.\n\n"
+            f"Available tools are:\n{tool_descriptions or '{tool_descriptions}'}"
+        )
+        return Tool.from_function(self.get_tool_schema, name=self._get_schema_tool_name, description=description)
+
+    def _make_invoke_tool(self, tool_name: str) -> Tool:
+        description = f"Invoke a tool from {self._server_description}."
+        return Tool.from_function(self.invoke_tool, name=tool_name, description=description)
+
+    def _make_list_tools_tool(self) -> Tool:
+        description = f"List all available tools in {self._server_description}."
+        return Tool.from_function(self.list_tools_tool, name=self._list_tools_name, description=description)
+
+    def _make_uncompressed_tools_resource(self) -> Resource:
+        return Resource.from_function(
+            self.list_uncompressed_tools,
+            uri=self._uncompressed_tools_resource_uri,
+            description="The upstream server's original uncompressed tool list as JSON.",
+            mime_type="application/json",
+        )
 
     def _format_tool_description(self, tool: Tool, compression_level: CompressionLevel) -> str:
-        """Format a single tool's description based on the compression level.
-
-        Args:
-            tool: The tool to format.
-            compression_level: The compression level determining how much detail to include.
-
-        Returns:
-            A formatted string representation of the tool in the format:
-            <tool>tool_name(param1, param2): description</tool>
-        """
+        """Format a single tool's description based on the compression level."""
         tool_name = tool.name
         if compression_level == CompressionLevel.MAX:
-            # Maximum compression: tool name only, no args, no description
             return f"<tool>{tool_name}</tool>"
         tool_arg_names = list(tool.parameters.get("properties", {}))
         tool_description = (tool.description or "").strip()
@@ -367,64 +370,6 @@ class CompressedTools(Middleware):
             tool_description = tool_description.splitlines()[0].split(".")[0]
         tool_description = ": " + tool_description if tool_description else ""
         return f"<tool>{tool_name}({', '.join(tool_arg_names)}){tool_description}</tool>"
-
-    def _is_built_in_tool(self, tool: Tool) -> bool:
-        """Check if a tool is one of the built-in wrapper tools.
-
-        Args:
-            tool: The tool to check.
-
-        Returns:
-            True if the tool is a built-in wrapper tool, False otherwise.
-        """
-        return self._is_built_in_tool_name(tool.name)
-
-    def _is_built_in_tool_name(self, tool_name: str) -> bool:
-        """Check if a tool name refers to one of the built-in wrapper tools."""
-        if self._cli_mode:
-            return tool_name == self._help_tool_name
-        return tool_name in self._built_in_tool_names
-
-    def _is_hidden_tool_name(self, tool_name: str) -> bool:
-        """Check if a built-in tool should be omitted from list_tools responses."""
-        return tool_name in self._hidden_tool_names
-
-    async def _get_backend_tools(self) -> dict[str, Tool]:
-        """Retrieve filtered backend tools from the proxy server, caching the full tool set."""
-        if self._all_tools is None:
-            self._all_tools = await self._proxy_server.get_tools()
-
-        backend_tools = {name: tool for name, tool in self._all_tools.items() if not self._is_built_in_tool(tool)}
-        filtered_tools = {
-            name: tool
-            for name, tool in backend_tools.items()
-            if not self._include_tools or tool.name in self._include_tools
-        }
-        return {name: tool for name, tool in filtered_tools.items() if tool.name not in self._exclude_tools}
-
-    async def _get_built_in_tools(self) -> dict[str, Tool]:
-        """Retrieve built-in wrapper tools from the proxy server, caching the result."""
-        if self._all_tools is None:
-            self._all_tools = await self._proxy_server.get_tools()
-        return {name: tool for name, tool in self._all_tools.items() if self._is_built_in_tool(tool)}
-
-    async def _get_backend_tool(self, tool_name: str) -> Tool:
-        """Retrieve a specific backend tool from the proxy server."""
-        backend_tools = await self._get_backend_tools()
-        tool = backend_tools.get(tool_name)
-        if tool is None:
-            available_tools = tuple(sorted(backend_tools))
-            logger.error(f"Tool '{tool_name}' not found in backend tools. Available tools: {available_tools}")
-            raise ToolNotFoundError(tool_name, available_tools)
-        return tool
-
-    async def _format_validation_error(self, tool_name: str, error_message: str) -> str:
-        """Format a validation failure with the tool schema for client guidance."""
-        tool_schema = await self.get_tool_schema(tool_name)
-        return (
-            f"Tool '{tool_name}' input validation failed: {error_message}\n\n"
-            f"Here is the result of get_tool_schema('{tool_name}'):\n{tool_schema}"
-        )
 
     def _is_validation_error_message(self, error_message: str) -> bool:
         """Return whether a tool error message appears to be an input validation failure."""
@@ -463,25 +408,8 @@ class CompressedTools(Middleware):
 
 
 def sanitize_tool_name(name: str) -> str:
-    """Sanitize a tool name to conform to MCP tool name specifications.
-
-    Tool names must:
-    - Be between 1 and 128 characters (inclusive)
-    - Only contain: A-Z, a-z, 0-9, underscore (_), hyphen (-), and dot (.)
-    - Not contain spaces, commas, or other special characters
-
-    Args:
-        name: The raw tool name to sanitize.
-
-    Returns:
-        A sanitized tool name conforming to MCP specifications.
-    """
-    # Replace spaces and invalid characters with underscores
+    """Sanitize a tool name to conform to MCP tool name specifications."""
     sanitized = re.sub(r"[^A-Za-z0-9_\-.]", "_", name).lower()
-
-    # Ensure the name is not empty after sanitization
     if not sanitized:
         raise ValueError("Tool name must contain at least one valid character after sanitization.")  # noqa: TRY003
-
-    # Truncate to 128 characters if needed
     return sanitized[:128]
