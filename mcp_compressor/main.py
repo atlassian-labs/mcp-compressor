@@ -31,15 +31,19 @@ from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHt
 from fastmcp.server import create_proxy
 from fastmcp.server.providers.proxy import ProxyClient
 from key_value.aio.protocols import AsyncKeyValue
-from key_value.aio.stores.disk import DiskStore
+from key_value.aio.stores.filetree import (
+    FileTreeStore,
+    FileTreeV1CollectionSanitizationStrategy,
+    FileTreeV1KeySanitizationStrategy,
+)
 from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 from loguru import logger
-from loguru_logging_intercept import setup_loguru_logging_intercept
 
 from .banner import print_banner
 from .cli_bridge import CliBridge
 from .cli_script import generate_cli_script, remove_cli_script_entry
 from .cli_tools import sanitize_cli_name
+from .logging import configure_logging, suppress_recoverable_oauth_traceback_logging
 from .tools import CompressedTools
 from .types import CompressionLevel, LogLevel, TransportType
 
@@ -186,9 +190,7 @@ def main(
     This is the main entry point for the CLI application. It connects to an MCP server
     (via stdio, HTTP, or SSE) and wraps it with a compressed tool interface.
     """
-    logger.remove()
-    logger.add(sys.stderr, level=log_level.value.upper())
-    setup_loguru_logging_intercept(modules=("fastmcp",))
+    configure_logging(log_level)
 
     if threading.current_thread() is threading.main_thread():
         shutting_down = False
@@ -267,8 +269,8 @@ def clear_oauth(
         # Also clear from keyring if present
         if all_tokens:
             with contextlib.suppress(Exception):
-                keyring.delete_password("mcp-compressor", "encryption-key")
-                print("  keyring entry: mcp-compressor / encryption-key")
+                keyring.delete_password(_KEYRING_SERVICE, _KEYRING_USERNAME)
+                print(f"  keyring entry: {_KEYRING_SERVICE} / {_KEYRING_USERNAME}")
         print("OAuth credentials cleared. You will be prompted to authenticate on next connection.")
     else:
         print("No stored OAuth credentials found.")
@@ -300,9 +302,10 @@ async def _clear_transport_oauth_cache(transport: TransportType) -> None:
 async def _proxy_client(transport: TransportType) -> AsyncGenerator[ProxyClient, None]:
     """Connect a proxy client, retrying once after clearing stale cached OAuth state."""
     try:
-        async with ProxyClient(transport=transport, init_timeout=None) as client:
-            yield client
-            return
+        with suppress_recoverable_oauth_traceback_logging(transport):
+            async with ProxyClient(transport=transport, init_timeout=None) as client:
+                yield client
+                return
     except RuntimeError as exc:
         if not _should_retry_stale_oauth_connect_error(exc, transport):
             raise
@@ -411,7 +414,7 @@ async def _server(
 
     logger.info("Initializing proxy server")
     async with _proxy_client(transport) as client:
-        mcp = create_proxy(client, name="MCP Compressor Proxy", version="0.1.0")
+        mcp = create_proxy(client, name="MCP Compressor Proxy")
 
         # Shared compressed tools for backend access
         compressed_tools = CompressedTools(
@@ -555,14 +558,18 @@ def _get_or_create_encryption_key() -> bytes:
 def _build_token_storage() -> AsyncKeyValue:
     """Build an encrypted persistent OAuth token storage backend.
 
-    Tokens are stored in ``~/.config/mcp-compressor/oauth-tokens``, always
-    encrypted with a Fernet key obtained from :func:`_get_or_create_encryption_key`.
+    Tokens are stored in ``~/.config/mcp-compressor/oauth-tokens`` using a FileTreeStore with stable sanitization
+    strategies, then encrypted with a Fernet key obtained from :func:`_get_or_create_encryption_key`.
     """
     _OAUTH_TOKEN_DIR.mkdir(parents=True, exist_ok=True)
-    store: AsyncKeyValue = DiskStore(directory=_OAUTH_TOKEN_DIR)
+    store: AsyncKeyValue = FileTreeStore(
+        data_directory=_OAUTH_TOKEN_DIR,
+        key_sanitization_strategy=FileTreeV1KeySanitizationStrategy(_OAUTH_TOKEN_DIR),
+        collection_sanitization_strategy=FileTreeV1CollectionSanitizationStrategy(_OAUTH_TOKEN_DIR),
+    )
     fernet_key = _get_or_create_encryption_key()
     encrypted_store = FernetEncryptionWrapper(key_value=store, fernet=Fernet(fernet_key))
-    logger.debug("OAuth token storage: encrypted disk store at {}", _OAUTH_TOKEN_DIR)
+    logger.debug("OAuth token storage: encrypted file-tree store at {}", _OAUTH_TOKEN_DIR)
     return encrypted_store
 
 
