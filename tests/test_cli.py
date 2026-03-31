@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -282,6 +283,15 @@ def test_generate_cli_script_contains_bridge_url(tmp_path: Path) -> None:
     content = script_path.read_text()
     assert "http://127.0.0.1:54321" in content
     assert "mycli" in content
+
+
+def test_generate_cli_script_uses_current_interpreter_and_modern_typing(tmp_path: Path) -> None:
+    script_path, _ = generate_cli_script("mycli", bridge_port=54321, session_pid=os.getpid(), script_dir=tmp_path)
+    content = script_path.read_text()
+    assert content.startswith(f"#!{sys.executable}\n")
+    assert "def _find_bridge() -> str | None:" in content
+    assert "def _pick_bridge() -> str | None:" in content
+    assert "from typing import Optional" not in content
 
 
 def test_find_script_dir_returns_path_and_bool() -> None:

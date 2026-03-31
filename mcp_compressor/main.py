@@ -7,6 +7,7 @@ compresses their tool descriptions to reduce token consumption.
 import asyncio
 import contextlib
 import os
+import re
 import shutil
 import signal
 import socket
@@ -26,23 +27,23 @@ import typer
 from cryptography.fernet import Fernet
 from fastmcp import FastMCP
 from fastmcp.client.auth import OAuth
-from fastmcp.client.transports import (
-    SSETransport,
-    StdioTransport,
-    StreamableHttpTransport,
-    infer_transport_type_from_url,
-)
-from fastmcp.server.proxy import ProxyClient
+from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
+from fastmcp.server import create_proxy
+from fastmcp.server.providers.proxy import ProxyClient
 from key_value.aio.protocols import AsyncKeyValue
-from key_value.aio.stores.disk import DiskStore
+from key_value.aio.stores.filetree import (
+    FileTreeStore,
+    FileTreeV1CollectionSanitizationStrategy,
+    FileTreeV1KeySanitizationStrategy,
+)
 from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 from loguru import logger
-from loguru_logging_intercept import setup_loguru_logging_intercept
 
 from .banner import print_banner
 from .cli_bridge import CliBridge
 from .cli_script import generate_cli_script, remove_cli_script_entry
 from .cli_tools import sanitize_cli_name
+from .logging import configure_logging, suppress_recoverable_oauth_traceback_logging
 from .tools import CompressedTools
 from .types import CompressionLevel, LogLevel, TransportType
 
@@ -189,9 +190,7 @@ def main(
     This is the main entry point for the CLI application. It connects to an MCP server
     (via stdio, HTTP, or SSE) and wraps it with a compressed tool interface.
     """
-    logger.remove()
-    logger.add(sys.stderr, level=log_level.value.upper())
-    setup_loguru_logging_intercept(modules=("fastmcp",))
+    configure_logging(log_level)
 
     if threading.current_thread() is threading.main_thread():
         shutting_down = False
@@ -270,8 +269,8 @@ def clear_oauth(
         # Also clear from keyring if present
         if all_tokens:
             with contextlib.suppress(Exception):
-                keyring.delete_password("mcp-compressor", "encryption-key")
-                print("  keyring entry: mcp-compressor / encryption-key")
+                keyring.delete_password(_KEYRING_SERVICE, _KEYRING_USERNAME)
+                print(f"  keyring entry: {_KEYRING_SERVICE} / {_KEYRING_USERNAME}")
         print("OAuth credentials cleared. You will be prompted to authenticate on next connection.")
     else:
         print("No stored OAuth credentials found.")
@@ -303,9 +302,10 @@ async def _clear_transport_oauth_cache(transport: TransportType) -> None:
 async def _proxy_client(transport: TransportType) -> AsyncGenerator[ProxyClient, None]:
     """Connect a proxy client, retrying once after clearing stale cached OAuth state."""
     try:
-        async with ProxyClient(transport=transport, init_timeout=None) as client:
-            yield client
-            return
+        with suppress_recoverable_oauth_traceback_logging(transport):
+            async with ProxyClient(transport=transport, init_timeout=None) as client:
+                yield client
+                return
     except RuntimeError as exc:
         if not _should_retry_stale_oauth_connect_error(exc, transport):
             raise
@@ -382,7 +382,7 @@ async def _server(
         raise ValueError("server_name must be provided when using MAX compression level")  # noqa: TRY003
 
     command_or_url = " ".join(command_or_url_list)
-    transport_type = infer_transport_type_from_url(command_or_url) if command_or_url.startswith("http") else "stdio"
+    transport_type = _infer_transport_type(command_or_url)
     logger.info(f"Inferred transport type: {transport_type}")
 
     # Handle different transport types
@@ -414,7 +414,7 @@ async def _server(
 
     logger.info("Initializing proxy server")
     async with _proxy_client(transport) as client:
-        mcp = FastMCP.as_proxy(backend=client, name="MCP Compressor Proxy", version="0.1.0")
+        mcp = create_proxy(client, name="MCP Compressor Proxy")
 
         # Shared compressed tools for backend access
         compressed_tools = CompressedTools(
@@ -455,7 +455,7 @@ async def _cli_mode_server(
     """
     async with _proxy_client(transport) as client:
         logger.info("Initializing proxy server for CLI mode")
-        mcp = FastMCP.as_proxy(backend=client, name="MCP Compressor Proxy", version="0.1.0")
+        mcp = create_proxy(client, name="MCP Compressor Proxy", version="0.1.0")
 
         compressed_tools = CompressedTools(
             mcp,
@@ -477,7 +477,7 @@ async def _cli_mode_server(
         bridge = CliBridge(
             cli_name=cli_name,
             server_description=compressed_tools._server_description,
-            get_tools_fn=compressed_tools._get_backend_tools,
+            get_tools_fn=compressed_tools.get_backend_tools,
             invoke_fn=compressed_tools.invoke_tool,
             port=port,
             fastmcp=mcp,
@@ -558,14 +558,18 @@ def _get_or_create_encryption_key() -> bytes:
 def _build_token_storage() -> AsyncKeyValue:
     """Build an encrypted persistent OAuth token storage backend.
 
-    Tokens are stored in ``~/.config/mcp-compressor/oauth-tokens``, always
-    encrypted with a Fernet key obtained from :func:`_get_or_create_encryption_key`.
+    Tokens are stored in ``~/.config/mcp-compressor/oauth-tokens`` using a FileTreeStore with stable sanitization
+    strategies, then encrypted with a Fernet key obtained from :func:`_get_or_create_encryption_key`.
     """
     _OAUTH_TOKEN_DIR.mkdir(parents=True, exist_ok=True)
-    store: AsyncKeyValue = DiskStore(directory=_OAUTH_TOKEN_DIR)
+    store: AsyncKeyValue = FileTreeStore(
+        data_directory=_OAUTH_TOKEN_DIR,
+        key_sanitization_strategy=FileTreeV1KeySanitizationStrategy(_OAUTH_TOKEN_DIR),
+        collection_sanitization_strategy=FileTreeV1CollectionSanitizationStrategy(_OAUTH_TOKEN_DIR),
+    )
     fernet_key = _get_or_create_encryption_key()
     encrypted_store = FernetEncryptionWrapper(key_value=store, fernet=Fernet(fernet_key))
-    logger.debug("OAuth token storage: encrypted disk store at {}", _OAUTH_TOKEN_DIR)
+    logger.debug("OAuth token storage: encrypted file-tree store at {}", _OAUTH_TOKEN_DIR)
     return encrypted_store
 
 
@@ -603,6 +607,13 @@ def _interpolate_string(value: str) -> str:
     except Exception as e:
         logger.warning(f"Failed to interpolate environment variable {value}: {e}, using uninterpolated value")
         return value
+
+
+def _infer_transport_type(command_or_url: str) -> Literal["stdio", "http", "sse"]:
+    """Infer a transport type from a command or URL string."""
+    if not command_or_url.startswith(("http://", "https://")):
+        return "stdio"
+    return "sse" if re.search(r"/sse(/|\?|&|$)", command_or_url) else "http"
 
 
 @overload

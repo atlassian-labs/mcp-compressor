@@ -1,12 +1,18 @@
 """Tests for mcp_compressor/main.py."""
 
+import logging
 from typing import Any, cast
 
 import pytest
 from fastmcp.client.auth.oauth import OAuth
 from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
 
+import mcp_compressor.logging as logging_module
 import mcp_compressor.main as main_module
+from mcp_compressor.logging import (
+    _RecoverableOAuthTracebackFilter,
+    suppress_recoverable_oauth_traceback_logging,
+)
 from mcp_compressor.main import (
     _get_sse_transport,
     _get_stdio_transport,
@@ -170,6 +176,66 @@ async def test_remote_server_connects_eagerly() -> None:
             server_name=None,
         ) as _:
             pass
+
+
+def test_recoverable_oauth_traceback_filter_only_suppresses_stale_oauth_500() -> None:
+    """Test that only the recoverable stale OAuth traceback log is suppressed."""
+    log_filter = _RecoverableOAuthTracebackFilter()
+
+    recoverable_record = logging.makeLogRecord({
+        "msg": "OAuth flow error",
+        "exc_info": (RuntimeError, RuntimeError("Unexpected authorization response: 500"), None),
+    })
+    assert log_filter.filter(recoverable_record) is False
+
+    different_message_record = logging.makeLogRecord({
+        "msg": "Different error",
+        "exc_info": (RuntimeError, RuntimeError("Unexpected authorization response: 500"), None),
+    })
+    assert log_filter.filter(different_message_record) is True
+
+    different_exception_record = logging.makeLogRecord({
+        "msg": "OAuth flow error",
+        "exc_info": (RuntimeError, RuntimeError("Some other failure"), None),
+    })
+    assert log_filter.filter(different_exception_record) is True
+
+
+def test_suppress_recoverable_oauth_traceback_logging_restores_logger_filters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that temporary OAuth traceback suppression is scoped and restored."""
+    transport = _get_streamable_http_transport(url="https://example.com/mcp", header_list=None, timeout=30.0)
+
+    class FakeLogger:
+        def __init__(self) -> None:
+            self.filters: list[logging.Filter] = []
+
+        def addFilter(self, log_filter: logging.Filter) -> None:
+            self.filters.append(log_filter)
+
+        def removeFilter(self, log_filter: logging.Filter) -> None:
+            self.filters.remove(log_filter)
+
+    loggers = {
+        "mcp.client.auth.oauth2": FakeLogger(),
+        "fastmcp.client.auth.oauth": FakeLogger(),
+    }
+    original_get_logger = logging_module.logging.getLogger
+
+    def fake_get_logger(name: str | None = None):
+        if name in loggers:
+            return loggers[name]
+        return original_get_logger(name)
+
+    monkeypatch.setattr(logging_module.logging, "getLogger", fake_get_logger)
+
+    with suppress_recoverable_oauth_traceback_logging(transport):
+        assert len(loggers["mcp.client.auth.oauth2"].filters) == 1
+        assert len(loggers["fastmcp.client.auth.oauth"].filters) == 1
+
+    assert loggers["mcp.client.auth.oauth2"].filters == []
+    assert loggers["fastmcp.client.auth.oauth"].filters == []
 
 
 async def test_proxy_client_retries_once_after_stale_oauth_error(monkeypatch: pytest.MonkeyPatch) -> None:

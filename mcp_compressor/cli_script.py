@@ -26,6 +26,7 @@ import contextlib
 import os
 import platform
 import stat
+import sys
 import urllib.request
 from pathlib import Path
 
@@ -221,7 +222,7 @@ def _bridges_repr(bridges: dict[int, str]) -> str:
 def _write_unix_script(script_path: Path, cli_name: str, bridges: dict[int, str]) -> None:
     """Write a Unix Python3 shebang script with the given BRIDGES map."""
     content = f"""\
-#!/usr/bin/env python3
+#!{sys.executable}
 {_SCRIPT_MARKER}
 # CLI name: {cli_name}
 # Do not edit manually — managed by mcp-compressor

@@ -125,33 +125,62 @@ class TestCompressedTools:
         assert compressed_tools._toonify_json_text("123") == "123"
 
 
-async def test_get_backend_tools_applies_include_and_exclude_filters() -> None:
-    """Test that backend tools are filtered by include/exclude lists."""
+async def test_configure_server_applies_visibility_filters_for_backend_tools() -> None:
+    """Test that include/exclude filters are translated into FastMCP visibility rules."""
 
-    def add(a: int, b: int) -> int:
-        return a + b
+    class FakeProxyServer:
+        def __init__(self) -> None:
+            self.enabled_calls: list[dict] = []
+            self.disabled_calls: list[dict] = []
+            self.middleware: list[object] = []
+            self.transforms: list[object] = []
+            self.tools = [
+                Tool.from_function(lambda a, b: a + b, name="add"),
+                Tool.from_function(lambda arg: arg, name="do_nothing"),
+                Tool.from_function(lambda: None, name="empty_tool"),
+            ]
 
-    def do_nothing(arg: str) -> str:
-        return arg
+        def enable(self, **kwargs):
+            self.enabled_calls.append(kwargs)
+            return self
 
-    def empty_tool() -> None:
-        return None
+        def disable(self, **kwargs):
+            self.disabled_calls.append(kwargs)
+            return self
 
+        def add_middleware(self, middleware) -> None:
+            self.middleware.append(middleware)
+
+        def add_transform(self, transform) -> None:
+            self.transforms.append(transform)
+
+        async def list_tools(self, *, run_middleware: bool = True):
+            return self.tools
+
+    proxy_server = FakeProxyServer()
     compressed_tools = CompressedTools(
-        None,  # type: ignore[arg-type]
+        proxy_server,  # type: ignore[arg-type]
         CompressionLevel.LOW,
+        server_name="test_server",
         include_tools=["add", "do_nothing"],
         exclude_tools=["do_nothing"],
     )
-    compressed_tools._all_tools = {
-        "add": Tool.from_function(add),
-        "do_nothing": Tool.from_function(do_nothing),
-        "empty_tool": Tool.from_function(empty_tool),
-    }
 
-    backend_tools = await compressed_tools._get_backend_tools()
+    await compressed_tools.configure_server()
 
-    assert set(backend_tools) == {"add"}
+    assert proxy_server.enabled_calls == []
+    assert proxy_server.disabled_calls == [
+        {
+            "names": {"empty_tool"},
+            "components": {"tool"},
+        },
+        {
+            "names": {"do_nothing"},
+            "components": {"tool"},
+        },
+    ]
+    assert proxy_server.transforms == [compressed_tools]
+    assert len(proxy_server.middleware) == 1
 
 
 class TestToolNotFoundError:
