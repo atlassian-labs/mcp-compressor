@@ -9,6 +9,7 @@ An MCP server wrapper for reducing tokens consumed by MCP tools.
 
 - **Github repository**: <https://github.com/atlassian-labs/mcp-compressor/>
 - **Documentation** <https://atlassian-labs.github.io/mcp-compressor/>
+- **Blog** <https://www.atlassian.com/blog/developer/mcp-compression-preventing-tool-bloat-in-ai-agents />
 
 ---
 
