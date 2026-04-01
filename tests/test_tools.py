@@ -183,6 +183,162 @@ async def test_configure_server_applies_visibility_filters_for_backend_tools() -
     assert len(proxy_server.middleware) == 1
 
 
+class FakeProxyServer:
+    """Minimal proxy server fake for caching tests."""
+
+    def __init__(self, tools: list[Tool]) -> None:
+        self.tools = tools
+        self.list_tools_call_count = 0
+        self.disabled_calls: list[dict] = []
+        self.middleware: list[object] = []
+        self.transforms: list[object] = []
+
+    def disable(self, **kwargs):
+        self.disabled_calls.append(kwargs)
+        return self
+
+    def add_middleware(self, middleware) -> None:
+        self.middleware.append(middleware)
+
+    def add_transform(self, transform) -> None:
+        self.transforms.append(transform)
+
+    async def list_tools(self, *, run_middleware: bool = True):
+        self.list_tools_call_count += 1
+        return self.tools
+
+
+async def test_tool_cache_warmed_at_configure_server() -> None:
+    """Tool catalog should be cached after configure_server() so no extra backend calls are made."""
+    tools = [
+        Tool.from_function(lambda a, b: a + b, name="add"),
+        Tool.from_function(lambda arg: arg, name="echo"),
+    ]
+    proxy_server = FakeProxyServer(tools)
+    compressed_tools = CompressedTools(
+        proxy_server,  # type: ignore[arg-type]
+        CompressionLevel.LOW,
+        server_name="test",
+    )
+
+    await compressed_tools.configure_server()
+
+    # Cache should be populated after configure_server
+    assert compressed_tools._cached_backend_tools is not None
+    assert set(compressed_tools._cached_backend_tools.keys()) == {"add", "echo"}
+    # No include/exclude filters, so list_tools is called exactly once and the
+    # result is reused directly for the cache (no redundant second fetch).
+    assert proxy_server.list_tools_call_count == 1
+
+
+async def test_get_backend_tools_uses_cache_after_configure_server() -> None:
+    """_get_backend_tools() should not call the backend after the cache is warmed."""
+    from fastmcp import FastMCP
+    from fastmcp.server import create_proxy
+    from fastmcp.server.context import Context
+
+    backend = FastMCP(name="backend")
+
+    @backend.tool()
+    def my_tool() -> str:
+        """A test tool."""
+        return "result"
+
+    proxy_server = create_proxy(backend, name="proxy")
+    compressed_tools = CompressedTools(
+        proxy_server,
+        CompressionLevel.LOW,
+        server_name="test",
+    )
+
+    await compressed_tools.configure_server()
+
+    # Cache should be warm — record what's in it
+    assert compressed_tools._cached_backend_tools is not None
+    assert "my_tool" in compressed_tools._cached_backend_tools
+
+    # Patch out the backend to confirm no further fetches happen
+    original_cache = compressed_tools._cached_backend_tools
+
+    async with Context(fastmcp=proxy_server) as ctx:
+        result1 = await compressed_tools._get_backend_tools(ctx)
+        result2 = await compressed_tools._get_backend_tools(ctx)
+        result3 = await compressed_tools._get_backend_tools(ctx)
+
+    # All calls should return the same cached dict object (identity check)
+    assert result1 is original_cache
+    assert result2 is original_cache
+    assert result3 is original_cache
+
+
+async def test_invalidate_tool_cache_forces_refetch() -> None:
+    """invalidate_tool_cache() should clear the cache so the next call re-fetches from backend."""
+    from fastmcp import FastMCP
+    from fastmcp.server import create_proxy
+    from fastmcp.server.context import Context
+
+    backend = FastMCP(name="backend")
+
+    @backend.tool()
+    def my_tool() -> str:
+        """A test tool."""
+        return "result"
+
+    proxy_server = create_proxy(backend, name="proxy")
+    compressed_tools = CompressedTools(
+        proxy_server,
+        CompressionLevel.LOW,
+        server_name="test",
+    )
+
+    await compressed_tools.configure_server()
+    original_cache = compressed_tools._cached_backend_tools
+
+    # Invalidate the cache
+    compressed_tools.invalidate_tool_cache()
+    assert compressed_tools._cached_backend_tools is None
+
+    # Next call should re-fetch and produce a new cache object
+    async with Context(fastmcp=proxy_server) as ctx:
+        result = await compressed_tools._get_backend_tools(ctx)
+
+    assert set(result.keys()) == {"my_tool"}
+    assert compressed_tools._cached_backend_tools is not None
+    # A fresh dict was created (different object from original)
+    assert compressed_tools._cached_backend_tools is not original_cache
+
+
+async def test_get_backend_tools_lazy_fetch_when_cache_cold() -> None:
+    """_get_backend_tools() should fetch from backend if cache is cold (configure_server not called)."""
+    from fastmcp import FastMCP
+    from fastmcp.server import create_proxy
+    from fastmcp.server.context import Context
+
+    backend = FastMCP(name="backend")
+
+    @backend.tool()
+    def lazy_tool() -> str:
+        """A lazy test tool."""
+        return "result"
+
+    proxy_server = create_proxy(backend, name="proxy")
+    compressed_tools = CompressedTools(
+        proxy_server,
+        CompressionLevel.LOW,
+        server_name="test",
+    )
+
+    # Cache is cold — configure_server was not called
+    assert compressed_tools._cached_backend_tools is None
+
+    async with Context(fastmcp=proxy_server) as ctx:
+        result = await compressed_tools._get_backend_tools(ctx)
+
+    assert set(result.keys()) == {"lazy_tool"}
+    # Cache should now be populated
+    assert compressed_tools._cached_backend_tools is not None
+
+
 class TestToolNotFoundError:
     """Tests for ToolNotFoundError."""
 
