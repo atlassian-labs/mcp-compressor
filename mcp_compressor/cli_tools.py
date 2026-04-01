@@ -206,7 +206,7 @@ def parse_argv_to_tool_input(argv: list[str], tool: Tool) -> dict[str, Any]:
         ValueError: If required args are missing or args are unrecognised.
     """
     if len(argv) == 1 and argv[0] == "--json":
-        raise ValueError('--json requires a value: --json \'{"key":"value"}\'')  # noqa: TRY003
+        raise ValueError('--json requires a value: --json \'{"key":"value"}\'')
 
     # Raw JSON escape hatch
     if len(argv) >= 2 and argv[0] == "--json":
@@ -230,7 +230,7 @@ def parse_argv_to_tool_input(argv: list[str], tool: Tool) -> dict[str, Any]:
     missing = [r for r in required if r not in result]
     if missing:
         missing_flags = ", ".join(f"--{m.replace('_', '-')}" for m in missing)
-        raise ValueError(f"Missing required option(s): {missing_flags}")  # noqa: TRY003
+        raise ValueError(f"Missing required option(s): {missing_flags}")
 
     return result
 
@@ -245,7 +245,7 @@ def _parse_single_arg(
     """Parse a single CLI argument at position *i* and return the new index."""
     arg = argv[i]
     if not arg.startswith("--"):
-        raise ValueError(f"Unexpected positional argument: {arg!r}. Use --flag value syntax.")  # noqa: TRY003
+        raise ValueError(f"Unexpected positional argument: {arg!r}. Use --flag value syntax.")
 
     flag = arg[2:]
 
@@ -258,7 +258,7 @@ def _parse_single_arg(
 
     prop_name = flag_to_prop.get(flag)
     if prop_name is None:
-        raise ValueError(f"Unknown option: --{flag}")  # noqa: TRY003
+        raise ValueError(f"Unknown option: --{flag}")
 
     prop_schema = _unwrap_nullable(properties[prop_name])
     # Use sentinel None so we can distinguish "no type key" from "type: string"
@@ -268,7 +268,7 @@ def _parse_single_arg(
         return _parse_boolean_arg(argv, i, prop_name, result)
 
     if i + 1 >= len(argv):
-        raise ValueError(f"--{flag} requires a value.")  # noqa: TRY003
+        raise ValueError(f"--{flag} requires a value.")
 
     value_str = argv[i + 1]
     _store_typed_value(value_str, prop_name, prop_schema, prop_type or "", result)
@@ -324,18 +324,18 @@ def _coerce_value(value_str: str, type_name: str) -> Any:
         try:
             return int(value_str)
         except ValueError:
-            raise ValueError(f"Expected integer, got {value_str!r}") from None  # noqa: TRY003
+            raise ValueError(f"Expected integer, got {value_str!r}") from None
     if type_name == "number":
         try:
             return float(value_str)
         except ValueError:
-            raise ValueError(f"Expected number, got {value_str!r}") from None  # noqa: TRY003
+            raise ValueError(f"Expected number, got {value_str!r}") from None
     if type_name == "boolean":
         if value_str.lower() in ("true", "1", "yes"):
             return True
         if value_str.lower() in ("false", "0", "no"):
             return False
-        raise ValueError(f"Expected boolean, got {value_str!r}")  # noqa: TRY003
+        raise ValueError(f"Expected boolean, got {value_str!r}")
     if type_name == "object" or type_name not in ("string", "boolean", "integer", "number", "array"):
         # object and complex/unknown types: attempt JSON parsing
         return _try_parse_json(value_str)

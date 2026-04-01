@@ -1,6 +1,6 @@
 [project]
 name = "mcp-compressor"
-version = "0.2.0"
+version = "0.2.1"
 description = "An MCP server wrapper for reducing tokens consumed by MCP tools."
 authors = [{ name = "Tim Esler", email = "tesler@atlassian.com" }]
 readme = "README.md"
@@ -121,6 +121,8 @@ ignore = [
     "E501",
     # DoNotAssignLambda
     "E731",
+    # Avoid specifying long messages outside the exception class
+    "TRY003",
 ]
 
 [tool.ruff.lint.per-file-ignores]

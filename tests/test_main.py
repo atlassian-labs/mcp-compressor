@@ -6,6 +6,7 @@ from typing import Any, cast
 import pytest
 from fastmcp.client.auth.oauth import OAuth
 from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
+from typer.testing import CliRunner
 
 import mcp_compressor.logging as logging_module
 import mcp_compressor.main as main_module
@@ -23,6 +24,11 @@ from mcp_compressor.main import (
     _server,
 )
 from mcp_compressor.types import CompressionLevel
+
+
+@pytest.fixture
+def runner() -> CliRunner:
+    return CliRunner()
 
 
 @pytest.fixture(autouse=True)
@@ -178,6 +184,24 @@ async def test_remote_server_connects_eagerly() -> None:
             pass
 
 
+def test_cli_mode_without_server_name_raises(runner: CliRunner) -> None:
+    """Test that --cli-mode without --server-name exits with a bad parameter error."""
+    from mcp_compressor.main import app
+
+    result = runner.invoke(app, ["--cli-mode", "uvx", "some-mcp-server"])
+    assert result.exit_code != 0
+    assert "--server-name" in result.output
+
+
+def test_max_compression_without_server_name_raises(runner: CliRunner) -> None:
+    """Test that --compression-level=max without --server-name exits with a bad parameter error."""
+    from mcp_compressor.main import app
+
+    result = runner.invoke(app, ["--compression-level", "max", "uvx", "some-mcp-server"])
+    assert result.exit_code != 0
+    assert "--server-name" in result.output
+
+
 def test_recoverable_oauth_traceback_filter_only_suppresses_stale_oauth_500() -> None:
     """Test that only the recoverable stale OAuth traceback log is suppressed."""
     log_filter = _RecoverableOAuthTracebackFilter()
@@ -265,7 +289,7 @@ async def test_proxy_client_retries_once_after_stale_oauth_error(monkeypatch: py
             nonlocal attempts
             attempts += 1
             if attempts == 1:
-                raise RuntimeError("Client failed to connect: Unexpected authorization response: 500")  # noqa: TRY003
+                raise RuntimeError("Client failed to connect: Unexpected authorization response: 500")
             return self
 
         async def __aexit__(self, exc_type, exc, tb) -> None:
@@ -306,7 +330,7 @@ async def test_proxy_client_surfaces_helpful_hint_after_retry_failure(monkeypatc
         async def __aenter__(self):
             nonlocal attempts
             attempts += 1
-            raise RuntimeError("Client failed to connect: Unexpected authorization response: 500")  # noqa: TRY003
+            raise RuntimeError("Client failed to connect: Unexpected authorization response: 500")
 
         async def __aexit__(self, exc_type, exc, tb) -> None:
             return None
@@ -335,7 +359,7 @@ async def test_proxy_client_does_not_retry_non_oauth_transports(monkeypatch: pyt
         async def __aenter__(self):
             nonlocal attempts
             attempts += 1
-            raise RuntimeError("Client failed to connect: Unexpected authorization response: 500")  # noqa: TRY003
+            raise RuntimeError("Client failed to connect: Unexpected authorization response: 500")
 
         async def __aexit__(self, exc_type, exc, tb) -> None:
             return None

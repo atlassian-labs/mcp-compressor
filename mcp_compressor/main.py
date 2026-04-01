@@ -192,6 +192,13 @@ def main(
     """
     configure_logging(log_level)
 
+    if cli_mode and server_name is None:
+        raise typer.BadParameter("--server-name is required when using --cli-mode.", param_hint="'--server-name'")
+    if compression_level == CompressionLevel.MAX and server_name is None:
+        raise typer.BadParameter(
+            "--server-name is required when using --compression-level=max.", param_hint="'--server-name'"
+        )
+
     if threading.current_thread() is threading.main_thread():
         shutting_down = False
 
@@ -320,7 +327,7 @@ async def _proxy_client(transport: TransportType) -> AsyncGenerator[ProxyClient,
         async with ProxyClient(transport=transport, init_timeout=None) as client:
             yield client
     except RuntimeError as exc:
-        raise RuntimeError(  # noqa: TRY003
+        raise RuntimeError(
             f"{exc}\n\nCached OAuth credentials may be stale. "
             "mcp-compressor cleared cached OAuth state and retried once. "
             "If the problem persists, run 'mcp-compressor clear-oauth' and try again."
@@ -378,9 +385,6 @@ async def _server(
     include_tools: list[str] | None = None,
     exclude_tools: list[str] | None = None,
 ) -> AsyncGenerator[FastMCP, None]:
-    if compression_level == CompressionLevel.MAX and server_name is None and not cli_mode:
-        raise ValueError("server_name must be provided when using MAX compression level")  # noqa: TRY003
-
     command_or_url = " ".join(command_or_url_list)
     transport_type = _infer_transport_type(command_or_url)
     logger.info(f"Inferred transport type: {transport_type}")

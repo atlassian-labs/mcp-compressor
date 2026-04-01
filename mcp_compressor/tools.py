@@ -411,5 +411,5 @@ def sanitize_tool_name(name: str) -> str:
     """Sanitize a tool name to conform to MCP tool name specifications."""
     sanitized = re.sub(r"[^A-Za-z0-9_\-.]", "_", name).lower()
     if not sanitized:
-        raise ValueError("Tool name must contain at least one valid character after sanitization.")  # noqa: TRY003
+        raise ValueError("Tool name must contain at least one valid character after sanitization.")
     return sanitized[:128]
