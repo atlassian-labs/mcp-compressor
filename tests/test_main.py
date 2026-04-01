@@ -184,13 +184,19 @@ async def test_remote_server_connects_eagerly() -> None:
             pass
 
 
+def _strip_ansi(text: str) -> str:
+    import re
+
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
 def test_cli_mode_without_server_name_raises(runner: CliRunner) -> None:
     """Test that --cli-mode without --server-name exits with a bad parameter error."""
     from mcp_compressor.main import app
 
     result = runner.invoke(app, ["--cli-mode", "uvx", "some-mcp-server"])
     assert result.exit_code != 0
-    assert "--server-name" in result.output
+    assert "--server-name" in _strip_ansi(result.output)
 
 
 def test_max_compression_without_server_name_raises(runner: CliRunner) -> None:
@@ -199,7 +205,7 @@ def test_max_compression_without_server_name_raises(runner: CliRunner) -> None:
 
     result = runner.invoke(app, ["--compression-level", "max", "uvx", "some-mcp-server"])
     assert result.exit_code != 0
-    assert "--server-name" in result.output
+    assert "--server-name" in _strip_ansi(result.output)
 
 
 def test_recoverable_oauth_traceback_filter_only_suppresses_stale_oauth_500() -> None:
