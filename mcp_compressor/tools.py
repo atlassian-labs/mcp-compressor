@@ -7,6 +7,7 @@ passthrough access.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from collections.abc import Sequence
@@ -111,6 +112,8 @@ class CompressedTools(CatalogTransform):
         self._cli_name = cli_name or (server_name or "mcp")
         self._include_tools = set(include_tools or [])
         self._exclude_tools = set(exclude_tools or [])
+        self._cached_backend_tools: dict[str, Tool] | None = None
+        self._tool_cache_lock: asyncio.Lock = asyncio.Lock()
         self._help_tool_name = sanitize_tool_name(f"{server_name}_help" if server_name else "help")
         self._get_schema_tool_name = sanitize_tool_name(f"{self._tool_name_prefix}get_tool_schema")
         self._invoke_tool_name = sanitize_tool_name(f"{self._tool_name_prefix}invoke_tool")
@@ -146,13 +149,26 @@ class CompressedTools(CatalogTransform):
 
     async def _configure_backend_tool_visibility(self) -> None:
         """Apply FastMCP visibility rules for backend tool allow/deny filtering."""
+        all_tools = await self._proxy_server.list_tools(run_middleware=False)
+        filters_applied = False
         if self._include_tools:
-            all_tool_names = {tool.name for tool in await self._proxy_server.list_tools(run_middleware=False)}
+            all_tool_names = {tool.name for tool in all_tools}
             names_to_disable = all_tool_names - self._include_tools
             if names_to_disable:
                 self._proxy_server.disable(names=names_to_disable, components={"tool"})
+                filters_applied = True
         if self._exclude_tools:
             self._proxy_server.disable(names=self._exclude_tools, components={"tool"})
+            filters_applied = True
+        # Warm the tool cache after visibility rules are applied so the cache
+        # reflects the filtered tool set that clients will actually see.
+        # Re-fetch only when filters changed the visible set; otherwise reuse the
+        # list we already have (avoids a redundant backend round-trip).
+        if filters_applied:
+            visible_tools = await self._proxy_server.list_tools(run_middleware=False)
+        else:
+            visible_tools = all_tools
+        self._cached_backend_tools = {tool.name: tool for tool in visible_tools}
 
     async def transform_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
         """Replace the visible tool catalog with compressed wrapper tools."""
@@ -303,8 +319,32 @@ class CompressedTools(CatalogTransform):
         return "\n".join(self._format_tool_description(tool, compression_level) for tool in tools)
 
     async def _get_backend_tools(self, ctx: Context) -> dict[str, Tool]:
-        """Retrieve backend tools, bypassing this transform while keeping visibility filters."""
-        return {tool.name: tool for tool in await self.get_tool_catalog(ctx, run_middleware=False)}
+        """Retrieve backend tools from cache, fetching from backend on first call.
+
+        The tool catalog is cached on first access (normally at startup via ``configure_server()``) so subsequent
+        operations — invoke_tool, get_tool_schema, list_uncompressed_tools, etc. — do not make a live backend call every
+        time.  Use ``invalidate_tool_cache()`` to force a refresh if the backend tool catalog changes at runtime.
+        """
+        if self._cached_backend_tools is not None:
+            return self._cached_backend_tools
+        async with self._tool_cache_lock:
+            # Double-checked locking: another coroutine may have filled the cache
+            # while we waited for the lock.
+            if self._cached_backend_tools is not None:
+                return self._cached_backend_tools
+            logger.debug("Tool cache is empty; fetching backend tool catalog.")
+            self._cached_backend_tools = {
+                tool.name: tool for tool in await self.get_tool_catalog(ctx, run_middleware=False)
+            }
+        return self._cached_backend_tools
+
+    def invalidate_tool_cache(self) -> None:
+        """Invalidate the cached backend tool catalog.
+
+        The next call to any method that needs the backend tool list will
+        re-fetch it from the backend server.
+        """
+        self._cached_backend_tools = None
 
     async def _get_backend_tool(self, ctx: Context, tool_name: str) -> Tool:
         """Retrieve a specific backend tool from the proxy server."""
