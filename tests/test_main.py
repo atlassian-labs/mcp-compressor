@@ -208,22 +208,38 @@ def test_max_compression_without_server_name_raises(runner: CliRunner) -> None:
     assert "--server-name" in _strip_ansi(result.output)
 
 
-def test_recoverable_oauth_traceback_filter_only_suppresses_stale_oauth_500() -> None:
-    """Test that only the recoverable stale OAuth traceback log is suppressed."""
+def test_recoverable_oauth_traceback_filter_suppresses_known_stale_oauth_signatures() -> None:
+    """Test that only the recoverable stale OAuth traceback logs are suppressed."""
+    from fastmcp.client.auth.oauth import ClientNotFoundError
+
     log_filter = _RecoverableOAuthTracebackFilter()
 
-    recoverable_record = logging.makeLogRecord({
+    # Suppressed: upstream 500 error
+    recoverable_500_record = logging.makeLogRecord({
         "msg": "OAuth flow error",
         "exc_info": (RuntimeError, RuntimeError("Unexpected authorization response: 500"), None),
     })
-    assert log_filter.filter(recoverable_record) is False
+    assert log_filter.filter(recoverable_500_record) is False
 
+    # Suppressed: ClientNotFoundError (stale cached credentials)
+    recoverable_client_not_found_record = logging.makeLogRecord({
+        "msg": "OAuth flow error",
+        "exc_info": (
+            ClientNotFoundError,
+            ClientNotFoundError("OAuth client not found - cached credentials may be stale"),
+            None,
+        ),
+    })
+    assert log_filter.filter(recoverable_client_not_found_record) is False
+
+    # Not suppressed: different log message
     different_message_record = logging.makeLogRecord({
         "msg": "Different error",
         "exc_info": (RuntimeError, RuntimeError("Unexpected authorization response: 500"), None),
     })
     assert log_filter.filter(different_message_record) is True
 
+    # Not suppressed: unrelated exception
     different_exception_record = logging.makeLogRecord({
         "msg": "OAuth flow error",
         "exc_info": (RuntimeError, RuntimeError("Some other failure"), None),
@@ -349,6 +365,51 @@ async def test_proxy_client_surfaces_helpful_hint_after_retry_failure(monkeypatc
 
     assert attempts == 2
     assert adapter.clear_calls == 1
+
+
+async def test_proxy_client_retries_once_after_client_not_found_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that a ClientNotFoundError also clears cached OAuth state and retries once."""
+    from fastmcp.client.auth.oauth import ClientNotFoundError
+
+    transport = _get_streamable_http_transport(url="https://example.com/mcp", header_list=None, timeout=30.0)
+    assert isinstance(transport.auth, OAuth)
+
+    class FakeAdapter:
+        def __init__(self) -> None:
+            self.cleared = False
+
+        async def clear(self) -> None:
+            self.cleared = True
+
+    adapter = FakeAdapter()
+    cast(Any, transport.auth).token_storage_adapter = adapter
+    transport.auth._initialized = True
+
+    attempts = 0
+
+    class FakeProxyClient:
+        def __init__(self, transport, init_timeout=None) -> None:
+            self.transport = transport
+            self.init_timeout = init_timeout
+
+        async def __aenter__(self):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise ClientNotFoundError("OAuth client not found - cached credentials may be stale")
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+    monkeypatch.setattr(main_module, "ProxyClient", FakeProxyClient)
+
+    async with _proxy_client(transport) as client:
+        assert isinstance(client, FakeProxyClient)
+
+    assert attempts == 2
+    assert adapter.cleared is True
+    assert transport.auth._initialized is False
 
 
 async def test_proxy_client_does_not_retry_non_oauth_transports(monkeypatch: pytest.MonkeyPatch) -> None:

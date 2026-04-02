@@ -49,7 +49,10 @@ class _RecoverableOAuthTracebackFilter(logging.Filter):
         if record.getMessage() != "OAuth flow error" or record.exc_info is None:
             return True
 
-        return "Unexpected authorization response: 500" not in str(record.exc_info[1])
+        exc_str = str(record.exc_info[1])
+        if "Unexpected authorization response: 500" in exc_str:
+            return False
+        return "OAuth client not found" not in exc_str
 
 
 @contextlib.contextmanager

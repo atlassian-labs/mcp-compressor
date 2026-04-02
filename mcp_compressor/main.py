@@ -292,7 +292,8 @@ def _should_retry_stale_oauth_connect_error(exception: Exception, transport: Tra
     if not isinstance(auth, OAuth):
         return False
 
-    return "Unexpected authorization response: 500" in str(exception)
+    exc_str = str(exception)
+    return "Unexpected authorization response: 500" in exc_str or "OAuth client not found" in exc_str
 
 
 async def _clear_transport_oauth_cache(transport: TransportType) -> None:
@@ -313,20 +314,19 @@ async def _proxy_client(transport: TransportType) -> AsyncGenerator[ProxyClient,
             async with ProxyClient(transport=transport, init_timeout=None) as client:
                 yield client
                 return
-    except RuntimeError as exc:
+    except Exception as exc:
         if not _should_retry_stale_oauth_connect_error(exc, transport):
             raise
 
         logger.warning(
-            "OAuth connection failed with an upstream 500 during authorization; "
-            "clearing cached OAuth state and retrying once"
+            "OAuth connection failed due to stale cached credentials; clearing cached OAuth state and retrying once"
         )
         await _clear_transport_oauth_cache(transport)
 
     try:
         async with ProxyClient(transport=transport, init_timeout=None) as client:
             yield client
-    except RuntimeError as exc:
+    except Exception as exc:
         raise RuntimeError(
             f"{exc}\n\nCached OAuth credentials may be stale. "
             "mcp-compressor cleared cached OAuth state and retried once. "
