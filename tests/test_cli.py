@@ -402,10 +402,13 @@ def mock_invoke_fn(add_tool: Tool):
     from fastmcp.tools.tool import ToolResult
     from mcp.types import TextContent
 
-    async def invoke(tool_name: str, tool_input: dict | None) -> ToolResult:
+    async def invoke(tool_name: str, tool_input: dict | None, quiet: bool = False) -> ToolResult:
         if tool_name == "add":
             val = (tool_input or {}).get("a", 0) + (tool_input or {}).get("b", 0)
-            return ToolResult(content=[TextContent(type="text", text=str(val))])
+            text = str(val)
+            if quiet:
+                text = f"[quiet] {text}"
+            return ToolResult(content=[TextContent(type="text", text=text)])
         return ToolResult(content=[TextContent(type="text", text="ok")])
 
     return invoke
@@ -480,3 +483,46 @@ async def test_bridge_missing_required_arg(bridge: CliBridge) -> None:
     response = client.post("/exec", json={"argv": ["add", "--a", "5"]})
     assert response.status_code == 400
     assert "Missing required" in response.text
+
+
+async def test_bridge_quiet_flag_is_passed_to_invoke_fn(bridge: CliBridge) -> None:
+    """Test that --quiet is extracted from argv and passed to the invoke function."""
+    from starlette.testclient import TestClient
+
+    client = TestClient(bridge.app)
+    response = client.post("/exec", json={"argv": ["add", "--a", "5", "--b", "3", "--quiet"]})
+    assert response.status_code == 200
+    # The mock_invoke_fn prefixes output with "[quiet]" when quiet=True
+    assert "[quiet] 8" in response.text
+
+
+async def test_bridge_without_quiet_flag_passes_false_to_invoke_fn(bridge: CliBridge) -> None:
+    """Test that quiet=False is passed when --quiet is not in argv."""
+    from starlette.testclient import TestClient
+
+    client = TestClient(bridge.app)
+    response = client.post("/exec", json={"argv": ["add", "--a", "5", "--b", "3"]})
+    assert response.status_code == 200
+    assert response.text.strip() == "8"
+    assert "[quiet]" not in response.text
+
+
+async def test_bridge_quiet_flag_not_passed_to_tool_input(bridge: CliBridge) -> None:
+    """Test that --quiet is stripped from argv before parse_argv_to_tool_input, so it doesn't
+    cause 'Unknown option' errors for tools that don't declare a 'quiet' parameter."""
+    from starlette.testclient import TestClient
+
+    client = TestClient(bridge.app)
+    # If --quiet leaked into tool input parsing it would raise "Unknown option: --quiet"
+    response = client.post("/exec", json={"argv": ["add", "--quiet", "--a", "5", "--b", "3"]})
+    assert response.status_code == 200
+    assert "[quiet] 8" in response.text
+
+
+async def test_format_tool_help_includes_quiet_flag(add_tool: Tool) -> None:
+    """Test that --quiet appears in per-subcommand help output."""
+    from mcp_compressor.cli_tools import format_tool_help
+
+    help_text = format_tool_help("mycli", add_tool)
+    assert "--quiet" in help_text
+    assert "Truncate large output" in help_text

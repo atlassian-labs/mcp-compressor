@@ -127,11 +127,14 @@ def format_tool_help(cli_name: str, tool: Tool) -> str:
                 schema_json = json.dumps(schema_display, separators=(",", ":"))
                 options_list.append(f"    Values must be a JSON string with the following schema: {schema_json}")
 
+    # --quiet is a universal flag available on every subcommand (not in the tool schema)
+    options_list.append("  --quiet                    (optional) Truncate large output to a short preview")
+
     return TOOL_HELP_TEMPLATE.format(
         cli_name=cli_name,
         subcommand=subcommand,
         description=description or "(no description)",
-        options="\n".join(options_list) if options_list else "  (no options)",
+        options="\n".join(options_list),
     )
 
 

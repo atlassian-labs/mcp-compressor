@@ -58,18 +58,24 @@ class InvokeToolCompatibilityMiddleware(Middleware):
     ) -> ToolResult:
         tool_name = context.message.name
         tool_args = context.message.arguments or {}
-        if (
-            tool_name in self._compressed_tools.invoke_tool_names
-            and tool_args
-            and ("tool_input" not in tool_args or tool_args["tool_input"] is None)
-        ):
-            flat_input = {k: v for k, v in tool_args.items() if k not in {"tool_name", "quiet"}}
-            if flat_input and "tool_name" in tool_args:
-                return await self._compressed_tools.invoke_tool(
-                    tool_name=tool_args["tool_name"],
-                    tool_input=flat_input,
-                    quiet=tool_args.get("quiet", False),
-                )
+        if tool_name in self._compressed_tools.invoke_tool_names and "tool_name" in tool_args:
+            tool_input_raw = tool_args.get("tool_input")
+            if isinstance(tool_input_raw, dict):
+                # Structured call: {tool_name: "foo", tool_input: {...}}
+                # tool_input may be an empty dict for zero-argument tools — that is valid.
+                tool_input = tool_input_raw
+            else:
+                # tool_input is None or absent: check for flattened args
+                # e.g. {tool_name: "add", "a": 5, "b": 3} (no tool_input wrapper)
+                # Exclude meta-keys so they don't leak into the backend tool args.
+                flat_input = {k: v for k, v in tool_args.items() if k not in {"tool_name", "quiet", "tool_input"}}
+                tool_input = flat_input  # may be empty dict for zero-argument tools
+
+            return await self._compressed_tools.invoke_tool(
+                tool_name=tool_args["tool_name"],
+                tool_input=tool_input,
+                quiet=tool_args.get("quiet", False),
+            )
 
         result = await call_next(context)
         if self._compressed_tools.should_toonify_tool(tool_name):

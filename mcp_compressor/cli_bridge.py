@@ -25,9 +25,9 @@ from .cli_tools import format_tool_help, format_top_level_help, parse_argv_to_to
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
-# Type alias for the direct backend call callable — receives tool_name + arguments,
+# Type alias for the direct backend call callable — receives tool_name + arguments + quiet flag,
 # returns a ToolResult (not a CallToolResult)
-InvokeFn = Callable[[str, dict[str, Any] | None], Coroutine[Any, Any, Any]]
+InvokeFn = Callable[[str, dict[str, Any] | None, bool], Coroutine[Any, Any, Any]]
 # Type alias for the lazy tool fetch callable
 GetToolsFn = Callable[[], Coroutine[Any, Any, dict[str, Tool]]]
 
@@ -143,6 +143,11 @@ class CliBridge:
 
         tool = self._tools[tool_name]
 
+        # Extract --quiet before passing argv to the tool-schema-driven parser,
+        # since quiet is a universal flag not present in any individual tool schema.
+        quiet = "--quiet" in rest
+        rest = [arg for arg in rest if arg != "--quiet"]
+
         try:
             tool_input = parse_argv_to_tool_input(rest, tool)
         except ValueError as exc:
@@ -158,9 +163,9 @@ class CliBridge:
                 # stateful backends like chrome-devtools-mcp fail with
                 # "No active context found".
                 async with Context(fastmcp=self._fastmcp):
-                    result = await self._invoke_fn(tool_name, tool_input)
+                    result = await self._invoke_fn(tool_name, tool_input, quiet)
             else:
-                result = await self._invoke_fn(tool_name, tool_input)
+                result = await self._invoke_fn(tool_name, tool_input, quiet)
         except Exception as exc:
             return PlainTextResponse(f"error: {exc}\n", status_code=400)
 

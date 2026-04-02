@@ -361,3 +361,25 @@ async def test_on_call_tool_extracts_flat_args_as_tool_input(proxy_mcp_client) -
     )
     assert result.content
     assert result.content[0].text == "8"
+
+
+@pytest.mark.parametrize(
+    "tool_args",
+    [
+        {"tool_name": "empty_tool", "tool_input": {}},
+        {"tool_name": "empty_tool", "tool_input": None},
+        {"tool_name": "empty_tool"},
+    ],
+    ids=["empty_dict_tool_input", "null_tool_input", "no_tool_input_key"],
+)
+async def test_on_call_tool_handles_zero_arg_tool(proxy_mcp_client, tool_args: dict) -> None:
+    """Test that invoke_tool correctly handles zero-argument tools.
+
+    This is a regression test for a bug where zero-arg tools caused a Pydantic
+    'Unexpected keyword argument' validation error. The root cause was:
+    - tool_input={} is falsy, so it fell through to the flat-args path
+    - The flat-args filter didn't exclude 'tool_input' itself, so it leaked
+      into the backend call as an unexpected kwarg (additionalProperties=false)
+    """
+    result = await proxy_mcp_client.call_tool("test_server_invoke_tool", tool_args)
+    assert result.content is not None
