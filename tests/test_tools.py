@@ -4,7 +4,12 @@ import pytest
 import toons
 from fastmcp.tools import Tool
 
-from mcp_compressor.tools import CompressedTools, ToolNotFoundError, sanitize_tool_name
+from mcp_compressor.tools import (
+    CompressedTools,
+    InvokeToolCompatibilityMiddleware,
+    ToolNotFoundError,
+    sanitize_tool_name,
+)
 from mcp_compressor.types import CompressionLevel
 
 
@@ -349,6 +354,103 @@ class TestToolNotFoundError:
         assert "Available tools: add, do_nothing" in str(error)
         assert error.tool_name == "missing_tool"
         assert error.available_tools == ("add", "do_nothing")
+
+
+async def test_invoke_tool_passes_ctx_to_proxy_tool() -> None:
+    """invoke_tool should pass ctx to ProxyTool.run() so that request meta is forwarded."""
+    from fastmcp import FastMCP
+    from fastmcp.server import create_proxy
+    from fastmcp.server.context import Context
+    from fastmcp.server.providers.proxy import ProxyTool
+    from fastmcp.tools.tool import ToolResult
+    from mcp.types import TextContent
+
+    backend = FastMCP(name="backend")
+
+    @backend.tool()
+    def my_tool() -> str:
+        """A test tool."""
+        return "hello"
+
+    proxy_server = create_proxy(backend, name="proxy")
+    compressed_tools = CompressedTools(proxy_server, CompressionLevel.LOW, server_name="test")
+    await compressed_tools.configure_server()
+
+    # Verify the cached tool is a ProxyTool (the proxy wraps backend tools as ProxyTools)
+    assert compressed_tools._cached_backend_tools is not None
+    cached_tool = compressed_tools._cached_backend_tools["my_tool"]
+    assert isinstance(cached_tool, ProxyTool), "Expected a ProxyTool in proxy server cache"
+
+    captured: dict = {}
+
+    # Subclass ProxyTool to intercept run() and capture what context is passed
+    class CapturingProxyTool(ProxyTool):
+        async def run(self, arguments: dict, context: Context | None = None) -> ToolResult:
+            captured["context"] = context
+            return ToolResult(content=[TextContent(type="text", text="hello")])
+
+    # Swap the real ProxyTool for our capturing subclass in the cache
+    capturing_tool = cached_tool.model_copy(update={})
+    capturing_tool.__class__ = CapturingProxyTool
+    original_cache = compressed_tools._cached_backend_tools
+    compressed_tools._cached_backend_tools = {"my_tool": capturing_tool}
+
+    try:
+        async with Context(fastmcp=proxy_server) as ctx:
+            await compressed_tools.invoke_tool("my_tool", {}, ctx=ctx)
+    finally:
+        compressed_tools._cached_backend_tools = original_cache
+
+    assert "context" in captured, "context was not passed to ProxyTool.run()"
+    assert captured["context"] is ctx, "invoke_tool should forward ctx to ProxyTool.run()"
+
+
+async def test_middleware_passes_fastmcp_context_to_invoke_tool() -> None:
+    """InvokeToolCompatibilityMiddleware should pass fastmcp_context to invoke_tool."""
+    from unittest.mock import AsyncMock
+
+    from fastmcp import FastMCP
+    from fastmcp.server import create_proxy
+    from fastmcp.server.context import Context
+    from fastmcp.server.middleware import MiddlewareContext
+    from fastmcp.tools.tool import ToolResult
+    from mcp.types import CallToolRequestParams, TextContent
+
+    backend = FastMCP(name="backend")
+
+    @backend.tool()
+    def echo(msg: str) -> str:
+        """Echo a message."""
+        return msg
+
+    proxy_server = create_proxy(backend, name="proxy")
+    compressed_tools = CompressedTools(proxy_server, CompressionLevel.LOW, server_name="test")
+    await compressed_tools.configure_server()
+
+    middleware = InvokeToolCompatibilityMiddleware(compressed_tools)
+
+    captured: dict = {}
+    original_invoke = compressed_tools.invoke_tool
+
+    async def capturing_invoke_tool(tool_name, tool_input=None, quiet=False, ctx: Context | None = None):
+        captured["ctx"] = ctx
+        return await original_invoke(tool_name, tool_input, quiet, ctx)
+
+    compressed_tools.invoke_tool = capturing_invoke_tool  # type: ignore[method-assign]
+
+    async with Context(fastmcp=proxy_server) as ctx:
+        mw_context = MiddlewareContext(
+            message=CallToolRequestParams(
+                name="test_invoke_tool", arguments={"tool_name": "echo", "tool_input": {"msg": "hi"}}
+            ),
+            method="tools/call",
+            fastmcp_context=ctx,
+        )
+        call_next = AsyncMock(return_value=ToolResult(content=[TextContent(type="text", text="hi")]))
+        await middleware.on_call_tool(mw_context, call_next)
+
+    assert "ctx" in captured, "ctx was not passed through middleware to invoke_tool"
+    assert captured["ctx"] is ctx, "middleware should forward fastmcp_context as ctx to invoke_tool"
 
 
 async def test_on_call_tool_extracts_flat_args_as_tool_input(proxy_mcp_client) -> None:
