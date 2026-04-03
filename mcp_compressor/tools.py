@@ -178,11 +178,16 @@ class CompressedTools(CatalogTransform):
 
     async def transform_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
         """Replace the visible tool catalog with compressed wrapper tools."""
+        effective_tools: Sequence[Tool] = (
+            list(self._cached_backend_tools.values()) if self._cached_backend_tools is not None else tools
+        )
         if self._cli_mode:
-            return [self._make_help_tool(await self._build_cli_description_from(tools))]
+            return [self._make_help_tool(await self._build_cli_description_from(effective_tools))]
 
         visible_tools = [
-            self._make_get_schema_tool(await self._get_tool_descriptions_from(tools, self._compression_level)),
+            self._make_get_schema_tool(
+                await self._get_tool_descriptions_from(effective_tools, self._compression_level)
+            ),
             self._make_invoke_tool(self._invoke_tool_name),
         ]
         if self._compression_level == CompressionLevel.MAX:
