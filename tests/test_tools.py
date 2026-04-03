@@ -339,6 +339,42 @@ async def test_get_backend_tools_lazy_fetch_when_cache_cold() -> None:
     assert compressed_tools._cached_backend_tools is not None
 
 
+class TestInvokeToolMeta:
+    """Tests for _meta handling in invoke_tool."""
+
+    @pytest.mark.asyncio
+    async def test_invoke_tool_strips_meta_from_tool_input(self, proxy_mcp_client):
+        """_meta inside tool_input should be stripped before calling the backend tool."""
+        meta = {"rovodev_context": '{"session_id": "s1"}'}
+        result = await proxy_mcp_client.call_tool(
+            "test_server_invoke_tool",
+            {"tool_name": "add", "tool_input": {"a": 5, "b": 3, "_meta": meta}},
+        )
+        assert result.content
+        assert result.content[0].text == "8"
+
+    @pytest.mark.asyncio
+    async def test_invoke_tool_accepts_meta_as_top_level_param(self, proxy_mcp_client):
+        """_meta as a top-level parameter should be accepted without validation error."""
+        meta = {"rovodev_context": '{"session_id": "s1"}'}
+        result = await proxy_mcp_client.call_tool(
+            "test_server_invoke_tool",
+            {"tool_name": "add", "tool_input": {"a": 2, "b": 7}, "_meta": meta},
+        )
+        assert result.content
+        assert result.content[0].text == "9"
+
+    @pytest.mark.asyncio
+    async def test_invoke_tool_works_without_meta(self, proxy_mcp_client):
+        """invoke_tool should work normally when no _meta is provided."""
+        result = await proxy_mcp_client.call_tool(
+            "test_server_invoke_tool",
+            {"tool_name": "add", "tool_input": {"a": 10, "b": 20}},
+        )
+        assert result.content
+        assert result.content[0].text == "30"
+
+
 class TestToolNotFoundError:
     """Tests for ToolNotFoundError."""
 

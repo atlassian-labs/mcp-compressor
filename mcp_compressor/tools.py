@@ -68,12 +68,13 @@ class InvokeToolCompatibilityMiddleware(Middleware):
                 # tool_input is None or absent: check for flattened args
                 # e.g. {tool_name: "add", "a": 5, "b": 3} (no tool_input wrapper)
                 # Exclude meta-keys so they don't leak into the backend tool args.
-                flat_input = {k: v for k, v in tool_args.items() if k not in {"tool_name", "quiet", "tool_input"}}
+                flat_input = {k: v for k, v in tool_args.items() if k not in {"tool_name", "quiet", "tool_input", "_meta"}}
                 tool_input = flat_input  # may be empty dict for zero-argument tools
 
             return await self._compressed_tools.invoke_tool(
                 tool_name=tool_args["tool_name"],
                 tool_input=tool_input,
+                _meta=tool_args.get("_meta"),
                 quiet=tool_args.get("quiet", False),
             )
 
@@ -236,16 +237,30 @@ class CompressedTools(CatalogTransform):
         self,
         tool_name: str,
         tool_input: dict[str, Any] | None = None,
+        _meta: dict[str, Any] | None = None,
         quiet: bool = False,
         ctx: Context = None,  # type: ignore[assignment]
     ) -> ToolResult:
-        """Invoke a backend tool from the compressed catalog."""
+        """Invoke a backend tool from the compressed catalog.
+
+        Args:
+            tool_name: Name of the backend tool to invoke.
+            tool_input: Arguments to pass to the backend tool.
+            _meta: Optional MCP protocol-level metadata to forward to the backend server.
+                Callers (e.g. MetadataCallback) may also inject ``_meta`` inside *tool_input*;
+                it will be stripped before the tool is executed and merged with this parameter.
+            quiet: When True, truncate large text results.
+            ctx: FastMCP context for server operations.
+        """
         if ctx is None:
             async with Context(fastmcp=self._proxy_server) as active_ctx:
-                return await self.invoke_tool(tool_name, tool_input, quiet, active_ctx)
-        tool = await self._get_backend_tool(ctx, tool_name)
+                return await self.invoke_tool(tool_name, tool_input, _meta, quiet, active_ctx)
+        # Strip _meta from tool_input if callers injected it there
+        effective_input = dict(tool_input) if tool_input else {}
+        meta_from_input = effective_input.pop("_meta", None)
+        meta = _meta or meta_from_input
         try:
-            tool_result = await tool.run(tool_input or {})
+            tool_result = await self._call_backend_tool(ctx, tool_name, effective_input, meta)
         except ValidationError as exc:
             raise ToolError(await self._format_validation_error(ctx, tool_name, str(exc))) from exc
         except ToolError as exc:
@@ -361,6 +376,32 @@ class CompressedTools(CatalogTransform):
             logger.error(f"Tool '{tool_name}' not found in backend tools. Available tools: {available_tools}")
             raise ToolNotFoundError(tool_name, available_tools)
         return tool
+
+    async def _call_backend_tool(
+        self,
+        ctx: Context,
+        tool_name: str,
+        tool_input: dict[str, Any],
+        meta: dict[str, Any] | None = None,
+    ) -> ToolResult:
+        """Call a backend tool, optionally forwarding MCP protocol-level metadata.
+
+        When *meta* is provided the call goes through the backend
+        ``Client.call_tool`` so that metadata reaches the remote MCP server as
+        the protocol-level ``_meta`` field.  Without *meta* the standard
+        ``Tool.run`` path is used.
+        """
+        if meta and hasattr(self._proxy_server, "client_factory"):
+            client = self._proxy_server.client_factory()
+            if asyncio.iscoroutine(client) or asyncio.isfuture(client):
+                client = await client
+            mcp_result = await client.call_tool_mcp(tool_name, tool_input, meta=meta)
+            if mcp_result.isError:
+                error_text = mcp_result.content[0].text if mcp_result.content else "Unknown error"
+                raise ToolError(error_text)
+            return ToolResult(content=mcp_result.content)
+        tool = await self._get_backend_tool(ctx, tool_name)
+        return await tool.run(tool_input)
 
     async def _format_validation_error(self, ctx: Context, tool_name: str, error_message: str) -> str:
         """Format a validation failure with the tool schema for client guidance."""
