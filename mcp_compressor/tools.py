@@ -19,6 +19,7 @@ from fastmcp.exceptions import ToolError
 from fastmcp.resources import Resource
 from fastmcp.server.context import Context
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
+from fastmcp.server.providers.proxy import ProxyTool
 from fastmcp.server.transforms import GetResourceNext, GetToolNext
 from fastmcp.server.transforms.catalog import CatalogTransform
 from fastmcp.tools import Tool
@@ -75,6 +76,7 @@ class InvokeToolCompatibilityMiddleware(Middleware):
                 tool_name=tool_args["tool_name"],
                 tool_input=tool_input,
                 quiet=tool_args.get("quiet", False),
+                ctx=context.fastmcp_context,
             )
 
         result = await call_next(context)
@@ -220,7 +222,7 @@ class CompressedTools(CatalogTransform):
             return self._make_uncompressed_tools_resource()
         return await call_next(uri, version=version)
 
-    async def list_tools_tool(self, ctx: Context = None) -> str:  # type: ignore[assignment]
+    async def list_tools_tool(self, ctx: Context | None = None) -> str:
         """List all available tools in {server_description}."""
         if ctx is None:
             async with Context(fastmcp=self._proxy_server) as active_ctx:
@@ -228,7 +230,7 @@ class CompressedTools(CatalogTransform):
         backend_tools = await self._get_backend_tools(ctx)
         return await self._get_tool_descriptions_from(list(backend_tools.values()), CompressionLevel.MEDIUM)
 
-    async def get_tool_schema(self, tool_name: str, ctx: Context = None) -> str:  # type: ignore[assignment]
+    async def get_tool_schema(self, tool_name: str, ctx: Context | None = None) -> str:
         """Get the input schema for a specific tool from {server_description}."""
         if ctx is None:
             async with Context(fastmcp=self._proxy_server) as active_ctx:
@@ -242,7 +244,7 @@ class CompressedTools(CatalogTransform):
         tool_name: str,
         tool_input: dict[str, Any] | None = None,
         quiet: bool = False,
-        ctx: Context = None,  # type: ignore[assignment]
+        ctx: Context | None = None,
     ) -> ToolResult:
         """Invoke a backend tool from the compressed catalog."""
         if ctx is None:
@@ -250,7 +252,10 @@ class CompressedTools(CatalogTransform):
                 return await self.invoke_tool(tool_name, tool_input, quiet, active_ctx)
         tool = await self._get_backend_tool(ctx, tool_name)
         try:
-            tool_result = await tool.run(tool_input or {})
+            if isinstance(tool, ProxyTool):
+                tool_result = await tool.run(tool_input or {}, context=ctx)
+            else:
+                tool_result = await tool.run(tool_input or {})
         except ValidationError as exc:
             raise ToolError(await self._format_validation_error(ctx, tool_name, str(exc))) from exc
         except ToolError as exc:
@@ -275,7 +280,7 @@ class CompressedTools(CatalogTransform):
             return_text = f"Successfully executed tool '{tool.name}' without output."
         return ToolResult(content=[TextContent(type="text", text=return_text)])
 
-    async def list_uncompressed_tools(self, ctx: Context = None) -> str:  # type: ignore[assignment]
+    async def list_uncompressed_tools(self, ctx: Context | None = None) -> str:
         """Return the upstream server's original list_tools payload as JSON."""
         if ctx is None:
             async with Context(fastmcp=self._proxy_server) as active_ctx:
