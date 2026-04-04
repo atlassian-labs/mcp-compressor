@@ -6,6 +6,7 @@ compresses their tool descriptions to reduce token consumption.
 
 import asyncio
 import contextlib
+import importlib.metadata
 import os
 import re
 import shutil
@@ -17,7 +18,7 @@ import warnings
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Literal, overload
+from typing import Annotated, Literal, Optional, overload
 
 import anyio
 import keyring
@@ -53,6 +54,13 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="uvicorn")
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="websockets")
 
 app = typer.Typer(name="MCP Compressor", help="An MCP server wrapper for reducing tokens consumed by MCP tools.")
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        version = importlib.metadata.version("mcp-compressor")
+        typer.echo(f"mcp-compressor {version}")
+        raise typer.Exit()
 
 
 @app.command()
@@ -182,6 +190,16 @@ def main(
             ...,
             "--exclude-tools",
             help="Comma-separated list of wrapped server tool names to hide.",
+        ),
+    ] = None,
+    version: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--version",
+            "-V",
+            help="Show the version and exit.",
+            callback=_version_callback,
+            is_eager=True,
         ),
     ] = None,
 ):
