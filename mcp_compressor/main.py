@@ -18,7 +18,7 @@ import warnings
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Literal, Optional, overload
+from typing import Annotated, Literal, overload
 
 import anyio
 import keyring
@@ -193,7 +193,7 @@ def main(
         ),
     ] = None,
     version: Annotated[
-        Optional[bool],
+        bool | None,
         typer.Option(
             "--version",
             "-V",
