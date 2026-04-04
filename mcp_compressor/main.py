@@ -58,7 +58,10 @@ app = typer.Typer(name="MCP Compressor", help="An MCP server wrapper for reducin
 
 def _version_callback(value: bool) -> None:
     if value:
-        version = importlib.metadata.version("mcp-compressor")
+        try:
+            version = importlib.metadata.version("mcp-compressor")
+        except importlib.metadata.PackageNotFoundError:
+            version = "unknown"
         typer.echo(f"mcp-compressor {version}")
         raise typer.Exit()
 
