@@ -196,15 +196,17 @@ def main(
         ),
     ] = None,
     version: Annotated[
-        bool | None,
+        bool,
         typer.Option(
             "--version",
             "-V",
             help="Show the version and exit.",
             callback=_version_callback,
             is_eager=True,
+            is_flag=True,
+            expose_value=False,
         ),
-    ] = None,
+    ] = False,
 ):
     """Run the MCP Compressor proxy server.
 
