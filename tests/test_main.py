@@ -438,3 +438,27 @@ async def test_proxy_client_does_not_retry_non_oauth_transports(monkeypatch: pyt
             pass
 
     assert attempts == 1
+
+
+def test_version_flag(runner: CliRunner) -> None:
+    """--version should print the package version and exit with code 0."""
+    import importlib.metadata
+
+    from mcp_compressor.main import app
+
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    expected_version = importlib.metadata.version("mcp-compressor")
+    assert f"mcp-compressor {expected_version}" in result.output
+
+
+def test_version_short_flag(runner: CliRunner) -> None:
+    """-V should be an alias for --version."""
+    import importlib.metadata
+
+    from mcp_compressor.main import app
+
+    result = runner.invoke(app, ["-V"])
+    assert result.exit_code == 0
+    expected_version = importlib.metadata.version("mcp-compressor")
+    assert f"mcp-compressor {expected_version}" in result.output
