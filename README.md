@@ -107,6 +107,81 @@ mcp-compressor uvx mcp-server-fetch -c high
 mcp-compressor uvx mcp-server-fetch -c max
 ```
 
+## CLI Mode
+
+If you want the wrapped backend to behave like a local command-line tool, start here:
+
+```bash
+mcp-compressor --cli-mode --server-name atlassian -- https://mcp.atlassian.com/v1/mcp
+```
+
+Then use the generated CLI script:
+
+```bash
+atlassian --help
+```
+
+Instead of exposing the wrapped backend as many MCP tools, `--cli-mode` turns the backend into a local CLI with a single help tool for discovery.
+This is especially useful when you want an agent to work through a shell-style interface, or when a backend server already makes more sense as commands and flags than as direct MCP tool calls.
+
+```mermaid
+flowchart LR
+    Client["MCP Client / Agent"] -->|discovers| HelpTool["&lt;server_name&gt;_help"]
+    HelpTool -->|explains commands| GeneratedCLI["Generated local CLI script\n(e.g. atlassian)"]
+    User["User or Agent"] -->|runs CLI subcommands| GeneratedCLI
+    GeneratedCLI --> Bridge["Local HTTP bridge\n127.0.0.1:&lt;port&gt;"]
+    Bridge --> Compressor["mcp-compressor\n--cli-mode"]
+    Compressor --> Backend["Wrapped MCP server"]
+    Backend --> Compressor
+    Compressor --> Bridge
+    Bridge --> GeneratedCLI
+```
+
+### Why CLI mode matters
+
+- **One tool instead of many**: the MCP client sees a single `<server_name>_help` tool instead of the wrapper toolset
+- **Natural shell UX**: backend tools become CLI subcommands with flags derived from JSON schema
+- **Works well for agents**: agents can inspect help, then call a local command repeatedly without carrying the full MCP tool surface in context
+- **OAuth still works**: if the wrapped backend requires OAuth, CLI mode performs that connection flow before generating the local CLI
+- **TOON by default**: `--toonify` is automatically enabled in CLI mode for compact, readable output
+
+### CLI mode quick start
+
+```bash
+# Wrap a remote MCP server as a local CLI
+uvx mcp-compressor --cli-mode --server-name atlassian -- https://mcp.atlassian.com/v1/mcp
+
+# Or pass a single MCP config JSON string
+uvx mcp-compressor --cli-mode '{"mcpServers": {"atlassian": {"url": "https://mcp.atlassian.com/v1/mcp"}}}'
+```
+
+When CLI mode starts, it:
+
+1. Connects to the wrapped backend server, including OAuth if required
+2. Starts a local HTTP bridge on `127.0.0.1:<port>`
+3. Generates an executable script — on Unix this is typically written to `~/.local/bin/<name>` if available on `PATH`, otherwise to the current directory; on Windows it writes a `.cmd` launcher to a suitable directory on `PATH`
+4. Exposes a single MCP tool named `<server_name>_help` so the client can discover the generated CLI and its subcommands
+
+Example usage after startup:
+
+```bash
+# Top-level help — lists all subcommands
+atlassian --help
+
+# Per-tool help — shows flags derived from the backend tool schema
+atlassian get-confluence-page --help
+
+# Invoke a tool using ordinary CLI flags
+atlassian get-confluence-page --cloud-id abc123 --page-id 456
+
+# Escape hatch for complex inputs
+atlassian create-jira-issue --json '{"cloudId":"abc","projectKey":"PROJ","summary":"Bug"}'
+```
+
+CLI subcommand names are the snake_case → kebab-case conversion of backend tool names (for example `getConfluencePage` → `get-confluence-page`).
+The generated script only works while `mcp-compressor --cli-mode` is running.
+Use `--cli-port` if you want to pin the local bridge to a specific port.
+
 ### Advanced Options
 
 #### Stdio Servers
@@ -168,40 +243,8 @@ When `--toonify` is enabled:
 
 #### CLI Mode
 
-Use `--cli-mode` to turn any wrapped MCP server into a local CLI. This is useful when you want to interact with a backend server using familiar shell commands, or expose it to an AI agent as a CLI tool rather than a collection of MCP tools.
-
-```bash
-mcp-compressor https://mcp.atlassian.com/v1/mcp --server-name atlassian --cli-mode
-```
-
-When CLI mode starts, it:
-
-1. Connects to the wrapped backend server (performing OAuth if required)
-2. Starts a local HTTP bridge on `127.0.0.1:<random-port>`
-3. Generates an executable script — on Unix, a Python3 script written to `~/.local/bin/<name>` (or the current directory if no candidate is on `PATH`); on Windows, a `.cmd` batch file written to a suitable directory on `PATH`
-4. Exposes a single MCP tool `<server_name>_help` to the MCP client describing the CLI and its subcommands
-
-The generated script forwards all arguments to the local bridge and prints the result. **The script only works while `mcp-compressor --cli-mode` is running.**
-
-```bash
-# Top-level help — lists all subcommands (one per backend tool)
-atlassian --help
-
-# Per-tool help — shows flags derived from the tool's JSON schema
-atlassian get-confluence-page --help
-
-# Invoke a tool — flags are automatically mapped to tool input
-atlassian get-confluence-page --cloud-id abc123 --page-id 456
-
-# Universal escape hatch for complex inputs
-atlassian create-jira-issue --json '{"cloudId":"abc","projectKey":"PROJ","summary":"Bug"}'
-```
-
-CLI subcommand names are the snake_case → kebab-case conversion of the backend tool names (e.g. `getConfluencePage` → `get-confluence-page`).
-
-`--toonify` is automatically enabled in CLI mode — all successful backend tool results are returned in TOON format.
-
-Use `--cli-port` to pin the bridge to a specific port instead of a random one:
+CLI mode is documented in the dedicated [CLI Mode](#cli-mode) section above.
+The short version: use `--cli-mode`, give the server a name, and interact with the generated local script while `mcp-compressor` is running.
 
 ```bash
 mcp-compressor https://mcp.atlassian.com/v1/mcp --server-name atlassian --cli-mode --cli-port 8765
