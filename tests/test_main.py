@@ -274,17 +274,26 @@ def test_server_name_option_overrides_single_server_mcp_config_name(
     assert captured["server_name"] == "custom"
 
 
-def test_single_server_mcp_config_rejects_multiple_servers_via_cli(runner: CliRunner) -> None:
+def test_single_server_mcp_config_rejects_multiple_servers_via_cli(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
     config_json = (
         '{"mcpServers": {'
         '"weather": {"command": "uvx", "args": ["mcp-weather"]}, '
         '"calendar": {"command": "uvx", "args": ["mcp-calendar"]}'
         "}}"
     )
+    async_main_called = False
+
+    async def fake_async_main(**kwargs: Any) -> None:
+        nonlocal async_main_called
+        async_main_called = True
+
+    monkeypatch.setattr(main_module, "_async_main", fake_async_main)
     result = runner.invoke(app, [config_json])
 
     assert result.exit_code != 0
-    assert re.search(r"exactly one\s+server", _strip_ansi(result.output))
+    assert async_main_called is False
 
 
 async def test_server_uses_mcp_config_transport_for_single_server_json(monkeypatch: pytest.MonkeyPatch) -> None:
