@@ -190,6 +190,10 @@ class CliBridge:
             host="127.0.0.1",
             port=self._port,
             log_level="warning",
+            # Disable the ASGI lifespan protocol — the bridge app has no startup/shutdown hooks, and when the enclosing
+            # task group is cancelled on exit, Starlette's lifespan `await receive()` would otherwise surface a noisy
+            # CancelledError traceback.
+            lifespan="off",
         )
         server = uvicorn.Server(config)
         # Disable uvicorn's signal handlers — anyio and the MCP server manage
