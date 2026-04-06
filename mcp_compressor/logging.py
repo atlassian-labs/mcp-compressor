@@ -13,6 +13,8 @@ import sys
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
+from fastmcp.client.auth import OAuth
+from fastmcp.client.transports import SSETransport, StreamableHttpTransport
 from loguru import logger
 from loguru_logging_intercept import setup_loguru_logging_intercept
 
@@ -65,9 +67,6 @@ def suppress_recoverable_oauth_traceback_logging(transport: TransportType) -> It
 
     Only active for HTTP/SSE transports using a FastMCP OAuth instance.
     """
-    from fastmcp.client.auth import OAuth
-    from fastmcp.client.transports import SSETransport, StreamableHttpTransport
-
     if not isinstance(transport, StreamableHttpTransport | SSETransport):
         yield
         return

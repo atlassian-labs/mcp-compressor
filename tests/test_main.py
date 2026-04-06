@@ -1,11 +1,15 @@
 """Tests for mcp_compressor/main.py."""
 
+import importlib.metadata
 import logging
+import re
+from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import pytest
-from fastmcp.client.auth.oauth import OAuth
-from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
+from fastmcp.client.auth.oauth import ClientNotFoundError, OAuth
+from fastmcp.client.transports import MCPConfigTransport, SSETransport, StdioTransport, StreamableHttpTransport
+from fastmcp.exceptions import McpError
 from typer.testing import CliRunner
 
 import mcp_compressor.logging as logging_module
@@ -19,9 +23,11 @@ from mcp_compressor.main import (
     _get_stdio_transport,
     _get_streamable_http_transport,
     _interpolate_string,
+    _parse_single_server_mcp_config,
     _parse_tool_name_list,
     _proxy_client,
     _server,
+    app,
 )
 from mcp_compressor.types import CompressionLevel
 
@@ -86,6 +92,29 @@ def test_interpolate_string_partial_missing_returns_original() -> None:
 def test_parse_tool_name_list(tool_name_group: str | None, expected: list[str] | None) -> None:
     """Test parsing comma-separated tool lists from CLI options."""
     assert _parse_tool_name_list(tool_name_group) == expected
+
+
+def test_parse_single_server_mcp_config() -> None:
+    config_json = '{"mcpServers": {"weather": {"command": "uvx", "args": ["mcp-weather"]}}}'
+
+    parsed = _parse_single_server_mcp_config([config_json])
+    assert parsed is not None
+    config, server_name = parsed
+
+    assert server_name == "weather"
+    assert list(config.mcpServers) == ["weather"]
+
+
+def test_parse_single_server_mcp_config_rejects_multiple_servers() -> None:
+    config_json = (
+        '{"mcpServers": {'
+        '"weather": {"command": "uvx", "args": ["mcp-weather"]}, '
+        '"calendar": {"command": "uvx", "args": ["mcp-calendar"]}'
+        "}}"
+    )
+
+    with pytest.raises(ValueError, match="exactly one server"):
+        _parse_single_server_mcp_config([config_json])
 
 
 # Tests for transport creation functions
@@ -166,9 +195,6 @@ def test_get_sse_transport() -> None:
 
 async def test_remote_server_connects_eagerly() -> None:
     """Test that remote proxy startup eagerly connects to the upstream backend."""
-    import pytest
-    from fastmcp.exceptions import McpError
-
     # The server should attempt to connect to the upstream backend eagerly,
     # which means it will raise a connection error for an unreachable URL.
     with pytest.raises((McpError, Exception)):
@@ -185,15 +211,11 @@ async def test_remote_server_connects_eagerly() -> None:
 
 
 def _strip_ansi(text: str) -> str:
-    import re
-
     return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 def test_cli_mode_without_server_name_raises(runner: CliRunner) -> None:
     """Test that --cli-mode without --server-name exits with a bad parameter error."""
-    from mcp_compressor.main import app
-
     result = runner.invoke(app, ["--cli-mode", "uvx", "some-mcp-server"])
     assert result.exit_code != 0
     assert "--server-name" in _strip_ansi(result.output)
@@ -201,17 +223,114 @@ def test_cli_mode_without_server_name_raises(runner: CliRunner) -> None:
 
 def test_max_compression_without_server_name_raises(runner: CliRunner) -> None:
     """Test that --compression-level=max without --server-name exits with a bad parameter error."""
-    from mcp_compressor.main import app
-
     result = runner.invoke(app, ["--compression-level", "max", "uvx", "some-mcp-server"])
     assert result.exit_code != 0
     assert "--server-name" in _strip_ansi(result.output)
 
 
+def test_cli_mode_uses_server_name_from_single_server_mcp_config(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def fake_async_main(**kwargs: Any) -> None:
+        captured.update(kwargs)
+
+    original_asyncio_run = main_module.asyncio.run
+
+    def fake_run(coro):
+        original_asyncio_run(coro)
+
+    monkeypatch.setattr(main_module, "_async_main", fake_async_main)
+    monkeypatch.setattr(main_module.asyncio, "run", fake_run)
+
+    config_json = '{"mcpServers": {"weather": {"command": "uvx", "args": ["mcp-weather"]}}}'
+    result = runner.invoke(app, ["--cli-mode", config_json])
+
+    assert result.exit_code == 0
+    assert captured["server_name"] == "weather"
+
+
+def test_server_name_option_overrides_single_server_mcp_config_name(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def fake_async_main(**kwargs: Any) -> None:
+        captured.update(kwargs)
+
+    original_asyncio_run = main_module.asyncio.run
+
+    def fake_run(coro):
+        original_asyncio_run(coro)
+
+    monkeypatch.setattr(main_module, "_async_main", fake_async_main)
+    monkeypatch.setattr(main_module.asyncio, "run", fake_run)
+
+    config_json = '{"mcpServers": {"weather": {"command": "uvx", "args": ["mcp-weather"]}}}'
+    result = runner.invoke(app, ["--cli-mode", "--server-name", "custom", config_json])
+
+    assert result.exit_code == 0
+    assert captured["server_name"] == "custom"
+
+
+def test_single_server_mcp_config_rejects_multiple_servers_via_cli(runner: CliRunner) -> None:
+    config_json = (
+        '{"mcpServers": {'
+        '"weather": {"command": "uvx", "args": ["mcp-weather"]}, '
+        '"calendar": {"command": "uvx", "args": ["mcp-calendar"]}'
+        "}}"
+    )
+    result = runner.invoke(app, [config_json])
+
+    assert result.exit_code != 0
+    assert "exactly one server" in _strip_ansi(result.output)
+
+
+async def test_server_uses_mcp_config_transport_for_single_server_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    config_json = '{"mcpServers": {"weather": {"command": "uvx", "args": ["mcp-weather"]}}}'
+    captured: dict[str, Any] = {}
+
+    @asynccontextmanager
+    async def fake_proxy_client(transport):
+        captured["transport"] = transport
+        yield object()
+
+    class FakeCompressedTools:
+        def __init__(self, mcp, **kwargs) -> None:
+            self.mcp = mcp
+            captured["compressed_tools_kwargs"] = kwargs
+
+        async def configure_server(self) -> None:
+            return None
+
+        async def get_compression_stats(self) -> dict[str, int]:
+            return {"compressed": 1, "original": 1}
+
+    fake_mcp = object()
+
+    monkeypatch.setattr(main_module, "_proxy_client", fake_proxy_client)
+    monkeypatch.setattr(main_module, "create_proxy", lambda client, name: fake_mcp)
+    monkeypatch.setattr(main_module, "CompressedTools", FakeCompressedTools)
+    monkeypatch.setattr(main_module, "print_banner", lambda *args, **kwargs: None)
+
+    async with _server(
+        command_or_url_list=[config_json],
+        cwd=None,
+        env_list=None,
+        header_list=None,
+        timeout=10.0,
+        compression_level=CompressionLevel.MEDIUM,
+        server_name="weather",
+    ) as mcp:
+        assert mcp is fake_mcp
+
+    assert isinstance(captured["transport"], MCPConfigTransport)
+    assert captured["compressed_tools_kwargs"]["server_name"] == "weather"
+
+
 def test_recoverable_oauth_traceback_filter_suppresses_known_stale_oauth_signatures() -> None:
     """Test that only the recoverable stale OAuth traceback logs are suppressed."""
-    from fastmcp.client.auth.oauth import ClientNotFoundError
-
     log_filter = _RecoverableOAuthTracebackFilter()
 
     # Suppressed: upstream 500 error
@@ -369,8 +488,6 @@ async def test_proxy_client_surfaces_helpful_hint_after_retry_failure(monkeypatc
 
 async def test_proxy_client_retries_once_after_client_not_found_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test that a ClientNotFoundError also clears cached OAuth state and retries once."""
-    from fastmcp.client.auth.oauth import ClientNotFoundError
-
     transport = _get_streamable_http_transport(url="https://example.com/mcp", header_list=None, timeout=30.0)
     assert isinstance(transport.auth, OAuth)
 
@@ -442,10 +559,6 @@ async def test_proxy_client_does_not_retry_non_oauth_transports(monkeypatch: pyt
 
 def test_version_flag(runner: CliRunner) -> None:
     """--version should print the package version and exit with code 0."""
-    import importlib.metadata
-
-    from mcp_compressor.main import app
-
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
     expected_version = importlib.metadata.version("mcp-compressor")
@@ -454,7 +567,6 @@ def test_version_flag(runner: CliRunner) -> None:
 
 def test_version_short_flag(runner: CliRunner) -> None:
     """-V should be an alias for --version."""
-    import importlib.metadata
 
     from mcp_compressor.main import app
 

@@ -1,8 +1,17 @@
 """Tests for mcp_compressor/tools.py."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 import toons
+from fastmcp import FastMCP
+from fastmcp.server import create_proxy
+from fastmcp.server.context import Context
+from fastmcp.server.middleware import MiddlewareContext
+from fastmcp.server.providers.proxy import ProxyTool
 from fastmcp.tools import Tool
+from fastmcp.tools.tool import ToolResult
+from mcp.types import CallToolRequestParams, TextContent
 
 from mcp_compressor.tools import (
     CompressedTools,
@@ -238,9 +247,6 @@ async def test_tool_cache_warmed_at_configure_server() -> None:
 
 async def test_get_backend_tools_uses_cache_after_configure_server() -> None:
     """_get_backend_tools() should not call the backend after the cache is warmed."""
-    from fastmcp import FastMCP
-    from fastmcp.server import create_proxy
-    from fastmcp.server.context import Context
 
     backend = FastMCP(name="backend")
 
@@ -278,9 +284,6 @@ async def test_get_backend_tools_uses_cache_after_configure_server() -> None:
 
 async def test_invalidate_tool_cache_forces_refetch() -> None:
     """invalidate_tool_cache() should clear the cache so the next call re-fetches from backend."""
-    from fastmcp import FastMCP
-    from fastmcp.server import create_proxy
-    from fastmcp.server.context import Context
 
     backend = FastMCP(name="backend")
 
@@ -315,9 +318,6 @@ async def test_invalidate_tool_cache_forces_refetch() -> None:
 
 async def test_get_backend_tools_lazy_fetch_when_cache_cold() -> None:
     """_get_backend_tools() should fetch from backend if cache is cold (configure_server not called)."""
-    from fastmcp import FastMCP
-    from fastmcp.server import create_proxy
-    from fastmcp.server.context import Context
 
     backend = FastMCP(name="backend")
 
@@ -358,12 +358,6 @@ class TestToolNotFoundError:
 
 async def test_invoke_tool_passes_ctx_to_proxy_tool() -> None:
     """invoke_tool should pass ctx to ProxyTool.run() so that request meta is forwarded."""
-    from fastmcp import FastMCP
-    from fastmcp.server import create_proxy
-    from fastmcp.server.context import Context
-    from fastmcp.server.providers.proxy import ProxyTool
-    from fastmcp.tools.tool import ToolResult
-    from mcp.types import TextContent
 
     backend = FastMCP(name="backend")
 
@@ -407,14 +401,8 @@ async def test_invoke_tool_passes_ctx_to_proxy_tool() -> None:
 
 async def test_middleware_passes_fastmcp_context_to_invoke_tool() -> None:
     """InvokeToolCompatibilityMiddleware should pass fastmcp_context to invoke_tool."""
-    from unittest.mock import AsyncMock
 
     from fastmcp import FastMCP
-    from fastmcp.server import create_proxy
-    from fastmcp.server.context import Context
-    from fastmcp.server.middleware import MiddlewareContext
-    from fastmcp.tools.tool import ToolResult
-    from mcp.types import CallToolRequestParams, TextContent
 
     backend = FastMCP(name="backend")
 

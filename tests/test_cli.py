@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import os
 import stat
 import sys
@@ -9,9 +10,12 @@ from pathlib import Path
 
 import pytest
 from fastmcp.tools import Tool
+from fastmcp.tools.tool import ToolResult
+from mcp.types import TextContent
+from starlette.testclient import TestClient
 
 from mcp_compressor.cli_bridge import CliBridge
-from mcp_compressor.cli_script import generate_cli_script, remove_cli_script_entry
+from mcp_compressor.cli_script import find_script_dir, generate_cli_script, remove_cli_script_entry
 from mcp_compressor.cli_tools import (
     build_help_tool_description,
     format_tool_help,
@@ -68,7 +72,6 @@ def test_sanitize_cli_name(name: str, expected: str) -> None:
 
 def _make_tool(name: str, description: str, properties: dict, required: list) -> Tool:
     """Create a minimal Tool instance without going through from_function."""
-    import inspect
 
     # Build a real function with explicit parameters matching the schema
     params = []
@@ -295,7 +298,6 @@ def test_generate_cli_script_uses_current_interpreter_and_modern_typing(tmp_path
 
 
 def test_find_script_dir_returns_path_and_bool() -> None:
-    from mcp_compressor.cli_script import find_script_dir
 
     script_dir, on_path = find_script_dir()
     assert isinstance(script_dir, Path)
@@ -400,7 +402,6 @@ def bridge_tools(add_tool: Tool, do_nothing_tool: Tool) -> dict:
 @pytest.fixture
 def mock_invoke_fn(add_tool: Tool):
     from fastmcp.tools.tool import ToolResult
-    from mcp.types import TextContent
 
     async def invoke(tool_name: str, tool_input: dict | None, quiet: bool = False) -> ToolResult:
         if tool_name == "add":
@@ -429,7 +430,6 @@ def bridge(bridge_tools, mock_invoke_fn) -> CliBridge:
 
 
 async def test_bridge_health(bridge: CliBridge) -> None:
-    from starlette.testclient import TestClient
 
     client = TestClient(bridge.app)
     response = client.get("/health")
@@ -438,7 +438,6 @@ async def test_bridge_health(bridge: CliBridge) -> None:
 
 
 async def test_bridge_top_level_help(bridge: CliBridge) -> None:
-    from starlette.testclient import TestClient
 
     client = TestClient(bridge.app)
     response = client.post("/exec", json={"argv": ["--help"]})
@@ -449,7 +448,6 @@ async def test_bridge_top_level_help(bridge: CliBridge) -> None:
 
 
 async def test_bridge_per_tool_help(bridge: CliBridge) -> None:
-    from starlette.testclient import TestClient
 
     client = TestClient(bridge.app)
     response = client.post("/exec", json={"argv": ["add", "--help"]})
@@ -459,7 +457,6 @@ async def test_bridge_per_tool_help(bridge: CliBridge) -> None:
 
 
 async def test_bridge_invokes_tool(bridge: CliBridge) -> None:
-    from starlette.testclient import TestClient
 
     client = TestClient(bridge.app)
     response = client.post("/exec", json={"argv": ["add", "--a", "5", "--b", "3"]})
@@ -468,7 +465,6 @@ async def test_bridge_invokes_tool(bridge: CliBridge) -> None:
 
 
 async def test_bridge_unknown_subcommand(bridge: CliBridge) -> None:
-    from starlette.testclient import TestClient
 
     client = TestClient(bridge.app)
     response = client.post("/exec", json={"argv": ["nonexistent", "--foo", "bar"]})
@@ -477,7 +473,6 @@ async def test_bridge_unknown_subcommand(bridge: CliBridge) -> None:
 
 
 async def test_bridge_missing_required_arg(bridge: CliBridge) -> None:
-    from starlette.testclient import TestClient
 
     client = TestClient(bridge.app)
     response = client.post("/exec", json={"argv": ["add", "--a", "5"]})
@@ -487,7 +482,6 @@ async def test_bridge_missing_required_arg(bridge: CliBridge) -> None:
 
 async def test_bridge_quiet_flag_is_passed_to_invoke_fn(bridge: CliBridge) -> None:
     """Test that --quiet is extracted from argv and passed to the invoke function."""
-    from starlette.testclient import TestClient
 
     client = TestClient(bridge.app)
     response = client.post("/exec", json={"argv": ["add", "--a", "5", "--b", "3", "--quiet"]})
@@ -498,7 +492,6 @@ async def test_bridge_quiet_flag_is_passed_to_invoke_fn(bridge: CliBridge) -> No
 
 async def test_bridge_without_quiet_flag_passes_false_to_invoke_fn(bridge: CliBridge) -> None:
     """Test that quiet=False is passed when --quiet is not in argv."""
-    from starlette.testclient import TestClient
 
     client = TestClient(bridge.app)
     response = client.post("/exec", json={"argv": ["add", "--a", "5", "--b", "3"]})
@@ -510,7 +503,6 @@ async def test_bridge_without_quiet_flag_passes_false_to_invoke_fn(bridge: CliBr
 async def test_bridge_quiet_flag_not_passed_to_tool_input(bridge: CliBridge) -> None:
     """Test that --quiet is stripped from argv before parse_argv_to_tool_input, so it doesn't
     cause 'Unknown option' errors for tools that don't declare a 'quiet' parameter."""
-    from starlette.testclient import TestClient
 
     client = TestClient(bridge.app)
     # If --quiet leaked into tool input parsing it would raise "Unknown option: --quiet"

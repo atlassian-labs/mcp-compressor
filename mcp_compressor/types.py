@@ -6,7 +6,7 @@ This module defines enumerations and type aliases used throughout the MCP Compre
 from enum import Enum
 from typing import TypeAlias
 
-from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
+from fastmcp.client.transports import ClientTransport
 from fastmcp.utilities.types import Audio, File, Image
 
 
@@ -39,8 +39,8 @@ class CompressionLevel(str, Enum):
     LOW = "low"
 
 
-TransportType: TypeAlias = SSETransport | StdioTransport | StreamableHttpTransport
-"""Type alias for supported MCP transport types (SSE, stdio, or streamable HTTP)."""
+TransportType: TypeAlias = ClientTransport
+"""Type alias for supported MCP client transports."""
 
 ToolResultBlock: TypeAlias = str | Audio | File | Image
 """Type alias for possible tool result content blocks (text, audio, file, or image)."""

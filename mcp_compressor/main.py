@@ -28,7 +28,8 @@ import typer
 from cryptography.fernet import Fernet
 from fastmcp import FastMCP
 from fastmcp.client.auth import OAuth
-from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
+from fastmcp.client.transports import MCPConfigTransport, SSETransport, StdioTransport, StreamableHttpTransport
+from fastmcp.mcp_config import MCPConfig
 from fastmcp.server import create_proxy
 from fastmcp.server.providers.proxy import ProxyClient
 from key_value.aio.protocols import AsyncKeyValue
@@ -39,6 +40,7 @@ from key_value.aio.stores.filetree import (
 )
 from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 from loguru import logger
+from pydantic import ValidationError
 
 from .banner import print_banner
 from .cli_bridge import CliBridge
@@ -214,9 +216,19 @@ def main(
     """
     configure_logging(log_level)
 
-    if cli_mode and server_name is None:
+    resolved_server_name = server_name
+    try:
+        parsed_config = _parse_single_server_mcp_config(command_or_url_list)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="'COMMAND_OR_URL'") from exc
+
+    if parsed_config is not None:
+        _config, config_server_name = parsed_config
+        resolved_server_name = server_name or config_server_name
+
+    if cli_mode and resolved_server_name is None:
         raise typer.BadParameter("--server-name is required when using --cli-mode.", param_hint="'--server-name'")
-    if compression_level == CompressionLevel.MAX and server_name is None:
+    if compression_level == CompressionLevel.MAX and resolved_server_name is None:
         raise typer.BadParameter(
             "--server-name is required when using --compression-level=max.", param_hint="'--server-name'"
         )
@@ -252,7 +264,7 @@ def main(
             header_list=header_list,
             timeout=timeout,
             compression_level=compression_level,
-            server_name=server_name,
+            server_name=resolved_server_name,
             log_level=log_level,
             toonify=toonify or cli_mode,
             cli_mode=cli_mode,
@@ -408,19 +420,28 @@ async def _server(
     exclude_tools: list[str] | None = None,
 ) -> AsyncGenerator[FastMCP, None]:
     command_or_url = " ".join(command_or_url_list)
-    transport_type = _infer_transport_type(command_or_url)
-    logger.info(f"Inferred transport type: {transport_type}")
-
-    # Handle different transport types
-    transport: TransportType
-    if transport_type == "stdio":
-        transport = _get_stdio_transport(
-            command=command_or_url_list[0], args=command_or_url_list[1:], cwd=cwd, env_list=env_list
+    parsed_config = _parse_single_server_mcp_config(command_or_url_list)
+    if parsed_config is not None:
+        config, _config_server_name = parsed_config
+        transport_type: Literal["stdio", "http", "sse"] = _infer_transport_type(
+            str(next(iter(config.mcpServers.values())).model_dump().get("url") or command_or_url)
         )
-    elif transport_type == "http":
-        transport = _get_streamable_http_transport(url=command_or_url, header_list=header_list, timeout=timeout)
-    elif transport_type == "sse":
-        transport = _get_sse_transport(url=command_or_url, header_list=header_list, timeout=timeout)
+        transport = MCPConfigTransport(config)
+        logger.info("Loaded single-server MCP config JSON")
+    else:
+        transport_type = _infer_transport_type(command_or_url)
+        logger.info(f"Inferred transport type: {transport_type}")
+
+        # Handle different transport types
+        transport: TransportType
+        if transport_type == "stdio":
+            transport = _get_stdio_transport(
+                command=command_or_url_list[0], args=command_or_url_list[1:], cwd=cwd, env_list=env_list
+            )
+        elif transport_type == "http":
+            transport = _get_streamable_http_transport(url=command_or_url, header_list=header_list, timeout=timeout)
+        elif transport_type == "sse":
+            transport = _get_sse_transport(url=command_or_url, header_list=header_list, timeout=timeout)
 
     if cli_mode:
         cli_name = sanitize_cli_name(server_name or "mcp")
@@ -613,6 +634,27 @@ def _parse_tool_name_list(tool_name_group: str | None) -> list[str] | None:
 
     tool_names = [tool_name.strip() for tool_name in tool_name_group.split(",")]
     return [tool_name for tool_name in tool_names if tool_name] or None
+
+
+def _parse_single_server_mcp_config(command_or_url_list: list[str]) -> tuple[MCPConfig, str] | None:
+    """Parse a single JSON MCP config argument and return the config plus its only server name."""
+    if len(command_or_url_list) != 1:
+        return None
+
+    command_or_url = command_or_url_list[0].strip()
+    if not command_or_url.startswith("{"):
+        return None
+
+    try:
+        config = MCPConfig.model_validate_json(command_or_url)
+    except ValidationError as exc:
+        raise ValueError("Invalid MCP config JSON provided for COMMAND_OR_URL.") from exc
+
+    if len(config.mcpServers) != 1:
+        raise ValueError("MCP config JSON must contain exactly one server in the mcpServers map.")
+
+    server_name = next(iter(config.mcpServers))
+    return config, server_name
 
 
 def _interpolate_string(value: str) -> str:
