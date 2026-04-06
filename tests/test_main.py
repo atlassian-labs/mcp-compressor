@@ -275,6 +275,26 @@ def test_max_compression_without_server_name_raises(runner: CliRunner) -> None:
     assert "--server-name" in _strip_ansi(result.output)
 
 
+def test_default_log_level_is_error(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    async def fake_async_main(**kwargs: Any) -> None:
+        captured.update(kwargs)
+
+    original_asyncio_run = main_module.asyncio.run
+
+    def fake_run(coro):
+        original_asyncio_run(coro)
+
+    monkeypatch.setattr(main_module, "_async_main", fake_async_main)
+    monkeypatch.setattr(main_module.asyncio, "run", fake_run)
+
+    result = runner.invoke(app, ["uvx", "some-mcp-server"])
+
+    assert result.exit_code == 0
+    assert captured["log_level"] == main_module.LogLevel.ERROR
+
+
 def test_cli_mode_uses_server_name_from_single_server_mcp_config(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -158,7 +158,7 @@ def main(
             ),
             case_sensitive=False,
         ),
-    ] = LogLevel.WARNING,
+    ] = LogLevel.ERROR,
     toonify: Annotated[
         bool,
         typer.Option(..., "--toonify", help="Convert JSON tool responses to TOON format automatically."),
