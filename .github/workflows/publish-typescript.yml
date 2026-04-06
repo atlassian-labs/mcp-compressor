@@ -1,0 +1,62 @@
+name: publish-typescript
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish (defaults to the version already in typescript/package.json)
+        required: false
+        type: string
+  release:
+    types: [published]
+
+jobs:
+  publish-typescript:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Resolve publish version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "value=${GITHUB_REF#refs/*/}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ inputs.version }}" ]; then
+            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update package version for publish
+        if: steps.version.outputs.value != ''
+        run: |
+          node -e "const fs=require('fs'); const file='package.json'; const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.version=process.argv[1]; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\\n');" "${{ steps.version.outputs.value }}"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test && npm run check
+
+      - name: Get Artifact Publish Token
+        id: publish-token
+        uses: atlassian-labs/artifact-publish-token@v1.0.1
+        with:
+          output-modes: npm
+
+      - name: Publish package
+        run: npm publish
+        env:
+          NPM_CONFIG_USERCONFIG: ${{ github.workspace }}/.npmrc-public

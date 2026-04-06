@@ -9,6 +9,7 @@ copyright: Maintained by <a href="https://atlassian.com">atlassian</a>.
 
 nav:
   - Home: index.md
+  - TypeScript: typescript.md
   - Modules: modules.md
 plugins:
   - search

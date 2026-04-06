@@ -78,8 +78,8 @@ def main(
             ...,
             metavar="COMMAND_OR_URL",
             help=(
-                "The URL of the MCP server to connect to for streamable HTTP or SSE servers, or the command and "
-                "arguments to run for stdio servers. Example: uvx mcp-server-fetch"
+                "The backend to wrap: either a remote MCP URL, a stdio command plus arguments, or a single-server "
+                "MCP config JSON string. Example stdio usage: uvx mcp-server-fetch"
             ),
         ),
     ],

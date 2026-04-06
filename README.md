@@ -9,11 +9,21 @@ An MCP server wrapper for reducing tokens consumed by MCP tools.
 
 - **Github repository**: <https://github.com/atlassian-labs/mcp-compressor/>
 - **Documentation** <https://atlassian-labs.github.io/mcp-compressor/>
+- **TypeScript docs (GH Pages)**: <https://atlassian-labs.github.io/mcp-compressor/typescript/>
+- **TypeScript package code**: <https://github.com/atlassian-labs/mcp-compressor/blob/main/typescript/>
 - **Blog** <https://www.atlassian.com/blog/developer/mcp-compression-preventing-tool-bloat-in-ai-agents/>
 
 ---
 
 ## 📋 What's New
+
+#### 2026-04-06 — TypeScript Implementation
+
+> Added a sibling TypeScript implementation with matching compression concepts, OAuth support, in-process runtime APIs, and TypeScript CLI mode.
+
+#### 2026-04-06 — Single-Server MCP Config JSON Strings
+
+> `COMMAND_OR_URL` can now be a single MCP config JSON string. For now, `mcpServers` must contain exactly one server, and its key becomes the default `--server-name` unless one is passed explicitly.
 
 #### 2026-03-24 — CLI Mode
 
@@ -52,6 +62,7 @@ With 30k+ tokens just for tool descriptions, costs can reach **1-10 cents per re
 
 ## Features
 
+- **Python + TypeScript implementations**: A mature Python implementation plus a sibling TypeScript package for Node.js consumers
 - **Token Reduction**: Compress tool descriptions by up to 99% depending on compression level and tool count
 - **Multiple Compression Levels**: Choose between `low`, `medium`, `high`, or `max`
 - **Universal Compatibility**: Works with any MCP server (stdio, HTTP, SSE)
@@ -59,6 +70,21 @@ With 30k+ tokens just for tool descriptions, costs can reach **1-10 cents per re
 - **CLI Mode**: Convert any MCP server into a local CLI with `--cli-mode` — generates a shell script that lets you (or an AI agent) interact with the backend via familiar command-line syntax
 - **Zero Functionality Loss**: All tools remain fully accessible through the wrapper interface
 - **Easy Integration**: Drop-in replacement for existing MCP servers
+
+## Python vs TypeScript
+
+| Capability | Python | TypeScript |
+| --- | --- | --- |
+| Core compression proxy server | ✅ | ✅ |
+| stdio / streamable HTTP / SSE backends | ✅ | ✅ |
+| Single-server MCP config JSON string input | ✅ | ✅ |
+| Persistent OAuth support | ✅ | ✅ |
+| CLI mode | ✅ mature | ✅ available |
+| In-process runtime API for app/agent embedding | ⚠️ not first-class | ✅ first-class |
+| Prompt/resource passthrough parity | ✅ broader | ⚠️ narrower |
+| Production maturity | ✅ primary implementation | ⚠️ newer implementation |
+
+Use the Python implementation when you want the most mature feature set today. Use the TypeScript implementation when you want Node.js-native usage, in-process embedding, or tighter TypeScript ecosystem integration.
 
 ## Installation
 
@@ -341,6 +367,11 @@ The best choice of compression level will depend on a number of factors, includi
 1. **How unusual or complex the tools are** - simpler tools can be compressed more heavily with little downsize. Consider a simple `bash` tool with a single input argument `command`. Any modern LLM will understand exactly how to use it after seeing just the tool name and the name of the argument, so unless there is unexpected internal logic within the tool, aggressive compression can be used with little downside.
 
 ## Configuration with MCP JSON file
+
+You can also pass a single-server MCP config JSON string directly as `COMMAND_OR_URL` on the CLI. This is especially useful for remote servers when you want the config itself to carry the URL, headers, transport, or stdio command details.
+
+For now, direct JSON-string input supports exactly one server entry in `mcpServers`.
+
 
 To configure mcp-compressor in an MCP JSON configuration file, use the following pattern:
 

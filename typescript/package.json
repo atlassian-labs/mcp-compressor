@@ -1,0 +1,49 @@
+{
+  "name": "mcp-compressor",
+  "version": "0.2.12",
+  "description": "TypeScript MCP server wrapper for reducing tokens consumed by MCP tools.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/atlassian-labs/mcp-compressor",
+  "bugs": {
+    "url": "https://github.com/atlassian-labs/mcp-compressor/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/atlassian-labs/mcp-compressor.git",
+    "directory": "typescript"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "bin": {
+    "mcp-compressor": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "dev": "npm run build && node dist/cli.js",
+    "test": "npm run build && tsc -p tsconfig.test.json && node --test dist-test/tests/*.test.js"
+  },
+  "publishConfig": {
+    "registry": "https://packages.atlassian.com/api/npm/npm-public/"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@toon-format/toon": "^2.1.0",
+    "fastmcp": "^3.35.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@types/node": "^24.10.1"
+  }
+}
