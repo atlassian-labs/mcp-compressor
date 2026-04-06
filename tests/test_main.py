@@ -7,8 +7,9 @@ from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import pytest
+from fastmcp.client.auth.bearer import BearerAuth
 from fastmcp.client.auth.oauth import ClientNotFoundError, OAuth
-from fastmcp.client.transports import MCPConfigTransport, SSETransport, StdioTransport, StreamableHttpTransport
+from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
 from fastmcp.exceptions import McpError
 from typer.testing import CliRunner
 
@@ -19,6 +20,7 @@ from mcp_compressor.logging import (
     suppress_recoverable_oauth_traceback_logging,
 )
 from mcp_compressor.main import (
+    _get_single_server_transport_from_mcp_config,
     _get_sse_transport,
     _get_stdio_transport,
     _get_streamable_http_transport,
@@ -118,6 +120,51 @@ def test_parse_single_server_mcp_config_rejects_multiple_servers() -> None:
 
 
 # Tests for transport creation functions
+
+
+def test_get_single_server_transport_from_mcp_config_remote_defaults_to_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
+    config_json = '{"mcpServers": {"weather": {"url": "https://example.com/mcp"}}}'
+    parsed = _parse_single_server_mcp_config([config_json])
+    assert parsed is not None
+    config, _ = parsed
+
+    token_storage = object()
+    monkeypatch.setattr(main_module, "_build_token_storage", lambda: token_storage)
+
+    transport, transport_type = _get_single_server_transport_from_mcp_config(config=config)
+
+    assert transport_type == "http"
+    assert isinstance(transport, StreamableHttpTransport)
+    assert isinstance(transport.auth, OAuth)
+    assert transport.auth.mcp_url == "https://example.com/mcp"
+    assert transport.auth._token_storage is token_storage
+
+
+def test_get_single_server_transport_from_mcp_config_remote_preserves_explicit_auth() -> None:
+    config_json = '{"mcpServers": {"weather": {"url": "https://example.com/mcp", "auth": "abc"}}}'
+    parsed = _parse_single_server_mcp_config([config_json])
+    assert parsed is not None
+    config, _ = parsed
+
+    transport, transport_type = _get_single_server_transport_from_mcp_config(config=config)
+
+    assert transport_type == "http"
+    assert isinstance(transport, StreamableHttpTransport)
+    assert isinstance(transport.auth, BearerAuth)
+    assert transport.auth.token.get_secret_value() == "abc"
+
+
+def test_get_single_server_transport_from_mcp_config_sse_uses_only_config_timeout() -> None:
+    config_json = '{"mcpServers": {"weather": {"url": "https://example.com/sse", "transport": "sse"}}}'
+    parsed = _parse_single_server_mcp_config([config_json])
+    assert parsed is not None
+    config, _ = parsed
+
+    transport, transport_type = _get_single_server_transport_from_mcp_config(config=config)
+
+    assert transport_type == "sse"
+    assert isinstance(transport, SSETransport)
+    assert transport.sse_read_timeout is None
 
 
 def test_get_stdio_transport(tmp_path) -> None:
@@ -296,7 +343,34 @@ def test_single_server_mcp_config_rejects_multiple_servers_via_cli(
     assert async_main_called is False
 
 
-async def test_server_uses_mcp_config_transport_for_single_server_json(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("extra_args", "expected_option"),
+    [
+        (["--cwd", "."], "--cwd"),
+        (["--env", "FOO=bar"], "--env"),
+        (["--header", "Authorization=Bearer abc"], "--header"),
+        (["--timeout", "30"], "--timeout"),
+    ],
+)
+def test_single_server_mcp_config_rejects_conflicting_transport_options(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch, extra_args: list[str], expected_option: str
+) -> None:
+    config_json = '{"mcpServers": {"weather": {"url": "https://example.com/mcp"}}}'
+    async_main_called = False
+
+    async def fake_async_main(**kwargs: Any) -> None:
+        nonlocal async_main_called
+        async_main_called = True
+
+    monkeypatch.setattr(main_module, "_async_main", fake_async_main)
+    result = runner.invoke(app, [*extra_args, config_json])
+
+    assert result.exit_code != 0
+    assert expected_option in _strip_ansi(result.output)
+    assert async_main_called is False
+
+
+async def test_server_uses_single_server_config_transport_directly(monkeypatch: pytest.MonkeyPatch) -> None:
     config_json = '{"mcpServers": {"weather": {"command": "uvx", "args": ["mcp-weather"]}}}'
     captured: dict[str, Any] = {}
 
@@ -334,7 +408,9 @@ async def test_server_uses_mcp_config_transport_for_single_server_json(monkeypat
     ) as mcp:
         assert mcp is fake_mcp
 
-    assert isinstance(captured["transport"], MCPConfigTransport)
+    assert isinstance(captured["transport"], StdioTransport)
+    assert captured["transport"].command == "uvx"
+    assert captured["transport"].args == ["mcp-weather"]
     assert captured["compressed_tools_kwargs"]["server_name"] == "weather"
 
 
@@ -576,9 +652,6 @@ def test_version_flag(runner: CliRunner) -> None:
 
 def test_version_short_flag(runner: CliRunner) -> None:
     """-V should be an alias for --version."""
-
-    from mcp_compressor.main import app
-
     result = runner.invoke(app, ["-V"])
     assert result.exit_code == 0
     expected_version = importlib.metadata.version("mcp-compressor")

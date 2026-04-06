@@ -25,11 +25,12 @@ import keyring
 import keyring.errors
 import psutil
 import typer
+from click.core import ParameterSource
 from cryptography.fernet import Fernet
 from fastmcp import FastMCP
 from fastmcp.client.auth import OAuth
-from fastmcp.client.transports import MCPConfigTransport, SSETransport, StdioTransport, StreamableHttpTransport
-from fastmcp.mcp_config import MCPConfig
+from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
+from fastmcp.mcp_config import MCPConfig, RemoteMCPServer, StdioMCPServer
 from fastmcp.server import create_proxy
 from fastmcp.server.providers.proxy import ProxyClient
 from key_value.aio.protocols import AsyncKeyValue
@@ -70,6 +71,7 @@ def _version_callback(value: bool) -> None:
 
 @app.command()
 def main(
+    ctx: typer.Context,
     command_or_url_list: Annotated[
         list[str],
         typer.Argument(
@@ -223,6 +225,23 @@ def main(
         raise typer.BadParameter(str(exc), param_hint="'COMMAND_OR_URL'") from exc
 
     if parsed_config is not None:
+        conflicting_config_options = [
+            option_name
+            for option_name in ("cwd", "env_list", "header_list", "timeout")
+            if ctx.get_parameter_source(option_name) == ParameterSource.COMMANDLINE
+        ]
+        if conflicting_config_options:
+            joined_options = ", ".join(
+                f"--{name.removesuffix('_list').replace('_', '-')}" for name in conflicting_config_options
+            )
+            raise typer.BadParameter(
+                (
+                    f"JSON MCP config input cannot be combined with {joined_options}; configure those values inside "
+                    "the JSON instead."
+                ),
+                param_hint="'COMMAND_OR_URL'",
+            )
+
         _config, config_server_name = parsed_config
         resolved_server_name = server_name or config_server_name
 
@@ -423,17 +442,13 @@ async def _server(
     parsed_config = _parse_single_server_mcp_config(command_or_url_list)
     if parsed_config is not None:
         config, _config_server_name = parsed_config
-        transport_type: Literal["stdio", "http", "sse"] = _infer_transport_type(
-            str(next(iter(config.mcpServers.values())).model_dump().get("url") or command_or_url)
-        )
-        transport = MCPConfigTransport(config)
+        transport, transport_type = _get_single_server_transport_from_mcp_config(config=config)
         logger.info("Loaded single-server MCP config JSON")
     else:
         transport_type = _infer_transport_type(command_or_url)
         logger.info(f"Inferred transport type: {transport_type}")
 
         # Handle different transport types
-        transport: TransportType
         if transport_type == "stdio":
             transport = _get_stdio_transport(
                 command=command_or_url_list[0], args=command_or_url_list[1:], cwd=cwd, env_list=env_list
@@ -655,6 +670,57 @@ def _parse_single_server_mcp_config(command_or_url_list: list[str]) -> tuple[MCP
 
     server_name = next(iter(config.mcpServers))
     return config, server_name
+
+
+def _get_single_server_transport_from_mcp_config(
+    config: MCPConfig,
+) -> tuple[TransportType, Literal["stdio", "http", "sse"]]:
+    """Create a transport for a validated single-server MCP config.
+
+    Single-server config JSON is self-contained: transport settings come only from the config.
+    Remote configs default to the same OAuth flow used by direct URL inputs unless explicit auth is provided.
+    """
+    server_config = next(iter(config.mcpServers.values()))
+
+    if isinstance(server_config, StdioMCPServer):
+        return (
+            _get_stdio_transport(
+                command=server_config.command,
+                args=server_config.args,
+                cwd=server_config.cwd,
+                env_list=[f"{key}={value}" for key, value in server_config.env.items()] or None,
+            ),
+            "stdio",
+        )
+
+    if isinstance(server_config, RemoteMCPServer):
+        transport_type = "sse" if (server_config.transport == "sse") else _infer_transport_type(server_config.url)
+        auth = server_config.auth
+        if auth in (None, "oauth"):
+            auth = OAuth(mcp_url=server_config.url, token_storage=_build_token_storage())
+
+        headers = {key: _interpolate_string(value) for key, value in server_config.headers.items()}
+        if transport_type == "http":
+            return (
+                StreamableHttpTransport(
+                    url=server_config.url,
+                    headers=headers,
+                    auth=auth,
+                    sse_read_timeout=server_config.sse_read_timeout,
+                ),
+                "http",
+            )
+        return (
+            SSETransport(
+                url=server_config.url,
+                headers=headers,
+                auth=auth,
+                sse_read_timeout=server_config.sse_read_timeout,
+            ),
+            "sse",
+        )
+
+    raise ValueError("Unsupported single-server MCP config type.")
 
 
 def _interpolate_string(value: str) -> str:
