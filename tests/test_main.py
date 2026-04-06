@@ -284,7 +284,7 @@ def test_single_server_mcp_config_rejects_multiple_servers_via_cli(runner: CliRu
     result = runner.invoke(app, [config_json])
 
     assert result.exit_code != 0
-    assert "exactly one server" in _strip_ansi(result.output)
+    assert re.search(r"exactly one\s+server", _strip_ansi(result.output))
 
 
 async def test_server_uses_mcp_config_transport_for_single_server_json(monkeypatch: pytest.MonkeyPatch) -> None:
