@@ -203,7 +203,6 @@ def main(
             help="Show the version and exit.",
             callback=_version_callback,
             is_eager=True,
-            is_flag=True,
             expose_value=False,
         ),
     ] = False,
