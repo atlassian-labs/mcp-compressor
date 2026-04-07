@@ -217,5 +217,4 @@ __marimo__/
 typescript/node_modules/
 typescript/dist/
 typescript/dist-test/
-typescript/package-lock.json
 typescript/*.tsbuildinfo
