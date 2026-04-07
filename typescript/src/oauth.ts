@@ -20,6 +20,7 @@ interface OAuthState {
   clientInformation?: OAuthClientInformationMixed;
   codeVerifier?: string;
   discoveryState?: OAuthDiscoveryState;
+  redirectUrl?: string;
   tokens?: OAuthTokens;
 }
 
@@ -28,6 +29,34 @@ export interface PersistentOAuthProviderOptions {
   redirectUrl?: string;
   onRedirect?: (url: URL) => void | Promise<void>;
   configDir?: string;
+}
+
+export async function clearAllOAuthState(configDir = path.join(os.homedir(), '.config', 'mcp-compressor'), all = false): Promise<string[]> {
+  const removed: string[] = [];
+  try {
+    const entries = await fs.readdir(configDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith('.json')) {
+        const fullPath = path.join(configDir, entry.name);
+        await fs.rm(fullPath, { force: true });
+        removed.push(fullPath);
+      }
+    }
+  } catch {
+    // ignore missing config dir
+  }
+
+  if (all) {
+    const keyPath = path.join(configDir, '.key');
+    try {
+      await fs.rm(keyPath, { force: true });
+      removed.push(keyPath);
+    } catch {
+      // ignore missing key file
+    }
+  }
+
+  return removed;
 }
 
 const DEFAULT_LOOPBACK_REDIRECT_HOST = 'localhost';
@@ -61,11 +90,32 @@ export class PersistentOAuthProvider implements OAuthClientProvider {
 
   async prepareInteractiveRedirect(): Promise<void> {
     if (this.redirectUrl) {
+      this.clientMetadata.redirect_uris = [String(this.redirectUrl)];
       return;
     }
-    const port = await findAvailablePort();
-    this.redirectUrl = `http://${DEFAULT_LOOPBACK_REDIRECT_HOST}:${port}${DEFAULT_LOOPBACK_REDIRECT_PATH}`;
-    this.clientMetadata.redirect_uris = [String(this.redirectUrl)];
+
+    const state = await this.readState();
+    const savedRedirectUrl = state.redirectUrl;
+    const hasLegacyClientStateWithoutRedirect = !savedRedirectUrl && !!(state.clientInformation || state.tokens);
+
+    let redirectUrl = savedRedirectUrl;
+    if (!redirectUrl || !(await canListenOnRedirectUrl(new URL(redirectUrl)))) {
+      const port = await findAvailablePort();
+      redirectUrl = `http://${DEFAULT_LOOPBACK_REDIRECT_HOST}:${port}${DEFAULT_LOOPBACK_REDIRECT_PATH}`;
+    }
+
+    const redirectChanged = redirectUrl !== savedRedirectUrl;
+    if (hasLegacyClientStateWithoutRedirect || redirectChanged) {
+      delete state.clientInformation;
+      delete state.tokens;
+      delete state.codeVerifier;
+    }
+
+    state.redirectUrl = redirectUrl;
+    await this.writeState(state);
+
+    this.redirectUrl = redirectUrl;
+    this.clientMetadata.redirect_uris = [redirectUrl];
   }
 
   async clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
@@ -267,6 +317,20 @@ export class PersistentOAuthProvider implements OAuthClientProvider {
     }
     void spawn('xdg-open', [href], { detached: true, stdio: 'ignore' }).unref();
   }
+}
+
+async function canListenOnRedirectUrl(redirectUrl: URL): Promise<boolean> {
+  const port = Number.parseInt(redirectUrl.port, 10);
+  if (!Number.isInteger(port) || port <= 0) {
+    return false;
+  }
+  return await new Promise<boolean>((resolve) => {
+    const server = net.createServer();
+    server.once('error', () => resolve(false));
+    server.listen(port, redirectUrl.hostname, () => {
+      server.close(() => resolve(true));
+    });
+  });
 }
 
 async function findAvailablePort(): Promise<number> {

@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { clearOAuth, createOAuthProviderForBackend } from '../src/index.js';
+import { clearAllOAuth, clearOAuth, createOAuthProviderForBackend } from '../src/index.js';
 import { PersistentOAuthProvider } from '../src/oauth.js';
 
 async function tempConfigDir(): Promise<string> {
@@ -50,6 +50,25 @@ test('PersistentOAuthProvider persists and invalidates state selectively', async
   assert.equal(await provider.discoveryState(), undefined);
 });
 
+test('prepareInteractiveRedirect persists and reuses a stable redirect URL', async () => {
+  const configDir = await tempConfigDir();
+  const provider1 = new PersistentOAuthProvider({
+    serverUrl: 'https://example.com/mcp',
+    configDir,
+  });
+
+  await provider1.prepareInteractiveRedirect();
+  const firstRedirectUrl = String(provider1.redirectUrl);
+  assert.match(firstRedirectUrl, /^http:\/\/localhost:\d+\/callback$/);
+
+  const provider2 = new PersistentOAuthProvider({
+    serverUrl: 'https://example.com/mcp',
+    configDir,
+  });
+  await provider2.prepareInteractiveRedirect();
+  assert.equal(String(provider2.redirectUrl), firstRedirectUrl);
+});
+
 test('clearOAuth clears persisted OAuth state for remote backends', async () => {
   const configDir = await tempConfigDir();
   const provider = new PersistentOAuthProvider({
@@ -71,4 +90,36 @@ test('clearOAuth clears persisted OAuth state for remote backends', async () => 
 test('clearOAuth is a no-op for stdio backends', async () => {
   const cleared = await clearOAuth({ type: 'stdio', command: 'uvx' });
   assert.equal(cleared, false);
+});
+
+test('clearAllOAuth clears all persisted OAuth state without a backend', async () => {
+  const configDir = await tempConfigDir();
+  const provider1 = new PersistentOAuthProvider({
+    serverUrl: 'https://example.com/mcp',
+    configDir,
+  });
+  const provider2 = new PersistentOAuthProvider({
+    serverUrl: 'https://example.org/mcp',
+    configDir,
+  });
+  await provider1.saveTokens({ access_token: 'abc', token_type: 'Bearer' });
+  await provider2.saveTokens({ access_token: 'def', token_type: 'Bearer' });
+
+  const removed = await clearAllOAuth({ oauthConfigDir: configDir });
+  assert.equal(removed.length, 2);
+  assert.equal(await provider1.tokens(), undefined);
+  assert.equal(await provider2.tokens(), undefined);
+});
+
+test('clearAllOAuth with --all semantics also removes the encryption key', async () => {
+  const configDir = await tempConfigDir();
+  const provider = new PersistentOAuthProvider({
+    serverUrl: 'https://example.com/mcp',
+    configDir,
+  });
+  await provider.saveTokens({ access_token: 'abc', token_type: 'Bearer' });
+  await provider.prepareInteractiveRedirect();
+
+  const removed = await clearAllOAuth({ oauthConfigDir: configDir, all: true });
+  assert.match(removed.join('\n'), /\.key/);
 });

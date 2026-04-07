@@ -3,7 +3,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { CompressorRuntime } from './runtime.js';
 import { formatTopLevelHelp, sanitizeCliName } from './cli_tools.js';
 import { CliBridge } from './cli_bridge.js';
-import { generateCliScript, removeCliScript } from './cli_script.js';
+import { generateCliScript, removeCliScriptEntry } from './cli_script.js';
 import type { CreateCompressorServerOptions } from './index.js';
 
 export interface CliModeOptions extends CreateCompressorServerOptions {
@@ -34,9 +34,10 @@ export async function initializeCliMode(options: CliModeOptions): Promise<CliMod
   });
 
   const bridge = new CliBridge(runtime, cliName);
-  await bridge.start(options.cliPort ?? 0);
+  const bridgePort = await bridge.start(options.cliPort ?? 0);
+  const sessionPid = process.ppid;
 
-  const { scriptPath, onPath } = await generateCliScript(cliName, bridge.url, options.scriptDir);
+  const { scriptPath, onPath } = await generateCliScript(cliName, bridgePort, sessionPid, options.scriptDir);
   const tools = await runtime.listUncompressedTools();
   const helpText = formatTopLevelHelp(cliName, tools);
 
@@ -50,7 +51,7 @@ export async function initializeCliMode(options: CliModeOptions): Promise<CliMod
     tools,
     async close(): Promise<void> {
       await Promise.allSettled([bridge.close(), runtime.close()]);
-      await removeCliScript(scriptPath);
+      await removeCliScriptEntry(cliName, sessionPid, options.scriptDir);
     },
   };
 }

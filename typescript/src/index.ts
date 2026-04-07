@@ -1,7 +1,7 @@
 import { BackendClient } from './backend-client.js';
 import { parseSingleServerConfigJson } from './config.js';
 import { InvalidConfigurationError } from './errors.js';
-import { PersistentOAuthProvider } from './oauth.js';
+import { clearAllOAuthState, PersistentOAuthProvider } from './oauth.js';
 import { CompressorRuntime } from './runtime.js';
 import { CompressorServer } from './server.js';
 import type { BackendConfig, CommonProxyOptions, StartOptions } from './types.js';
@@ -67,6 +67,12 @@ export async function clearOAuth(
   }
   await provider.clear();
   return true;
+}
+
+export async function clearAllOAuth(
+  options: Pick<CreateCompressorServerOptions, 'oauthConfigDir'> & { all?: boolean } = {},
+): Promise<string[]> {
+  return clearAllOAuthState(options.oauthConfigDir, options.all ?? false);
 }
 
 export function createCompressorRuntime(options: CreateCompressorServerOptions): CompressorRuntime {

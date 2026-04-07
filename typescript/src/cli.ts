@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { clearOAuth, initializeCliMode, startCompressorServer } from './index.js';
+import { clearAllOAuth, clearOAuth, initializeCliMode, startCompressorServer } from './index.js';
 import type { BackendConfig } from './types.js';
 
 function consumeFlag(args: string[], names: string[]): string | undefined {
@@ -63,13 +63,27 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
   if (args[0] === 'clear-oauth') {
-    const backend = args[1];
-    if (!backend) {
-      throw new Error('Usage: mcp-compressor clear-oauth <backend-url-or-single-server-json>');
+    const clearArgs = args.slice(1);
+    const all = consumeBooleanFlag(clearArgs, ['--all']);
+    const backend = clearArgs[0];
+
+    if (backend) {
+      const cleared = await clearOAuth(backend);
+      if (!cleared) {
+        console.warn('No OAuth state applies to that backend.');
+      }
+      return;
     }
-    const cleared = await clearOAuth(backend);
-    if (!cleared) {
-      console.warn('No OAuth state applies to that backend.');
+
+    const removed = await clearAllOAuth({ all });
+    if (removed.length > 0) {
+      console.error('Removed:');
+      for (const removedPath of removed) {
+        console.error(`  ${removedPath}`);
+      }
+      console.error('OAuth credentials cleared. You will be prompted to authenticate on next connection.');
+    } else {
+      console.error('No stored OAuth credentials found.');
     }
     return;
   }

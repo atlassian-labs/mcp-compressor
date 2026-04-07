@@ -103,14 +103,17 @@ export class BackendClient {
 
     await this.oauthProvider.prepareInteractiveRedirect();
 
-    const fetchFn: typeof fetch = (input, init) =>
-      fetch(input, {
+    const fetchFn: typeof fetch = (input, init) => {
+      const mergedHeaders = new Headers(init?.headers);
+      for (const [key, value] of Object.entries(headers ?? {})) {
+        mergedHeaders.set(key, value);
+      }
+
+      return fetch(input, {
         ...init,
-        headers: {
-          ...(headers ?? {}),
-          ...(init?.headers as Record<string, string> | undefined),
-        },
+        headers: mergedHeaders,
       });
+    };
 
     const result = await auth(this.oauthProvider, {
       serverUrl: new URL(url),
