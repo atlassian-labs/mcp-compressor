@@ -86,7 +86,7 @@ export function resolveAllBackends(
   }
 
   throw new InvalidConfigurationError(
-    'String backend values must be a remote URL or an MCP config JSON string.',
+    'String backend values must be a remote URL or an MCP config JSON string (single- or multi-server).',
   );
 }
 

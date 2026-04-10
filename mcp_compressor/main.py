@@ -99,7 +99,8 @@ def _resolve_config_server_name(config: MCPConfig, server_name: str | None, cli_
     # Multi-server path: each server keeps its own JSON key as the prefix.
     if cli_mode:
         raise typer.BadParameter(
-            "--cli-mode is not supported with multi-server MCP config JSON.",
+            "--cli-mode is not supported with multi-server MCP config JSON. "
+            "Use a single-server config or omit --cli-mode.",
             param_hint="'COMMAND_OR_URL'",
         )
     return server_name
@@ -626,6 +627,9 @@ async def _multi_server(
 
     async with contextlib.AsyncExitStack() as exit_stack:
         for config_server_name, server_config in config.mcpServers.items():
+            # Naming convention: if a --server-name prefix is provided it is prepended to the JSON
+            # key with an underscore separator, e.g. "myapp_weather".  The TypeScript implementation
+            # mirrors this convention in resolveAllBackends (typescript/src/index.ts).
             effective_name = f"{server_name}_{config_server_name}" if server_name else config_server_name
             single_config = MCPConfig(mcpServers={config_server_name: server_config})
             transport, transport_type = _get_single_server_transport_from_mcp_config(config=single_config)

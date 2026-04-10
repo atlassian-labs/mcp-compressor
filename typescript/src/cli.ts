@@ -148,8 +148,9 @@ async function main(): Promise<void> {
   const resolvedBackends = resolveAllBackends(backend, serverName);
 
   if (resolvedBackends.length > 1) {
+    // In the multi-server path each entry always has a serverName from its JSON key.
     await startMultipleCompressorServers({
-      backends: resolvedBackends.map((r) => ({ backend: r.backend, serverName: r.serverName ?? '' })),
+      backends: resolvedBackends.map((r) => ({ backend: r.backend, serverName: r.serverName! })),
       compressionLevel,
       excludeTools: excludeTools.length > 0 ? excludeTools : undefined,
       includeTools: includeTools.length > 0 ? includeTools : undefined,
