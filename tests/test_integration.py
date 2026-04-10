@@ -70,7 +70,7 @@ async def test_passthrough_list_resources(proxy_mcp_client: Client, backend_mcp_
     assert backend_uris.issubset(proxy_uris)
 
     # The compressor resource should also be present
-    assert "compressor://uncompressed-tools" in proxy_uris
+    assert "compressor://test_server/uncompressed-tools" in proxy_uris
 
 
 async def test_get_tool_schema_returns_backend_schemas(proxy_mcp_client: Client, backend_mcp_client: Client) -> None:
@@ -103,7 +103,7 @@ async def test_uncompressed_tools_resource_returns_upstream_list_tools_payload(
 ) -> None:
     """Test that the uncompressed tools resource returns the same payload as the upstream list_tools endpoint."""
     backend_tools = await backend_mcp_client.list_tools()
-    result = await proxy_mcp_client.read_resource("compressor://uncompressed-tools")
+    result = await proxy_mcp_client.read_resource("compressor://test_server/uncompressed-tools")
 
     assert result
     payload = json.loads(result[0].text)
@@ -298,7 +298,7 @@ async def test_include_and_exclude_tools_filters_exposed_backend_tools() -> None
             await client.call_tool("test_server_get_tool_schema", {"tool_name": "do_nothing"})
         assert "Available tools: add" in str(exc_info.value)
 
-        resource = await client.read_resource("compressor://uncompressed-tools")
+        resource = await client.read_resource("compressor://test_server/uncompressed-tools")
         assert resource[0].text is not None
         tool_payload = json.loads(resource[0].text)
         assert [tool["name"] for tool in tool_payload] == ["add"]

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { clearAllOAuth, clearOAuth, initializeCliMode, startCompressorServer } from './index.js';
+import { clearAllOAuth, clearOAuth, initializeCliMode, resolveAllBackends, startCompressorServer, startMultipleCompressorServers } from './index.js';
 import type { BackendConfig } from './types.js';
 
 function consumeFlag(args: string[], names: string[]): string | undefined {
@@ -139,6 +139,22 @@ async function main(): Promise<void> {
 
     await new Promise(() => {
       // keep the bridge/runtime process alive
+    });
+    return;
+  }
+
+  // Detect multi-server JSON: if the backend string resolves to more than one entry, use the
+  // multi-server startup path.
+  const resolvedBackends = resolveAllBackends(backend, serverName);
+
+  if (resolvedBackends.length > 1) {
+    await startMultipleCompressorServers({
+      backends: resolvedBackends.map((r) => ({ backend: r.backend, serverName: r.serverName ?? '' })),
+      compressionLevel,
+      excludeTools: excludeTools.length > 0 ? excludeTools : undefined,
+      includeTools: includeTools.length > 0 ? includeTools : undefined,
+      toonify,
+      start: { transportType: 'stdio' },
     });
     return;
   }

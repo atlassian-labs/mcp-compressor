@@ -99,7 +99,9 @@ export class CompressorServer {
     }
 
     this.server.addResource({
-      uri: UNCOMPRESSED_RESOURCE_URI,
+      uri: this.serverName
+        ? UNCOMPRESSED_RESOURCE_URI.replace('compressor://', `compressor://${this.serverName}/`)
+        : UNCOMPRESSED_RESOURCE_URI,
       name: 'uncompressed-tools',
       mimeType: 'application/json',
       load: async () => ({
