@@ -1,6 +1,6 @@
 {
   "name": "mcp-compressor",
-  "version": "0.2.12",
+  "version": "0.0.0",
   "description": "TypeScript MCP server wrapper for reducing tokens consumed by MCP tools.",
   "license": "Apache-2.0",
   "homepage": "https://github.com/atlassian-labs/mcp-compressor",

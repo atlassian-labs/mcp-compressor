@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to publish (defaults to the version already in typescript/package.json)
-        required: false
+        description: Version to publish (e.g. 0.3.0)
+        required: true
         type: string
 
 jobs:
@@ -29,21 +29,9 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Resolve publish version
-        id: version
+      - name: Stamp package version
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            echo "value=${GITHUB_REF#refs/*/}" >> "$GITHUB_OUTPUT"
-          elif [ -n "${{ inputs.version }}" ]; then
-            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Update package version for publish
-        if: steps.version.outputs.value != ''
-        run: |
-          node -e "const fs=require('fs'); const file='package.json'; const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.version=process.argv[1]; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\\n');" "${{ steps.version.outputs.value }}"
+          node -e "const fs=require('fs'); const file='package.json'; const pkg=JSON.parse(fs.readFileSync(file,'utf8')); pkg.version=process.argv[1]; fs.writeFileSync(file, JSON.stringify(pkg, null, 2)+'\\n');" "${{ inputs.version }}"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
