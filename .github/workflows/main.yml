@@ -73,6 +73,9 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
 
+      - name: Set up uv (needed for e2e tests that launch Python fixture servers)
+        uses: astral-sh/setup-uv@v6
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
