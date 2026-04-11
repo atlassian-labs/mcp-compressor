@@ -142,11 +142,11 @@ This keeps command parsing and server-routing consistent across Python and TypeS
 
 ## Risks and Mitigations
 
-- **Binding complexity across two ecosystems**  
+- **Binding complexity across two ecosystems**
   Use mature tooling: `PyO3` + `maturin` (Python) and `napi-rs` (TypeScript).
-- **Behavior regressions during migration**  
+- **Behavior regressions during migration**
   Maintain parity fixtures and run language-level golden tests against shared scenarios.
-- **Operational complexity from native artifacts**  
+- **Operational complexity from native artifacts**
   Publish prebuilt wheels and Node binaries for major targets; keep a pure-language fallback path temporarily during migration.
 
 ## Open Questions
