@@ -218,10 +218,11 @@ async function handleClearOAuth(args: string[]): Promise<boolean> {
 
   const removed = await clearAllOAuth({ all: options.all ?? false });
   if (removed.length > 0) {
-    console.error("Removed:");
-    for (const removedPath of removed) {
-      console.error(`  ${removedPath}`);
-    }
+    const removedKey = removed.some((entry) => entry.endsWith("/.key") || entry.endsWith("\\.key"));
+    const removedStateFiles = removed.length - (removedKey ? 1 : 0);
+    console.error(
+      `Removed ${removedStateFiles} OAuth state file(s)${removedKey ? " and encryption key" : ""}.`,
+    );
     console.error(
       "OAuth credentials cleared. You will be prompted to authenticate on next connection.",
     );
