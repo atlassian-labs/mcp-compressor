@@ -21,7 +21,7 @@ Also add:
 - TypeScript integration with Vercel Just Bash, exposing one `bash` tool that combines:
   - full Just Bash functionality
   - in-memory CLI access to one or more proxied MCP servers
-- Python integration with `just-bash-py` with equivalent behavior
+- Python integration with `just-bash-py` (the Python package for Just Bash) with equivalent behavior
 
 ## Non-Goals (Initial Phase)
 
@@ -143,7 +143,7 @@ This keeps command parsing and server-routing consistent across Python and TypeS
 ## Risks and Mitigations
 
 - **Binding complexity across two ecosystems**  
-  Use mature tooling: `pyo3/maturin` (Python) and `napi-rs` (TypeScript).
+  Use mature tooling: `PyO3` + `maturin` (Python) and `napi-rs` (TypeScript).
 - **Behavior regressions during migration**  
   Maintain parity fixtures and run language-level golden tests against shared scenarios.
 - **Operational complexity from native artifacts**  
