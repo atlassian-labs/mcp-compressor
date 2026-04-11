@@ -213,7 +213,7 @@ export class PersistentOAuthProvider implements OAuthClientProvider {
   }
 
   private async statePath(): Promise<string> {
-    const secret = await this.getOrCreateKey();
+    const secret = await this.encryptionKey();
     const key = crypto.createHmac("sha256", secret).update(this.serverUrl).digest("hex");
     return path.join(this.configDir, `${key}.json`);
   }
