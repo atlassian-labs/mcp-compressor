@@ -373,9 +373,7 @@ def test_server_name_option_overrides_single_server_mcp_config_name(
     assert captured["server_name"] == "custom"
 
 
-def test_multi_server_mcp_config_accepted_via_cli(
-    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_multi_server_mcp_config_accepted_via_cli(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
     """Multi-server MCP JSON configs are now accepted and passed to _async_main."""
     config_json = (
         '{"mcpServers": {'
@@ -521,32 +519,35 @@ async def test_server_uses_multi_server_config(monkeypatch: pytest.MonkeyPatch) 
     assert captured["server_names"] == ["weather", "calendar"]
 
 
-def test_multi_server_mcp_config_rejects_cli_mode(
-    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """--cli-mode cannot be combined with a multi-server MCP JSON config."""
+def test_multi_server_mcp_config_accepts_cli_mode(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--cli-mode can be combined with multi-server MCP JSON config."""
     config_json = (
         '{"mcpServers": {'
         '"weather": {"command": "uvx", "args": ["mcp-weather"]}, '
         '"calendar": {"command": "uvx", "args": ["mcp-calendar"]}'
         "}}"
     )
-    async_main_called = False
+    captured: dict[str, Any] = {}
 
     async def fake_async_main(**kwargs: Any) -> None:
-        nonlocal async_main_called
-        async_main_called = True
+        captured.update(kwargs)
+
+    original_asyncio_run = main_module.asyncio.run
+
+    def fake_run(coro):
+        original_asyncio_run(coro)
 
     monkeypatch.setattr(main_module, "_async_main", fake_async_main)
+    monkeypatch.setattr(main_module.asyncio, "run", fake_run)
     result = runner.invoke(app, ["--cli-mode", config_json])
 
-    assert result.exit_code != 0
-    assert async_main_called is False
+    assert result.exit_code == 0
+    assert captured.get("cli_mode") is True
+    assert captured.get("server_name") is None
+    assert captured.get("toonify") is True
 
 
-def test_multi_server_mcp_config_with_server_name_prefix(
-    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_multi_server_mcp_config_with_server_name_prefix(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
     """--server-name acts as a common prefix for all backend names in multi-server mode."""
     config_json = (
         '{"mcpServers": {'

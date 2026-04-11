@@ -1,9 +1,8 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { test, expect } from "vitest";
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
-import { CompressorRuntime } from '../src/runtime.js';
-import type { BackendToolClient } from '../src/types.js';
+import { CompressorRuntime } from "../src/runtime.js";
+import type { BackendToolClient } from "../src/types.js";
 
 class FakeBackendClient implements BackendToolClient {
   connectCalls = 0;
@@ -37,72 +36,74 @@ class FakeBackendClient implements BackendToolClient {
 
 const SAMPLE_TOOLS: Tool[] = [
   {
-    name: 'search_docs',
-    description: 'Search documentation. Returns matching pages.',
+    name: "search_docs",
+    description: "Search documentation. Returns matching pages.",
     inputSchema: {
-      type: 'object',
+      type: "object",
       properties: {
-        query: { type: 'string' },
+        query: { type: "string" },
       },
     },
   } as Tool,
   {
-    name: 'create_ticket',
-    description: 'Create a ticket.',
+    name: "create_ticket",
+    description: "Create a ticket.",
     inputSchema: {
-      type: 'object',
+      type: "object",
       properties: {
-        summary: { type: 'string' },
+        summary: { type: "string" },
       },
     },
   } as Tool,
 ];
 
-test('CompressorRuntime exposes wrapper operations in-process', async () => {
+test("CompressorRuntime exposes wrapper operations in-process", async () => {
   const backendClient = new FakeBackendClient(SAMPLE_TOOLS);
   const runtime = new CompressorRuntime({
     backendClient,
-    compressionLevel: 'max',
-    includeTools: ['search_docs'],
-    serverName: 'docs',
+    compressionLevel: "max",
+    includeTools: ["search_docs"],
+    serverName: "docs",
   });
 
   await runtime.connect();
 
-  assert.equal(backendClient.connectCalls, 1);
-  assert.deepEqual(await runtime.listToolNames(), ['search_docs']);
-  assert.equal((await runtime.getToolSchema('search_docs')).name, 'search_docs');
-  assert.match(await runtime.buildCompressedDescription(), /search_docs/);
-  assert.equal(
-    await runtime.invokeTool('search_docs', { query: 'oauth' }),
+  expect(backendClient.connectCalls).toBe(1);
+  expect(await runtime.listToolNames()).toEqual(["search_docs"]);
+  expect((await runtime.getToolSchema("search_docs")).name).toBe("search_docs");
+  expect(await runtime.buildCompressedDescription()).toMatch(/search_docs/);
+  expect(await runtime.invokeTool("search_docs", { query: "oauth" })).toBe(
     JSON.stringify({ ok: true }, null, 2),
   );
-  assert.deepEqual(backendClient.callToolCalls, [{ name: 'search_docs', args: { query: 'oauth' } }]);
+  expect(backendClient.callToolCalls).toEqual([{ name: "search_docs", args: { query: "oauth" } }]);
 
   await runtime.close();
-  assert.equal(backendClient.closeCalls, 1);
+  expect(backendClient.closeCalls).toBe(1);
 });
 
-test('CompressorRuntime function toolset mirrors wrapper tools', async () => {
+test("CompressorRuntime function toolset mirrors wrapper tools", async () => {
   const backendClient = new FakeBackendClient(SAMPLE_TOOLS);
   const runtime = new CompressorRuntime({
     backendClient,
-    compressionLevel: 'max',
-    serverName: 'docs',
+    compressionLevel: "max",
+    serverName: "docs",
   });
   await runtime.connect();
 
   const toolset = runtime.getFunctionToolset();
-  assert.deepEqual(Object.keys(toolset).sort(), ['docs_get_tool_schema', 'docs_invoke_tool', 'docs_list_tools']);
-  assert.match(await toolset.docs_get_tool_schema({ tool_name: 'search_docs' }), /search_docs/);
-  assert.match(await toolset.docs_list_tools(), /search_docs/);
-  assert.equal(
-    await toolset.docs_invoke_tool({ tool_name: 'search_docs', tool_input: { query: 'mcp' } }),
-    JSON.stringify({ ok: true }, null, 2),
-  );
+  expect(Object.keys(toolset).sort()).toEqual([
+    "docs_get_tool_schema",
+    "docs_invoke_tool",
+    "docs_list_tools",
+  ]);
+  expect(await toolset.docs_get_tool_schema({ tool_name: "search_docs" })).toMatch(/search_docs/);
+  expect(await toolset.docs_list_tools()).toMatch(/search_docs/);
+  expect(
+    await toolset.docs_invoke_tool({ tool_name: "search_docs", tool_input: { query: "mcp" } }),
+  ).toBe(JSON.stringify({ ok: true }, null, 2));
 });
 
-test('CompressorRuntime treats an empty includeTools list as no include filter', async () => {
+test("CompressorRuntime treats an empty includeTools list as no include filter", async () => {
   const backendClient = new FakeBackendClient(SAMPLE_TOOLS);
   const runtime = new CompressorRuntime({
     backendClient,
@@ -111,5 +112,5 @@ test('CompressorRuntime treats an empty includeTools list as no include filter',
 
   await runtime.connect();
 
-  assert.deepEqual(await runtime.listToolNames(), ['create_ticket', 'search_docs']);
+  expect(await runtime.listToolNames()).toEqual(["create_ticket", "search_docs"]);
 });

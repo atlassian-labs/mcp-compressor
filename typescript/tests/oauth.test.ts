@@ -1,125 +1,126 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
+import { test, expect } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
-import { clearAllOAuth, clearOAuth, createOAuthProviderForBackend } from '../src/index.js';
-import { PersistentOAuthProvider } from '../src/oauth.js';
+import { clearAllOAuth, clearOAuth } from "../src/index.js";
+import { PersistentOAuthProvider } from "../src/oauth.js";
 
 async function tempConfigDir(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), 'mcp-compressor-oauth-'));
+  return fs.mkdtemp(path.join(os.tmpdir(), "mcp-compressor-oauth-"));
 }
 
-test('PersistentOAuthProvider persists and invalidates state selectively', async () => {
+test("PersistentOAuthProvider persists and invalidates state selectively", async () => {
   const configDir = await tempConfigDir();
   const provider = new PersistentOAuthProvider({
-    serverUrl: 'https://example.com/mcp',
+    serverUrl: "https://example.com/mcp",
     configDir,
   });
 
-  await provider.saveTokens({ access_token: 'abc', token_type: 'Bearer' });
-  await provider.saveCodeVerifier('verifier');
+  await provider.saveTokens({ access_token: "abc", token_type: "Bearer" });
+  await provider.saveCodeVerifier("verifier");
   await provider.saveDiscoveryState({
-    authorizationServerUrl: 'https://issuer.example.com',
+    authorizationServerUrl: "https://issuer.example.com",
     authorizationServerMetadata: {
-      issuer: 'https://issuer.example.com',
-      authorization_endpoint: 'https://issuer.example.com/auth',
-      token_endpoint: 'https://issuer.example.com/token',
-      response_types_supported: ['code'],
+      issuer: "https://issuer.example.com",
+      authorization_endpoint: "https://issuer.example.com/auth",
+      token_endpoint: "https://issuer.example.com/token",
+      response_types_supported: ["code"],
     },
     resourceMetadata: {
-      resource: 'https://example.com/mcp',
-      authorization_servers: ['https://issuer.example.com'],
+      resource: "https://example.com/mcp",
+      authorization_servers: ["https://issuer.example.com"],
     },
-    resourceMetadataUrl: 'https://example.com/.well-known/oauth-protected-resource',
+    resourceMetadataUrl: "https://example.com/.well-known/oauth-protected-resource",
   });
 
-  assert.equal((await provider.tokens())?.access_token, 'abc');
-  assert.equal(await provider.codeVerifier(), 'verifier');
-  assert.equal(
-    (await provider.discoveryState())?.authorizationServerMetadata?.token_endpoint,
-    'https://issuer.example.com/token',
+  expect((await provider.tokens())?.access_token).toBe("abc");
+  expect(await provider.codeVerifier()).toBe("verifier");
+  expect((await provider.discoveryState())?.authorizationServerMetadata?.token_endpoint).toBe(
+    "https://issuer.example.com/token",
   );
 
-  await provider.invalidateCredentials('tokens');
-  assert.equal(await provider.tokens(), undefined);
-  assert.equal(await provider.codeVerifier(), 'verifier');
+  await provider.invalidateCredentials("tokens");
+  expect(await provider.tokens()).toBe(undefined);
+  expect(await provider.codeVerifier()).toBe("verifier");
 
-  await provider.invalidateCredentials('discovery');
-  assert.equal(await provider.discoveryState(), undefined);
+  await provider.invalidateCredentials("discovery");
+  expect(await provider.discoveryState()).toBe(undefined);
 });
 
-test('prepareInteractiveRedirect persists and reuses a stable redirect URL', async () => {
+test("prepareInteractiveRedirect persists and reuses a stable redirect URL", async () => {
   const configDir = await tempConfigDir();
   const provider1 = new PersistentOAuthProvider({
-    serverUrl: 'https://example.com/mcp',
+    serverUrl: "https://example.com/mcp",
     configDir,
   });
 
   await provider1.prepareInteractiveRedirect();
   const firstRedirectUrl = String(provider1.redirectUrl);
-  assert.match(firstRedirectUrl, /^http:\/\/localhost:\d+\/callback$/);
+  expect(firstRedirectUrl).toMatch(/^http:\/\/localhost:\d+\/callback$/);
 
   const provider2 = new PersistentOAuthProvider({
-    serverUrl: 'https://example.com/mcp',
+    serverUrl: "https://example.com/mcp",
     configDir,
   });
   await provider2.prepareInteractiveRedirect();
-  assert.equal(String(provider2.redirectUrl), firstRedirectUrl);
+  expect(String(provider2.redirectUrl)).toBe(firstRedirectUrl);
 });
 
-test('clearOAuth clears persisted OAuth state for remote backends', async () => {
+test("clearOAuth clears persisted OAuth state for remote backends", async () => {
   const configDir = await tempConfigDir();
   const provider = new PersistentOAuthProvider({
-    serverUrl: 'https://example.com/mcp',
+    serverUrl: "https://example.com/mcp",
     configDir,
   });
-  await provider.saveTokens({ access_token: 'abc', token_type: 'Bearer' });
+  await provider.saveTokens({ access_token: "abc", token_type: "Bearer" });
 
-  const cleared = await clearOAuth({ type: 'http', url: 'https://example.com/mcp' }, { oauthConfigDir: configDir });
-  assert.equal(cleared, true);
+  const cleared = await clearOAuth(
+    { type: "http", url: "https://example.com/mcp" },
+    { oauthConfigDir: configDir },
+  );
+  expect(cleared).toBe(true);
 
   const reloaded = new PersistentOAuthProvider({
-    serverUrl: 'https://example.com/mcp',
+    serverUrl: "https://example.com/mcp",
     configDir,
   });
-  assert.equal(await reloaded.tokens(), undefined);
+  expect(await reloaded.tokens()).toBe(undefined);
 });
 
-test('clearOAuth is a no-op for stdio backends', async () => {
-  const cleared = await clearOAuth({ type: 'stdio', command: 'uvx' });
-  assert.equal(cleared, false);
+test("clearOAuth is a no-op for stdio backends", async () => {
+  const cleared = await clearOAuth({ type: "stdio", command: "uvx" });
+  expect(cleared).toBe(false);
 });
 
-test('clearAllOAuth clears all persisted OAuth state without a backend', async () => {
+test("clearAllOAuth clears all persisted OAuth state without a backend", async () => {
   const configDir = await tempConfigDir();
   const provider1 = new PersistentOAuthProvider({
-    serverUrl: 'https://example.com/mcp',
+    serverUrl: "https://example.com/mcp",
     configDir,
   });
   const provider2 = new PersistentOAuthProvider({
-    serverUrl: 'https://example.org/mcp',
+    serverUrl: "https://example.org/mcp",
     configDir,
   });
-  await provider1.saveTokens({ access_token: 'abc', token_type: 'Bearer' });
-  await provider2.saveTokens({ access_token: 'def', token_type: 'Bearer' });
+  await provider1.saveTokens({ access_token: "abc", token_type: "Bearer" });
+  await provider2.saveTokens({ access_token: "def", token_type: "Bearer" });
 
   const removed = await clearAllOAuth({ oauthConfigDir: configDir });
-  assert.equal(removed.length, 2);
-  assert.equal(await provider1.tokens(), undefined);
-  assert.equal(await provider2.tokens(), undefined);
+  expect(removed.length).toBe(2);
+  expect(await provider1.tokens()).toBe(undefined);
+  expect(await provider2.tokens()).toBe(undefined);
 });
 
-test('clearAllOAuth with --all semantics also removes the encryption key', async () => {
+test("clearAllOAuth with --all semantics also removes the encryption key", async () => {
   const configDir = await tempConfigDir();
   const provider = new PersistentOAuthProvider({
-    serverUrl: 'https://example.com/mcp',
+    serverUrl: "https://example.com/mcp",
     configDir,
   });
-  await provider.saveTokens({ access_token: 'abc', token_type: 'Bearer' });
+  await provider.saveTokens({ access_token: "abc", token_type: "Bearer" });
   await provider.prepareInteractiveRedirect();
 
   const removed = await clearAllOAuth({ oauthConfigDir: configDir, all: true });
-  assert.match(removed.join('\n'), /\.key/);
+  expect(removed.join("\n")).toMatch(/\.key/);
 });

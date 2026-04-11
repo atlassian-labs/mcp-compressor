@@ -88,21 +88,14 @@ def _resolve_config_server_name(config: MCPConfig, server_name: str | None, cli_
     """Return the effective server name from a parsed MCP config.
 
     For single-server configs the JSON key is used as a fallback when no explicit ``--server-name``
-    was provided.  For multi-server configs the caller's ``server_name`` is returned unchanged
-    (it will be used as a common prefix inside ``_multi_server``).  Raises when ``--cli-mode`` is
-    combined with a multi-server config.
+    was provided.  For multi-server configs the caller's ``server_name`` is returned unchanged and
+    used as a common prefix for per-server names.  In multi-server CLI mode, ``None`` is allowed and
+    falls back to the generated ``mcp`` CLI script name while individual servers use their JSON keys.
     """
     if len(config.mcpServers) == 1:
         config_server_name = next(iter(config.mcpServers))
         return server_name or config_server_name
 
-    # Multi-server path: each server keeps its own JSON key as the prefix.
-    if cli_mode:
-        raise typer.BadParameter(
-            "--cli-mode is not supported with multi-server MCP config JSON. "
-            "Use a single-server config or omit --cli-mode.",
-            param_hint="'COMMAND_OR_URL'",
-        )
     return server_name
 
 
@@ -115,8 +108,8 @@ def main(
             ...,
             metavar="COMMAND_OR_URL",
             help=(
-                "The backend to wrap: either a remote MCP URL, a stdio command plus arguments, or a single-server "
-                "MCP config JSON string. Example stdio usage: uvx mcp-server-fetch"
+                "The backend to wrap: either a remote MCP URL, a stdio command plus arguments, or an MCP config "
+                "JSON string with one or more servers. Example stdio usage: uvx mcp-server-fetch"
             ),
         ),
     ],
@@ -265,7 +258,7 @@ def main(
         _check_conflicting_config_options(ctx)
         resolved_server_name = _resolve_config_server_name(parsed_config, server_name, cli_mode)
 
-    if cli_mode and resolved_server_name is None:
+    if cli_mode and resolved_server_name is None and (parsed_config is None or len(parsed_config.mcpServers) == 1):
         raise typer.BadParameter("--server-name is required when using --cli-mode.", param_hint="'--server-name'")
     if compression_level == CompressionLevel.MAX and resolved_server_name is None:
         raise typer.BadParameter(
@@ -467,6 +460,8 @@ async def _server(
             compression_level=compression_level,
             server_name=server_name,
             toonify=toonify,
+            cli_mode=cli_mode,
+            cli_port=cli_port,
             include_tools=include_tools,
             exclude_tools=exclude_tools,
         ) as mcp:
@@ -612,16 +607,12 @@ async def _multi_server(
     compression_level: CompressionLevel,
     server_name: str | None,
     toonify: bool,
+    cli_mode: bool,
+    cli_port: int | None,
     include_tools: list[str] | None,
     exclude_tools: list[str] | None,
 ) -> AsyncGenerator[FastMCP, None]:
-    """Set up a proxy server that aggregates multiple backend servers from an MCP config.
-
-    Each backend server gets its own CompressedTools middleware with a server-name prefix derived
-    from the JSON key (optionally further prefixed by --server-name).  All proxy sub-servers are
-    mounted on a single parent FastMCP server so the combined compressed interface is exposed as
-    one MCP server.
-    """
+    """Set up a proxy server that aggregates multiple backend servers from an MCP config."""
     outer_mcp = FastMCP(name="MCP Compressor Proxy")
     logger.info("Initializing multi-server proxy")
 
@@ -634,9 +625,25 @@ async def _multi_server(
             single_config = MCPConfig(mcpServers={config_server_name: server_config})
             transport, transport_type = _get_single_server_transport_from_mcp_config(config=single_config)
 
+            if cli_mode:
+                proxy = await exit_stack.enter_async_context(
+                    _cli_mode_server(
+                        transport=transport,
+                        transport_type=transport_type,
+                        cli_name=sanitize_cli_name(effective_name),
+                        compression_level=compression_level,
+                        server_name=effective_name,
+                        toonify=toonify,
+                        cli_port=cli_port,
+                        include_tools=include_tools,
+                        exclude_tools=exclude_tools,
+                    )
+                )
+                outer_mcp.mount(proxy)
+                continue
+
             client = await exit_stack.enter_async_context(_proxy_client(transport))
             proxy = create_proxy(client, name=f"MCP Compressor Proxy - {effective_name}")
-
             compressed_tools = CompressedTools(
                 proxy,
                 compression_level=compression_level,
@@ -650,7 +657,6 @@ async def _multi_server(
 
             stats = await compressed_tools.get_compression_stats()
             print_banner(effective_name, transport_type, stats, compression_level)
-
             outer_mcp.mount(proxy)
 
         yield outer_mcp

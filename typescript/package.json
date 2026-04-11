@@ -28,22 +28,31 @@
     "mcp-compressor": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "check": "tsc --noEmit -p tsconfig.json",
-    "dev": "npm run build && node dist/cli.js",
-    "test": "npm run build && tsc -p tsconfig.test.json && node --test dist-test/tests/*.test.js"
+    "build": "bun run tsc -p tsconfig.build.json",
+    "dev": "bun run build && bun run dist/cli.js",
+    "format": "oxfmt src/ tests/ '!**/node_modules/**' '!**/dist/**' '!**/coverage/**'",
+    "format:check": "oxfmt --check src/ tests/ '!**/node_modules/**' '!**/dist/**' '!**/coverage/**'",
+    "lint": "oxlint src/ tests/",
+    "lint:fix": "oxlint --fix src/ tests/",
+    "test": "vitest run",
+    "typecheck": "bun run tsc --noEmit -p tsconfig.json",
+    "check": "bun run lint && bun run format:check && bun run typecheck && bun run test"
   },
   "publishConfig": {
-    "registry": "https://packages.atlassian.com/api/npm/npm-public/"
+    "registry": "https://registry.npmjs.org/"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@toon-format/toon": "^2.1.0",
+    "commander": "^14.0.3",
     "fastmcp": "^3.35.0",
     "zod": "^4.1.13"
   },
   "devDependencies": {
+    "@types/node": "^24.10.1",
+    "oxfmt": "^0.44.0",
+    "oxlint": "^1.59.0",
     "typescript": "^5.9.3",
-    "@types/node": "^24.10.1"
+    "vitest": "^4.1.4"
   }
 }

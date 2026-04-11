@@ -1,6 +1,6 @@
-import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
-export type CompressionLevel = 'low' | 'medium' | 'high' | 'max';
+export type CompressionLevel = "low" | "medium" | "high" | "max";
 
 export interface CommonProxyOptions {
   compressionLevel?: CompressionLevel;
@@ -11,7 +11,7 @@ export interface CommonProxyOptions {
 }
 
 export interface StdioBackendConfig {
-  type: 'stdio';
+  type: "stdio";
   command: string;
   args?: string[];
   cwd?: string;
@@ -19,14 +19,14 @@ export interface StdioBackendConfig {
 }
 
 export interface HttpBackendConfig {
-  type: 'http';
+  type: "http";
   url: string;
   headers?: Record<string, string>;
   timeoutMs?: number;
 }
 
 export interface SseBackendConfig {
-  type: 'sse';
+  type: "sse";
   url: string;
   headers?: Record<string, string>;
   timeoutMs?: number;
@@ -41,7 +41,7 @@ export interface JsonConfigServerEntry {
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
-  transport?: 'sse';
+  transport?: "sse";
 }
 
 export interface MCPConfigShape {
@@ -49,7 +49,7 @@ export interface MCPConfigShape {
 }
 
 export interface StartOptions {
-  transportType?: 'stdio' | 'httpStream';
+  transportType?: "stdio" | "httpStream";
   httpStream?: {
     port?: number;
     endpoint?: string;

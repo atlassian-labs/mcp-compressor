@@ -17,13 +17,17 @@ An MCP server wrapper for reducing tokens consumed by MCP tools.
 
 ## 📋 What's New
 
+#### 2026-04-10 — Multi-Server MCP Config JSON + CLI Mode
+
+> `COMMAND_OR_URL` can now be a multi-server MCP config JSON string. Each configured server gets its own prefixed wrapper tools and, in CLI mode, its own generated CLI script. For example, a config with `weather` and `calendar` servers generates separate `weather` and `calendar` CLI commands.
+
 #### 2026-04-06 — TypeScript Implementation
 
 > Added a sibling TypeScript implementation with matching compression concepts, OAuth support, in-process runtime APIs, and TypeScript CLI mode.
 
-#### 2026-04-06 — Single-Server MCP Config JSON Strings
+#### 2026-04-06 — MCP Config JSON Strings
 
-> `COMMAND_OR_URL` can now be a single MCP config JSON string. For now, `mcpServers` must contain exactly one server, and its key becomes the default `--server-name` unless one is passed explicitly.
+> `COMMAND_OR_URL` can now be an MCP config JSON string. The JSON key becomes the default `--server-name` unless one is passed explicitly.
 
 #### 2026-03-24 — CLI Mode
 
@@ -67,7 +71,7 @@ With 30k+ tokens just for tool descriptions, costs can reach **1-10 cents per re
 - **Multiple Compression Levels**: Choose between `low`, `medium`, `high`, or `max`
 - **Universal Compatibility**: Works with any MCP server (stdio, HTTP, SSE)
 - **TOON Output Conversion**: Optionally convert JSON backend tool results to [TOON](https://github.com/toon-format/spec) with `--toonify`
-- **CLI Mode**: Convert any MCP server into a local CLI with `--cli-mode` — generates a shell script that lets you (or an AI agent) interact with the backend via familiar command-line syntax
+- **CLI Mode**: Convert any MCP server into a local CLI with `--cli-mode` — generates shell scripts that let you (or an AI agent) interact with backends via familiar command-line syntax. Supports both single and multi-server configs.
 - **Zero Functionality Loss**: All tools remain fully accessible through the wrapper interface
 - **Easy Integration**: Drop-in replacement for existing MCP servers
 
@@ -77,9 +81,9 @@ With 30k+ tokens just for tool descriptions, costs can reach **1-10 cents per re
 | --- | --- | --- |
 | Core compression proxy server | ✅ | ✅ |
 | stdio / streamable HTTP / SSE backends | ✅ | ✅ |
-| Single-server MCP config JSON string input | ✅ | ✅ |
+| Single and multi-server MCP config JSON input | ✅ | ✅ |
 | Persistent OAuth support | ✅ | ✅ |
-| CLI mode | ✅ mature | ✅ available |
+| CLI mode (single and multi-server) | ✅ | ✅ |
 | In-process runtime API for app/agent embedding | ⚠️ not first-class | ✅ first-class |
 | Prompt/resource passthrough parity | ✅ broader | ⚠️ narrower |
 | Production maturity | ✅ primary implementation | ⚠️ newer implementation |
@@ -179,14 +183,17 @@ uvx mcp-compressor --cli-mode --server-name atlassian -- https://mcp.atlassian.c
 
 # Or pass a single MCP config JSON string
 uvx mcp-compressor --cli-mode '{"mcpServers": {"atlassian": {"url": "https://mcp.atlassian.com/v1/mcp"}}}'
+
+# Multi-server config — generates one CLI script per server
+uvx mcp-compressor --cli-mode '{"mcpServers": {"weather": {"command": "uvx", "args": ["mcp-weather"]}, "calendar": {"command": "uvx", "args": ["mcp-calendar"]}}}'
 ```
 
 When CLI mode starts, it:
 
-1. Connects to the wrapped backend server, including OAuth if required
-2. Starts a local HTTP bridge on `127.0.0.1:<port>`
-3. Generates an executable script — on Unix this is typically written to `~/.local/bin/<name>` if available on `PATH`, otherwise to the current directory; on Windows it writes a `.cmd` launcher to a suitable directory on `PATH`
-4. Exposes a single MCP tool named `<server_name>_help` so the client can discover the generated CLI and its subcommands
+1. Connects to each configured backend server, including OAuth if required
+2. Starts a local HTTP bridge per server on `127.0.0.1:<port>`
+3. Generates an executable script per server — on Unix this is typically written to `~/.local/bin/<name>` if available on `PATH`, otherwise to the current directory; on Windows it writes a `.cmd` launcher to a suitable directory on `PATH`
+4. Exposes a `<server_name>_help` MCP tool per server so the client can discover each generated CLI and its subcommands
 
 Example usage after startup:
 
@@ -368,9 +375,9 @@ The best choice of compression level will depend on a number of factors, includi
 
 ## Configuration with MCP JSON file
 
-You can also pass a single-server MCP config JSON string directly as `COMMAND_OR_URL` on the CLI. This is especially useful for remote servers when you want the config itself to carry the URL, headers, transport, or stdio command details.
+You can pass an MCP config JSON string directly as `COMMAND_OR_URL` on the CLI. This is especially useful for remote servers when you want the config itself to carry the URL, headers, transport, or stdio command details.
 
-For now, direct JSON-string input supports exactly one server entry in `mcpServers`.
+Single-server and multi-server configs are both supported. For multi-server configs, each server gets its own prefixed wrapper tools (e.g. `weather_get_tool_schema`, `calendar_invoke_tool`).
 
 
 To configure mcp-compressor in an MCP JSON configuration file, use the following pattern:

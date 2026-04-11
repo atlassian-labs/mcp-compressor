@@ -1,122 +1,289 @@
 #!/usr/bin/env node
-import { clearAllOAuth, clearOAuth, initializeCliMode, resolveAllBackends, startCompressorServer, startMultipleCompressorServers } from './index.js';
-import type { BackendConfig } from './types.js';
+import { fileURLToPath } from "node:url";
 
-function consumeFlag(args: string[], names: string[]): string | undefined {
-  for (let i = 0; i < args.length; i += 1) {
-    if (names.includes(args[i]!)) {
-      const value = args[i + 1];
-      args.splice(i, 2);
-      return value;
-    }
-  }
-  return undefined;
-}
+import { Command, Option } from "commander";
 
-function consumeBooleanFlag(args: string[], names: string[]): boolean {
-  const index = args.findIndex((arg) => names.includes(arg));
-  if (index >= 0) {
-    args.splice(index, 1);
-    return true;
-  }
-  return false;
-}
+import { VERSION } from "./version.js";
 
-function consumeMultiFlag(args: string[], names: string[]): string[] {
-  const values: string[] = [];
-  for (let i = 0; i < args.length; ) {
-    if (names.includes(args[i]!)) {
-      values.push(args[i + 1]!);
-      args.splice(i, 2);
-    } else {
-      i += 1;
-    }
-  }
-  return values;
-}
-
-function extractBackendArgs(args: string[]): string[] {
-  const separatorIndex = args.indexOf('--');
-  if (separatorIndex >= 0) {
-    const backendArgs = args.slice(separatorIndex + 1);
-    args.splice(separatorIndex);
-    return backendArgs;
-  }
-  return [...args];
-}
+import {
+  clearAllOAuth,
+  clearOAuth,
+  initializeCliMode,
+  resolveAllBackends,
+  startCompressorServer,
+  startMultipleCompressorServers,
+} from "./index.js";
+import type { BackendConfig } from "./types.js";
 
 function parseBackendArg(backendArgs: string[]): BackendConfig | string {
   if (backendArgs.length === 0) {
-    throw new Error('Expected a backend URL, MCP config JSON string, or stdio command.');
+    throw new Error("Expected a backend URL, MCP config JSON string, or stdio command.");
   }
   if (backendArgs.length === 1) {
     return backendArgs[0]!;
   }
   return {
-    type: 'stdio',
+    type: "stdio",
     command: backendArgs[0]!,
     args: backendArgs.slice(1),
   };
 }
 
+export interface ParsedCliArgs {
+  backend: BackendConfig | string;
+  cliMode: boolean;
+  cliPort: string | undefined;
+  compressionLevel: "low" | "medium" | "high" | "max" | undefined;
+  cwd: string | undefined;
+  env: Record<string, string>;
+  excludeTools: string[];
+  headers: Record<string, string>;
+  includeTools: string[];
+  logLevel: string;
+  serverName: string | undefined;
+  timeout: number;
+  toonify: boolean;
+}
+
+function collect(value: string, previous: string[]): string[] {
+  previous.push(value);
+  return previous;
+}
+
+function collectKeyValue(value: string, previous: Record<string, string>): Record<string, string> {
+  const eqIndex = value.indexOf("=");
+  if (eqIndex === -1) {
+    throw new Error(`Invalid key=value format: '${value}'. Expected KEY=VALUE.`);
+  }
+  const key = value.slice(0, eqIndex);
+  let val = value.slice(eqIndex + 1);
+  // Support ${VAR_NAME} environment variable expansion
+  val = val.replace(/\$\{(\w+)\}/g, (_, name) => process.env[name] ?? "");
+  previous[key] = val;
+  return previous;
+}
+
+function buildProgram(options: { exitOverride?: boolean } = {}): Command {
+  const program = new Command()
+    .name("mcp-compressor")
+    .description(
+      "Run the MCP Compressor proxy server.\n\n" +
+        "Connects to an MCP server (via stdio, HTTP, or SSE) and wraps it\n" +
+        "with a compressed tool interface.",
+    )
+    .allowUnknownOption(false)
+    .allowExcessArguments(true)
+    .version(VERSION, "-V, --version")
+    .argument(
+      "[command_or_url...]",
+      "The backend to wrap: either a remote MCP URL, a stdio command plus\n" +
+        "arguments, or an MCP config JSON string with one or more servers.\n" +
+        "Example stdio usage: bun run dist/cli.js -- uvx mcp-server-fetch",
+    )
+    .option("--cwd <dir>", "The working directory to use when running stdio MCP servers.")
+    .option(
+      "-e, --env <VAR=VALUE>",
+      "Environment variables to set when running stdio MCP servers, in the\n" +
+        "form VAR_NAME=VALUE. Can be used multiple times. Supports environment\n" +
+        "variable expansion with ${VAR_NAME} syntax.",
+      collectKeyValue,
+      {},
+    )
+    .option(
+      "-H, --header <NAME=VALUE>",
+      "Headers to use for remote (HTTP/SSE) MCP server connections, in the\n" +
+        "form Header-Name=Header-Value. Can be used multiple times. Supports\n" +
+        "environment variable expansion with ${VAR_NAME} syntax.",
+      collectKeyValue,
+      {},
+    )
+    .option(
+      "-t, --timeout <seconds>",
+      "The timeout in seconds for connecting to the MCP server and making requests.",
+      "10",
+    )
+    .addOption(
+      new Option(
+        "-c, --compression-level <level>",
+        "The level of compression to apply to the tool descriptions of the wrapped MCP server.",
+      )
+        .choices(["low", "medium", "high", "max"])
+        .default("medium"),
+    )
+    .option(
+      "-n, --server-name <name>",
+      "Optional custom name to prefix the wrapper tool names (get_tool_schema,\n" +
+        "invoke_tool, list_tools). The name will be sanitized to conform to MCP\n" +
+        "tool name specifications (only A-Z, a-z, 0-9, _, -, .).",
+    )
+    .option("-l, --log-level <level>", "The logging level.", "error")
+    .option("--toonify", "Convert JSON tool responses to TOON format automatically.")
+    .option(
+      "--cli-mode",
+      "Start in CLI mode: expose a single help MCP tool, start a local HTTP\n" +
+        "bridge, and generate a shell script for interacting with the wrapped\n" +
+        "server via CLI. --toonify is automatically enabled in this mode.",
+    )
+    .option(
+      "--cli-port <port>",
+      "Port for the local CLI bridge HTTP server (default: random free port).",
+    )
+    .option(
+      "--include-tool <tool>",
+      "Wrapped server tool name to expose. Can be used multiple times.\n" +
+        "If omitted, all tools are included.",
+      collect,
+      [],
+    )
+    .option(
+      "--exclude-tool <tool>",
+      "Wrapped server tool name to hide. Can be used multiple times.",
+      collect,
+      [],
+    );
+
+  if (options.exitOverride) {
+    program.exitOverride();
+  }
+  return program;
+}
+
+function parseCliArgsWithOptions(
+  argv: string[],
+  parseOptions: { exitOverride?: boolean } = {},
+): ParsedCliArgs {
+  const program = buildProgram(parseOptions);
+  program.parse(argv, { from: "user" });
+  const parsedOptions = program.opts<{
+    cliMode?: boolean;
+    cliPort?: string;
+    compressionLevel?: ParsedCliArgs["compressionLevel"];
+    cwd?: string;
+    env?: Record<string, string>;
+    excludeTool?: string[];
+    header?: Record<string, string>;
+    includeTool?: string[];
+    logLevel: string;
+    serverName?: string;
+    timeout: string;
+    toonify?: boolean;
+  }>();
+  const backend = parseBackendArg(program.args);
+  const cliMode = parsedOptions.cliMode ?? false;
+  const toonify = (parsedOptions.toonify ?? false) || cliMode;
+
+  return {
+    backend,
+    cliMode,
+    cliPort: parsedOptions.cliPort,
+    compressionLevel: parsedOptions.compressionLevel,
+    cwd: parsedOptions.cwd,
+    env: parsedOptions.env ?? {},
+    excludeTools: parsedOptions.excludeTool ?? [],
+    headers: parsedOptions.header ?? {},
+    includeTools: parsedOptions.includeTool ?? [],
+    logLevel: parsedOptions.logLevel,
+    serverName: parsedOptions.serverName,
+    timeout: Number.parseFloat(parsedOptions.timeout),
+    toonify,
+  };
+}
+
+export function parseCliArgs(argv: string[]): ParsedCliArgs {
+  return parseCliArgsWithOptions(argv, { exitOverride: true });
+}
+
+async function handleClearOAuth(args: string[]): Promise<boolean> {
+  if (args[0] !== "clear-oauth") {
+    return false;
+  }
+
+  const clearProgram = new Command()
+    .name("mcp-compressor clear-oauth")
+    .exitOverride()
+    .allowExcessArguments(false)
+    .argument("[backend]", "backend URL or MCP config JSON string")
+    .option("--all", "also remove the encryption key");
+  clearProgram.parse(args.slice(1), { from: "user" });
+  const backend = clearProgram.args[0];
+  const options = clearProgram.opts<{ all?: boolean }>();
+
+  if (backend) {
+    const cleared = await clearOAuth(backend);
+    if (!cleared) {
+      console.warn("No OAuth state applies to that backend.");
+    }
+    return true;
+  }
+
+  const removed = await clearAllOAuth({ all: options.all ?? false });
+  if (removed.length > 0) {
+    console.error("Removed:");
+    for (const removedPath of removed) {
+      console.error(`  ${removedPath}`);
+    }
+    console.error(
+      "OAuth credentials cleared. You will be prompted to authenticate on next connection.",
+    );
+  } else {
+    console.error("No stored OAuth credentials found.");
+  }
+  return true;
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-
-  if (args[0] === 'clear-oauth') {
-    const clearArgs = args.slice(1);
-    const all = consumeBooleanFlag(clearArgs, ['--all']);
-    const backend = clearArgs[0];
-
-    if (backend) {
-      const cleared = await clearOAuth(backend);
-      if (!cleared) {
-        console.warn('No OAuth state applies to that backend.');
-      }
-      return;
-    }
-
-    const removed = await clearAllOAuth({ all });
-    if (removed.length > 0) {
-      console.error('Removed:');
-      for (const removedPath of removed) {
-        console.error(`  ${removedPath}`);
-      }
-      console.error('OAuth credentials cleared. You will be prompted to authenticate on next connection.');
-    } else {
-      console.error('No stored OAuth credentials found.');
-    }
+  if (await handleClearOAuth(args)) {
     return;
   }
 
-  const backendArgs = extractBackendArgs(args);
-  const logLevel = consumeFlag(args, ['--log-level', '-l']) ?? 'error';
-  const compressionLevel = consumeFlag(args, ['--compression-level', '-c']) as
-    | 'low'
-    | 'medium'
-    | 'high'
-    | 'max'
-    | undefined;
-  const serverName = consumeFlag(args, ['--server-name']);
-  const cliPort = consumeFlag(args, ['--cli-port']);
-  const includeTools = consumeMultiFlag(args, ['--include-tool']);
-  const excludeTools = consumeMultiFlag(args, ['--exclude-tool']);
-  const toonifyRequested = consumeBooleanFlag(args, ['--toonify']);
-  const cliMode = consumeBooleanFlag(args, ['--cli-mode']);
-  const toonify = toonifyRequested || cliMode;
+  const {
+    backend,
+    cliMode,
+    cliPort,
+    compressionLevel,
+    cwd,
+    env,
+    excludeTools,
+    headers,
+    includeTools,
+    logLevel,
+    serverName,
+    timeout,
+    toonify,
+  } = parseCliArgsWithOptions(args);
 
-  if (args.length > 0 && backendArgs.length === 0) {
-    backendArgs.push(...args);
+  // Enrich the backend config with CLI transport options (--cwd, --env, --header, --timeout)
+  function enrichBackend(b: BackendConfig | string): BackendConfig | string {
+    if (typeof b === "string") {
+      return b; // JSON config string — transport options go inside the JSON
+    }
+    if (b.type === "stdio") {
+      return {
+        ...b,
+        ...(cwd ? { cwd } : {}),
+        ...(Object.keys(env).length > 0 ? { env: { ...b.env, ...env } } : {}),
+      };
+    }
+    // HTTP or SSE
+    return {
+      ...b,
+      ...(Object.keys(headers).length > 0 ? { headers: { ...b.headers, ...headers } } : {}),
+      ...(timeout !== 10 ? { timeoutMs: timeout * 1000 } : {}),
+    };
   }
 
-  const backend = parseBackendArg(backendArgs);
+  const enrichedBackend = enrichBackend(backend);
 
-  if (logLevel !== 'error') {
-    console.warn(`[mcp-compressor-ts] log-level ${logLevel} requested; detailed logging is not implemented yet.`);
+  if (logLevel !== "error") {
+    console.warn(
+      `[mcp-compressor-ts] log-level ${logLevel} requested; detailed logging is not implemented yet.`,
+    );
   }
 
   if (cliMode) {
     const session = await initializeCliMode({
-      backend,
+      backend: enrichedBackend,
       cliPort: cliPort ? Number.parseInt(cliPort, 10) : undefined,
       compressionLevel,
       excludeTools: excludeTools.length > 0 ? excludeTools : undefined,
@@ -125,17 +292,19 @@ async function main(): Promise<void> {
       toonify,
     });
 
-    const invoke = session.onPath ? session.cliName : `./${session.cliName}`;
-    console.error(`CLI mode active.`);
-    console.error(`Generated CLI: ${session.scriptPath}`);
-    console.error(`Run '${invoke} --help' for usage.`);
+    console.error("CLI mode active.");
+    for (const script of session.scripts) {
+      const invoke = script.onPath ? script.cliName : `./${script.cliName}`;
+      console.error(`Generated CLI: ${script.scriptPath}`);
+      console.error(`Run '${invoke} --help' for usage.`);
+    }
 
     const shutdown = async () => {
       await session.close();
       process.exit(0);
     };
-    process.once('SIGINT', () => void shutdown());
-    process.once('SIGTERM', () => void shutdown());
+    process.once("SIGINT", () => void shutdown());
+    process.once("SIGTERM", () => void shutdown());
 
     await new Promise(() => {
       // keep the bridge/runtime process alive
@@ -143,35 +312,33 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Detect multi-server JSON: if the backend string resolves to more than one entry, use the
-  // multi-server startup path.
-  const resolvedBackends = resolveAllBackends(backend, serverName);
-
+  const resolvedBackends = resolveAllBackends(enrichedBackend, serverName);
   if (resolvedBackends.length > 1) {
-    // In the multi-server path each entry always has a serverName from its JSON key.
     await startMultipleCompressorServers({
       backends: resolvedBackends.map((r) => ({ backend: r.backend, serverName: r.serverName! })),
       compressionLevel,
       excludeTools: excludeTools.length > 0 ? excludeTools : undefined,
       includeTools: includeTools.length > 0 ? includeTools : undefined,
       toonify,
-      start: { transportType: 'stdio' },
+      start: { transportType: "stdio" },
     });
     return;
   }
 
   await startCompressorServer({
-    backend,
+    backend: enrichedBackend,
     compressionLevel,
     excludeTools: excludeTools.length > 0 ? excludeTools : undefined,
     includeTools: includeTools.length > 0 ? includeTools : undefined,
     serverName,
-    start: { transportType: 'stdio' },
+    start: { transportType: "stdio" },
     toonify,
   });
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
-  process.exitCode = 1;
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((error: unknown) => {
+    console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
+    process.exitCode = 1;
+  });
+}

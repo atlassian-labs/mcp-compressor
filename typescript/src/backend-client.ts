@@ -1,24 +1,29 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { auth, UnauthorizedError, type OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { VERSION } from "./version.js";
+import {
+  auth,
+  UnauthorizedError,
+  type OAuthClientProvider,
+} from "@modelcontextprotocol/sdk/client/auth.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
-import { InvalidConfigurationError } from './errors.js';
-import { PersistentOAuthProvider } from './oauth.js';
-import type { BackendConfig } from './types.js';
+import { InvalidConfigurationError } from "./errors.js";
+import { PersistentOAuthProvider } from "./oauth.js";
+import type { BackendConfig } from "./types.js";
 
 function shouldRetryStaleOAuthConnectError(error: unknown, config: BackendConfig): boolean {
-  if (config.type !== 'http' && config.type !== 'sse') {
+  if (config.type !== "http" && config.type !== "sse") {
     return false;
   }
   const message = error instanceof Error ? error.message : String(error);
   return (
-    message.includes('Unauthorized') ||
-    message.includes('invalid_grant') ||
-    message.includes('invalid_client') ||
-    message.includes('401')
+    message.includes("Unauthorized") ||
+    message.includes("invalid_grant") ||
+    message.includes("invalid_client") ||
+    message.includes("401")
   );
 }
 
@@ -45,7 +50,7 @@ export class BackendClient {
         throw error;
       }
 
-      await this.oauthProvider.invalidateCredentials?.('all');
+      await this.oauthProvider.invalidateCredentials?.("all");
       this.connected = false;
       this.client = null;
 
@@ -61,9 +66,9 @@ export class BackendClient {
   }
 
   private async connectOnce(): Promise<void> {
-    const client = new Client({ name: 'mcp-compressor', version: '0.2.12' });
+    const client = new Client({ name: "mcp-compressor", version: VERSION });
 
-    if (this.config.type === 'stdio') {
+    if (this.config.type === "stdio") {
       await client.connect(
         new StdioClientTransport({
           command: this.config.command,
@@ -72,7 +77,7 @@ export class BackendClient {
           env: this.config.env,
         }),
       );
-    } else if (this.config.type === 'http') {
+    } else if (this.config.type === "http") {
       await this.ensureAuthorized(this.config.url, this.config.headers);
       await client.connect(
         new StreamableHTTPClientTransport(new URL(this.config.url), {
@@ -80,7 +85,7 @@ export class BackendClient {
           requestInit: { headers: this.config.headers },
         }),
       );
-    } else if (this.config.type === 'sse') {
+    } else if (this.config.type === "sse") {
       await this.ensureAuthorized(this.config.url, this.config.headers);
       await client.connect(
         new SSEClientTransport(new URL(this.config.url), {
@@ -89,7 +94,9 @@ export class BackendClient {
         }),
       );
     } else {
-      throw new InvalidConfigurationError(`Unsupported backend type: ${String((this.config as { type?: unknown }).type)}`);
+      throw new InvalidConfigurationError(
+        `Unsupported backend type: ${String((this.config as { type?: unknown }).type)}`,
+      );
     }
 
     this.client = client;
@@ -120,15 +127,15 @@ export class BackendClient {
       fetchFn,
     });
 
-    if (result === 'REDIRECT') {
+    if (result === "REDIRECT") {
       const authorizationCode = await this.oauthProvider.consumePendingAuthorizationCode();
       const finishResult = await auth(this.oauthProvider, {
         serverUrl: new URL(url),
         authorizationCode,
         fetchFn,
       });
-      if (finishResult !== 'AUTHORIZED') {
-        throw new UnauthorizedError('Failed to complete OAuth authorization.');
+      if (finishResult !== "AUTHORIZED") {
+        throw new UnauthorizedError("Failed to complete OAuth authorization.");
       }
     }
   }
@@ -154,7 +161,7 @@ export class BackendClient {
 
   private requireClient(): Client {
     if (!this.client) {
-      throw new Error('Backend client is not connected. Call connect() first.');
+      throw new Error("Backend client is not connected. Call connect() first.");
     }
     return this.client;
   }
