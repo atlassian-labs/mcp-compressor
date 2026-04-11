@@ -209,11 +209,12 @@ export class PersistentOAuthProvider implements OAuthClientProvider {
   }
 
   async clear(): Promise<void> {
-    await fs.rm(this.statePath(), { force: true });
+    await fs.rm(await this.statePath(), { force: true });
   }
 
-  private statePath(): string {
-    const key = crypto.createHash("sha256").update(this.serverUrl).digest("hex");
+  private async statePath(): Promise<string> {
+    const secret = await this.getOrCreateKey();
+    const key = crypto.createHmac("sha256", secret).update(this.serverUrl).digest("hex");
     return path.join(this.configDir, `${key}.json`);
   }
 
@@ -223,7 +224,7 @@ export class PersistentOAuthProvider implements OAuthClientProvider {
 
   private async readState(): Promise<OAuthState> {
     try {
-      const encrypted = await fs.readFile(this.statePath(), "utf8");
+      const encrypted = await fs.readFile(await this.statePath(), "utf8");
       return JSON.parse(await this.decrypt(encrypted)) as OAuthState;
     } catch {
       return {};
@@ -232,8 +233,9 @@ export class PersistentOAuthProvider implements OAuthClientProvider {
 
   private async writeState(state: OAuthState): Promise<void> {
     await fs.mkdir(this.configDir, { recursive: true });
-    await fs.writeFile(this.statePath(), await this.encrypt(JSON.stringify(state)), "utf8");
-    await fs.chmod(this.statePath(), 0o600).catch(() => undefined);
+    const statePath = await this.statePath();
+    await fs.writeFile(statePath, await this.encrypt(JSON.stringify(state)), "utf8");
+    await fs.chmod(statePath, 0o600).catch(() => undefined);
   }
 
   private async encryptionKey(): Promise<Buffer> {
