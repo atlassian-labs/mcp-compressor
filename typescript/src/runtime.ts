@@ -1,10 +1,10 @@
-import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
-import { ToolNotFoundError } from './errors.js';
-import { formatCliToolResult, formatToolDescription, formatToolResult } from './formatting.js';
-import type { BackendToolClient, CommonProxyOptions, CompressionLevel } from './types.js';
+import { ToolNotFoundError } from "./errors.js";
+import { formatCliToolResult, formatToolDescription, formatToolResult } from "./formatting.js";
+import type { BackendToolClient, CommonProxyOptions, CompressionLevel } from "./types.js";
 
-export const UNCOMPRESSED_RESOURCE_URI = 'compressor://uncompressed-tools';
+export const UNCOMPRESSED_RESOURCE_URI = "compressor://uncompressed-tools";
 
 export interface CompressorRuntimeOptions extends CommonProxyOptions {
   backendClient: BackendToolClient;
@@ -24,8 +24,11 @@ export class CompressorRuntime {
 
   constructor(options: CompressorRuntimeOptions) {
     this.backendClient = options.backendClient;
-    this.compressionLevel = options.compressionLevel ?? 'medium';
-    this.includeTools = options.includeTools && options.includeTools.length > 0 ? new Set(options.includeTools) : null;
+    this.compressionLevel = options.compressionLevel ?? "medium";
+    this.includeTools =
+      options.includeTools && options.includeTools.length > 0
+        ? new Set(options.includeTools)
+        : null;
     this.excludeTools = new Set(options.excludeTools ?? []);
     this.serverName = options.serverName;
     this.toonify = options.toonify ?? false;
@@ -51,25 +54,35 @@ export class CompressorRuntime {
     return this.getBackendTool(toolName);
   }
 
-  async invokeTool(toolName: string, toolInput: Record<string, unknown> | undefined): Promise<string> {
+  async invokeTool(
+    toolName: string,
+    toolInput: Record<string, unknown> | undefined,
+  ): Promise<string> {
     await this.ensureTools();
     try {
       const result = await this.backendClient.callTool(toolName, toolInput);
       return formatToolResult(result, this.toonify);
     } catch (error) {
       const schema = await this.getToolSchema(toolName);
-      throw new Error(`${(error as Error).message}\n\nUpstream schema:\n${JSON.stringify(schema, null, 2)}`);
+      throw new Error(
+        `${(error as Error).message}\n\nUpstream schema:\n${JSON.stringify(schema, null, 2)}`,
+      );
     }
   }
 
-  async invokeToolForCli(toolName: string, toolInput: Record<string, unknown> | undefined): Promise<string> {
+  async invokeToolForCli(
+    toolName: string,
+    toolInput: Record<string, unknown> | undefined,
+  ): Promise<string> {
     await this.ensureTools();
     try {
       const result = await this.backendClient.callTool(toolName, toolInput);
       return formatCliToolResult(result, this.toonify);
     } catch (error) {
       const schema = await this.getToolSchema(toolName);
-      throw new Error(`${(error as Error).message}\n\nUpstream schema:\n${JSON.stringify(schema, null, 2)}`);
+      throw new Error(
+        `${(error as Error).message}\n\nUpstream schema:\n${JSON.stringify(schema, null, 2)}`,
+      );
     }
   }
 
@@ -85,24 +98,27 @@ export class CompressorRuntime {
 
   async buildCompressedDescription(): Promise<string> {
     await this.ensureTools();
-    return (this.toolListCache ?? []).map((tool) => formatToolDescription(tool, this.compressionLevel)).join('\n');
+    return (this.toolListCache ?? [])
+      .map((tool) => formatToolDescription(tool, this.compressionLevel))
+      .join("\n");
   }
 
   getFunctionToolset(): Record<string, WrapperToolHandler> {
     const handlers: Record<string, WrapperToolHandler> = {
-      [this.prefixName('get_tool_schema')]: async (input) => {
-        const toolName = String(input?.tool_name ?? '');
+      [this.prefixName("get_tool_schema")]: async (input) => {
+        const toolName = String(input?.tool_name ?? "");
         return JSON.stringify(await this.getToolSchema(toolName), null, 2);
       },
-      [this.prefixName('invoke_tool')]: async (input) => {
-        const toolName = String(input?.tool_name ?? '');
+      [this.prefixName("invoke_tool")]: async (input) => {
+        const toolName = String(input?.tool_name ?? "");
         const toolInput = (input?.tool_input as Record<string, unknown> | undefined) ?? undefined;
         return this.invokeTool(toolName, toolInput);
       },
     };
 
-    if (this.compressionLevel === 'max') {
-      handlers[this.prefixName('list_tools')] = async () => JSON.stringify(await this.listToolNames(), null, 2);
+    if (this.compressionLevel === "max") {
+      handlers[this.prefixName("list_tools")] = async () =>
+        JSON.stringify(await this.listToolNames(), null, 2);
     }
 
     return handlers;

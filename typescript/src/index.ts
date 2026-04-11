@@ -1,22 +1,33 @@
-import { BackendClient } from './backend-client.js';
-import { parseSingleServerConfigJson } from './config.js';
-import { InvalidConfigurationError } from './errors.js';
-import { clearAllOAuthState, PersistentOAuthProvider } from './oauth.js';
-import { CompressorRuntime } from './runtime.js';
-import { CompressorServer } from './server.js';
-import type { BackendConfig, CommonProxyOptions, StartOptions } from './types.js';
+import { BackendClient } from "./backend-client.js";
+import { VERSION } from "./version.js";
+import { parseMultiServerConfigJson, parseSingleServerConfigJson } from "./config.js";
+import { InvalidConfigurationError } from "./errors.js";
+import { clearAllOAuthState, PersistentOAuthProvider } from "./oauth.js";
+import { CompressorRuntime, UNCOMPRESSED_RESOURCE_URI } from "./runtime.js";
+import { CompressorServer } from "./server.js";
+import type { BackendConfig, CommonProxyOptions, StartOptions } from "./types.js";
+import { FastMCP } from "fastmcp";
+import { z } from "zod";
 
-export * from './backend-client.js';
-export * from './config.js';
-export * from './errors.js';
-export * from './oauth.js';
-export * from './runtime.js';
-export * from './server.js';
-export * from './cli_mode.js';
-export * from './types.js';
+export * from "./backend-client.js";
+export * from "./config.js";
+export * from "./errors.js";
+export * from "./oauth.js";
+export * from "./runtime.js";
+export * from "./server.js";
+export * from "./cli_mode.js";
+export * from "./types.js";
 
 export interface CreateCompressorServerOptions extends CommonProxyOptions {
   backend: BackendConfig | string;
+  oauthConfigDir?: string;
+  oauthRedirectUrl?: string;
+  onOAuthRedirect?: (url: URL) => void | Promise<void>;
+}
+
+/** Options for creating a compressor server from a multi-server MCP config JSON string. */
+export interface CreateMultiCompressorServerOptions extends Omit<CommonProxyOptions, "serverName"> {
+  backends: Array<{ backend: BackendConfig; serverName: string }>;
   oauthConfigDir?: string;
   oauthRedirectUrl?: string;
   onOAuthRedirect?: (url: URL) => void | Promise<void>;
@@ -26,27 +37,70 @@ export function resolveBackend(
   backend: BackendConfig | string,
   serverName?: string,
 ): { backend: BackendConfig; serverName?: string } {
-  if (typeof backend !== 'string') {
+  if (typeof backend !== "string") {
     return { backend, serverName };
   }
 
-  const parsed = parseSingleServerConfigJson(backend);
-  if (parsed) {
-    return { backend: parsed.backend, serverName: serverName ?? parsed.serverName };
+  // Try single-server JSON first (preserves the exact existing behaviour including the
+  // "exactly one server" error for single-server consumers).
+  try {
+    const parsed = parseSingleServerConfigJson(backend);
+    if (parsed) {
+      return { backend: parsed.backend, serverName: serverName ?? parsed.serverName };
+    }
+  } catch {
+    // Not a single-server JSON; fall through to multi-server check.
   }
 
-  if (backend.startsWith('http://') || backend.startsWith('https://')) {
-    return { backend: { type: 'http', url: backend }, serverName };
+  if (backend.startsWith("http://") || backend.startsWith("https://")) {
+    return { backend: { type: "http", url: backend }, serverName };
   }
 
-  throw new InvalidConfigurationError('String backend values must be a remote URL or a single-server MCP config JSON string.');
+  throw new InvalidConfigurationError(
+    "String backend values must be a remote URL or a single-server MCP config JSON string.",
+  );
+}
+
+/**
+ * Resolve a backend string into one or more `{ backend, serverName }` entries.
+ *
+ * Unlike `resolveBackend`, this function accepts multi-server MCP config JSON strings and returns
+ * an entry for each server in `mcpServers`.  For a single-server config or a plain URL it returns
+ * a one-element array.
+ */
+export function resolveAllBackends(
+  backend: BackendConfig | string,
+  serverName?: string,
+): Array<{ backend: BackendConfig; serverName?: string }> {
+  if (typeof backend !== "string") {
+    return [{ backend, serverName }];
+  }
+
+  const multiParsed = parseMultiServerConfigJson(backend);
+  if (multiParsed) {
+    return multiParsed.map((entry) => ({
+      backend: entry.backend,
+      serverName: serverName ? `${serverName}_${entry.serverName}` : entry.serverName,
+    }));
+  }
+
+  if (backend.startsWith("http://") || backend.startsWith("https://")) {
+    return [{ backend: { type: "http", url: backend }, serverName }];
+  }
+
+  throw new InvalidConfigurationError(
+    "String backend values must be a remote URL or an MCP config JSON string (single- or multi-server).",
+  );
 }
 
 export function createOAuthProviderForBackend(
   backend: BackendConfig,
-  options: Pick<CreateCompressorServerOptions, 'oauthConfigDir' | 'oauthRedirectUrl' | 'onOAuthRedirect'> = {},
+  options: Pick<
+    CreateCompressorServerOptions,
+    "oauthConfigDir" | "oauthRedirectUrl" | "onOAuthRedirect"
+  > = {},
 ): PersistentOAuthProvider | undefined {
-  return backend.type === 'http' || backend.type === 'sse'
+  return backend.type === "http" || backend.type === "sse"
     ? new PersistentOAuthProvider({
         serverUrl: backend.url,
         configDir: options.oauthConfigDir,
@@ -58,7 +112,7 @@ export function createOAuthProviderForBackend(
 
 export async function clearOAuth(
   backend: BackendConfig | string,
-  options: Pick<CreateCompressorServerOptions, 'oauthConfigDir'> = {},
+  options: Pick<CreateCompressorServerOptions, "oauthConfigDir"> = {},
 ): Promise<boolean> {
   const resolved = resolveBackend(backend);
   const provider = createOAuthProviderForBackend(resolved.backend, options);
@@ -70,7 +124,7 @@ export async function clearOAuth(
 }
 
 export async function clearAllOAuth(
-  options: Pick<CreateCompressorServerOptions, 'oauthConfigDir'> & { all?: boolean } = {},
+  options: Pick<CreateCompressorServerOptions, "oauthConfigDir"> & { all?: boolean } = {},
 ): Promise<string[]> {
   return clearAllOAuthState(options.oauthConfigDir, options.all ?? false);
 }
@@ -102,7 +156,7 @@ export async function initializeCompressedFunctionToolset(
   options: CreateCompressorServerOptions,
 ): Promise<{
   runtime: CompressorRuntime;
-  toolset: ReturnType<CompressorRuntime['getFunctionToolset']>;
+  toolset: ReturnType<CompressorRuntime["getFunctionToolset"]>;
 }> {
   const runtime = await initializeCompressorRuntime(options);
   return {
@@ -132,4 +186,117 @@ export async function startCompressorServer(
   const server = createCompressorServer(options);
   await server.start(options.start);
   return server;
+}
+
+/**
+ * Create a `CompressorServer`-like object that aggregates multiple backend MCP servers.
+ *
+ * Each backend gets its own `CompressorRuntime` with a server-name prefix.  All compressed
+ * wrapper tools are added to a single shared FastMCP server, so the caller sees one combined
+ * compressed interface.
+ */
+export function createMultiCompressorServer(
+  options: CreateMultiCompressorServerOptions,
+): MultiCompressorServer {
+  return new MultiCompressorServer(options);
+}
+
+export async function startMultipleCompressorServers(
+  options: CreateMultiCompressorServerOptions & { start?: StartOptions },
+): Promise<MultiCompressorServer> {
+  const server = createMultiCompressorServer(options);
+  await server.start(options.start);
+  return server;
+}
+
+/** A compressor server that wraps multiple MCP backends under a single FastMCP instance. */
+export class MultiCompressorServer {
+  readonly runtimes: ReadonlyArray<CompressorRuntime>;
+  readonly server: FastMCP;
+
+  constructor(options: CreateMultiCompressorServerOptions) {
+    this.server = new FastMCP({
+      name: "MCP Compressor TS",
+      version: VERSION,
+      instructions: "A compressed MCP proxy server (multi-backend).",
+    });
+
+    const compressionLevel = options.compressionLevel ?? "medium";
+    const toonify = options.toonify ?? false;
+
+    const runtimes: CompressorRuntime[] = [];
+
+    for (const { backend, serverName } of options.backends) {
+      const oauthProvider = createOAuthProviderForBackend(backend, options);
+      const backendClient = new BackendClient(backend, oauthProvider);
+      const runtime = new CompressorRuntime({
+        backendClient,
+        compressionLevel,
+        excludeTools: options.excludeTools,
+        includeTools: options.includeTools,
+        serverName,
+        toonify,
+      });
+      runtimes.push(runtime);
+
+      const prefixName = (name: string) => `${serverName}_${name}`;
+      const resourceUri = UNCOMPRESSED_RESOURCE_URI.replace(
+        "compressor://",
+        `compressor://${serverName}/`,
+      );
+
+      this.server.addTool({
+        name: prefixName("get_tool_schema"),
+        description: "Return the full upstream schema for one backend tool.",
+        parameters: z.object({ tool_name: z.string() }),
+        execute: async ({ tool_name }) =>
+          JSON.stringify(await runtime.getToolSchema(tool_name), null, 2),
+      });
+
+      this.server.addTool({
+        name: prefixName("invoke_tool"),
+        description: "Invoke one backend tool by name with a JSON object input.",
+        parameters: z.object({
+          tool_name: z.string(),
+          tool_input: z.record(z.string(), z.unknown()).optional(),
+        }),
+        execute: async ({ tool_name, tool_input }) => runtime.invokeTool(tool_name, tool_input),
+      });
+
+      if (compressionLevel === "max") {
+        this.server.addTool({
+          name: prefixName("list_tools"),
+          description: "List backend tool names.",
+          execute: async () => JSON.stringify(await runtime.listToolNames(), null, 2),
+        });
+      }
+
+      this.server.addResource({
+        uri: resourceUri,
+        name: `${serverName}-uncompressed-tools`,
+        mimeType: "application/json",
+        load: async () => ({
+          text: JSON.stringify(await runtime.listUncompressedTools(), null, 2),
+        }),
+      });
+    }
+
+    this.runtimes = runtimes;
+  }
+
+  async connectAll(): Promise<void> {
+    await Promise.all(this.runtimes.map((r) => r.connect()));
+  }
+
+  async closeAll(): Promise<void> {
+    await Promise.all(this.runtimes.map((r) => r.close()));
+  }
+
+  async start(options: StartOptions = {}): Promise<void> {
+    await this.connectAll();
+    await this.server.start({
+      transportType: options.transportType ?? "stdio",
+      ...(options.httpStream ? options.httpStream : {}),
+    });
+  }
 }

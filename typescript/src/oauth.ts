@@ -1,20 +1,20 @@
-import { spawn } from 'node:child_process';
-import crypto from 'node:crypto';
-import fs from 'node:fs/promises';
-import http from 'node:http';
-import net from 'node:net';
-import os from 'node:os';
-import path from 'node:path';
+import { spawn } from "node:child_process";
+import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import http from "node:http";
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
 
 import type {
   OAuthClientProvider,
   OAuthDiscoveryState,
-} from '@modelcontextprotocol/sdk/client/auth.js';
+} from "@modelcontextprotocol/sdk/client/auth.js";
 import type {
   OAuthClientInformationMixed,
   OAuthClientMetadata,
   OAuthTokens,
-} from '@modelcontextprotocol/sdk/shared/auth.js';
+} from "@modelcontextprotocol/sdk/shared/auth.js";
 
 interface OAuthState {
   clientInformation?: OAuthClientInformationMixed;
@@ -31,12 +31,15 @@ export interface PersistentOAuthProviderOptions {
   configDir?: string;
 }
 
-export async function clearAllOAuthState(configDir = path.join(os.homedir(), '.config', 'mcp-compressor'), all = false): Promise<string[]> {
+export async function clearAllOAuthState(
+  configDir = path.join(os.homedir(), ".config", "mcp-compressor"),
+  all = false,
+): Promise<string[]> {
   const removed: string[] = [];
   try {
     const entries = await fs.readdir(configDir, { withFileTypes: true });
     for (const entry of entries) {
-      if (entry.isFile() && entry.name.endsWith('.json')) {
+      if (entry.isFile() && entry.name.endsWith(".json")) {
         const fullPath = path.join(configDir, entry.name);
         await fs.rm(fullPath, { force: true });
         removed.push(fullPath);
@@ -47,7 +50,7 @@ export async function clearAllOAuthState(configDir = path.join(os.homedir(), '.c
   }
 
   if (all) {
-    const keyPath = path.join(configDir, '.key');
+    const keyPath = path.join(configDir, ".key");
     try {
       await fs.rm(keyPath, { force: true });
       removed.push(keyPath);
@@ -59,8 +62,8 @@ export async function clearAllOAuthState(configDir = path.join(os.homedir(), '.c
   return removed;
 }
 
-const DEFAULT_LOOPBACK_REDIRECT_HOST = 'localhost';
-const DEFAULT_LOOPBACK_REDIRECT_PATH = '/callback';
+const DEFAULT_LOOPBACK_REDIRECT_HOST = "localhost";
+const DEFAULT_LOOPBACK_REDIRECT_PATH = "/callback";
 
 export class PersistentOAuthProvider implements OAuthClientProvider {
   readonly clientMetadataUrl = undefined;
@@ -71,19 +74,19 @@ export class PersistentOAuthProvider implements OAuthClientProvider {
   redirectUrl: string | URL | undefined;
 
   readonly clientMetadata: OAuthClientMetadata = {
-    client_name: 'mcp-compressor',
-    grant_types: ['authorization_code', 'refresh_token'],
-    redirect_uris: ['http://127.0.0.1/callback'],
-    response_types: ['code'],
-    token_endpoint_auth_method: 'none',
+    client_name: "mcp-compressor",
+    grant_types: ["authorization_code", "refresh_token"],
+    redirect_uris: ["http://127.0.0.1/callback"],
+    response_types: ["code"],
+    token_endpoint_auth_method: "none",
   };
 
   constructor(options: PersistentOAuthProviderOptions) {
     this.serverUrl = options.serverUrl;
     this.redirectUrl = options.redirectUrl;
     this.onRedirect = options.onRedirect;
-    this.configDir = options.configDir ?? path.join(os.homedir(), '.config', 'mcp-compressor');
-    if (typeof this.redirectUrl === 'string') {
+    this.configDir = options.configDir ?? path.join(os.homedir(), ".config", "mcp-compressor");
+    if (typeof this.redirectUrl === "string") {
       this.clientMetadata.redirect_uris = [this.redirectUrl];
     }
   }
@@ -96,7 +99,8 @@ export class PersistentOAuthProvider implements OAuthClientProvider {
 
     const state = await this.readState();
     const savedRedirectUrl = state.redirectUrl;
-    const hasLegacyClientStateWithoutRedirect = !savedRedirectUrl && !!(state.clientInformation || state.tokens);
+    const hasLegacyClientStateWithoutRedirect =
+      !savedRedirectUrl && !!(state.clientInformation || state.tokens);
 
     let redirectUrl = savedRedirectUrl;
     if (!redirectUrl || !(await canListenOnRedirectUrl(new URL(redirectUrl)))) {
@@ -145,12 +149,15 @@ export class PersistentOAuthProvider implements OAuthClientProvider {
     }
 
     const callbackUrl = new URL(String(this.redirectUrl));
-    this.pendingAuthorizationCode = await this.captureAuthorizationCode(callbackUrl, authorizationUrl);
+    this.pendingAuthorizationCode = await this.captureAuthorizationCode(
+      callbackUrl,
+      authorizationUrl,
+    );
   }
 
   async consumePendingAuthorizationCode(): Promise<string> {
     if (!this.pendingAuthorizationCode) {
-      throw new Error('No pending OAuth authorization code is available.');
+      throw new Error("No pending OAuth authorization code is available.");
     }
     const code = this.pendingAuthorizationCode;
     this.pendingAuthorizationCode = undefined;
@@ -166,7 +173,7 @@ export class PersistentOAuthProvider implements OAuthClientProvider {
   async codeVerifier(): Promise<string> {
     const verifier = (await this.readState()).codeVerifier;
     if (!verifier) {
-      throw new Error('Missing saved PKCE code verifier.');
+      throw new Error("Missing saved PKCE code verifier.");
     }
     return verifier;
   }
@@ -181,40 +188,43 @@ export class PersistentOAuthProvider implements OAuthClientProvider {
     await this.writeState(state);
   }
 
-  async invalidateCredentials(scope: 'all' | 'client' | 'tokens' | 'verifier' | 'discovery'): Promise<void> {
+  async invalidateCredentials(
+    scope: "all" | "client" | "tokens" | "verifier" | "discovery",
+  ): Promise<void> {
     const state = await this.readState();
-    if (scope === 'all') {
+    if (scope === "all") {
       await this.clear();
       return;
     }
-    if (scope === 'client') {
+    if (scope === "client") {
       delete state.clientInformation;
-    } else if (scope === 'tokens') {
+    } else if (scope === "tokens") {
       delete state.tokens;
-    } else if (scope === 'verifier') {
+    } else if (scope === "verifier") {
       delete state.codeVerifier;
-    } else if (scope === 'discovery') {
+    } else if (scope === "discovery") {
       delete state.discoveryState;
     }
     await this.writeState(state);
   }
 
   async clear(): Promise<void> {
-    await fs.rm(this.statePath(), { force: true });
+    await fs.rm(await this.statePath(), { force: true });
   }
 
-  private statePath(): string {
-    const key = crypto.createHash('sha256').update(this.serverUrl).digest('hex');
+  private async statePath(): Promise<string> {
+    const secret = await this.encryptionKey();
+    const key = crypto.createHmac("sha256", secret).update(this.serverUrl).digest("hex");
     return path.join(this.configDir, `${key}.json`);
   }
 
   private keyPath(): string {
-    return path.join(this.configDir, '.key');
+    return path.join(this.configDir, ".key");
   }
 
   private async readState(): Promise<OAuthState> {
     try {
-      const encrypted = await fs.readFile(this.statePath(), 'utf8');
+      const encrypted = await fs.readFile(await this.statePath(), "utf8");
       return JSON.parse(await this.decrypt(encrypted)) as OAuthState;
     } catch {
       return {};
@@ -223,8 +233,9 @@ export class PersistentOAuthProvider implements OAuthClientProvider {
 
   private async writeState(state: OAuthState): Promise<void> {
     await fs.mkdir(this.configDir, { recursive: true });
-    await fs.writeFile(this.statePath(), await this.encrypt(JSON.stringify(state)), 'utf8');
-    await fs.chmod(this.statePath(), 0o600).catch(() => undefined);
+    const statePath = await this.statePath();
+    await fs.writeFile(statePath, await this.encrypt(JSON.stringify(state)), "utf8");
+    await fs.chmod(statePath, 0o600).catch(() => undefined);
   }
 
   private async encryptionKey(): Promise<Buffer> {
@@ -241,58 +252,60 @@ export class PersistentOAuthProvider implements OAuthClientProvider {
 
   private async encrypt(plaintext: string): Promise<string> {
     const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', await this.encryptionKey(), iv);
-    const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+    const cipher = crypto.createCipheriv("aes-256-gcm", await this.encryptionKey(), iv);
+    const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
     const tag = cipher.getAuthTag();
-    return Buffer.concat([iv, tag, ciphertext]).toString('base64');
+    return Buffer.concat([iv, tag, ciphertext]).toString("base64");
   }
 
   private async decrypt(payload: string): Promise<string> {
-    const decoded = Buffer.from(payload, 'base64');
+    const decoded = Buffer.from(payload, "base64");
     const iv = decoded.subarray(0, 12);
     const tag = decoded.subarray(12, 28);
     const ciphertext = decoded.subarray(28);
-    const decipher = crypto.createDecipheriv('aes-256-gcm', await this.encryptionKey(), iv);
+    const decipher = crypto.createDecipheriv("aes-256-gcm", await this.encryptionKey(), iv);
     decipher.setAuthTag(tag);
-    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
   }
 
   private async captureAuthorizationCode(callbackUrl: URL, authorizationUrl: URL): Promise<string> {
     const server = http.createServer();
 
     const codePromise = new Promise<string>((resolve, reject) => {
-      server.on('request', (request, response) => {
-        const requestUrl = new URL(request.url ?? '/', callbackUrl);
+      server.on("request", (request, response) => {
+        const requestUrl = new URL(request.url ?? "/", callbackUrl);
         if (requestUrl.pathname !== callbackUrl.pathname) {
-          response.writeHead(404).end('Not found');
+          response.writeHead(404).end("Not found");
           return;
         }
 
-        const error = requestUrl.searchParams.get('error');
-        const code = requestUrl.searchParams.get('code');
+        const error = requestUrl.searchParams.get("error");
+        const code = requestUrl.searchParams.get("code");
         if (error) {
-          response.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' });
+          response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
           response.end(`OAuth authorization failed: ${error}`);
           reject(new Error(`OAuth authorization failed: ${error}`));
           return;
         }
         if (!code) {
-          response.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' });
-          response.end('Missing OAuth authorization code.');
-          reject(new Error('Missing OAuth authorization code.'));
+          response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
+          response.end("Missing OAuth authorization code.");
+          reject(new Error("Missing OAuth authorization code."));
           return;
         }
 
-        response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        response.end('<html><body><h1>Authorization complete</h1><p>You can return to the terminal.</p></body></html>');
+        response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        response.end(
+          "<html><body><h1>Authorization complete</h1><p>You can return to the terminal.</p></body></html>",
+        );
         resolve(code);
       });
-      server.on('error', reject);
+      server.on("error", reject);
     });
 
     await new Promise<void>((resolve, reject) => {
       server.listen(Number(callbackUrl.port), callbackUrl.hostname, () => resolve());
-      server.on('error', reject);
+      server.on("error", reject);
     });
 
     try {
@@ -307,15 +320,15 @@ export class PersistentOAuthProvider implements OAuthClientProvider {
   private openBrowser(url: URL): void {
     const href = url.toString();
     const platform = process.platform;
-    if (platform === 'darwin') {
-      void spawn('open', [href], { detached: true, stdio: 'ignore' }).unref();
+    if (platform === "darwin") {
+      void spawn("open", [href], { detached: true, stdio: "ignore" }).unref();
       return;
     }
-    if (platform === 'win32') {
-      void spawn('cmd', ['/c', 'start', '', href], { detached: true, stdio: 'ignore' }).unref();
+    if (platform === "win32") {
+      void spawn("cmd", ["/c", "start", "", href], { detached: true, stdio: "ignore" }).unref();
       return;
     }
-    void spawn('xdg-open', [href], { detached: true, stdio: 'ignore' }).unref();
+    void spawn("xdg-open", [href], { detached: true, stdio: "ignore" }).unref();
   }
 }
 
@@ -326,7 +339,7 @@ async function canListenOnRedirectUrl(redirectUrl: URL): Promise<boolean> {
   }
   return await new Promise<boolean>((resolve) => {
     const server = net.createServer();
-    server.once('error', () => resolve(false));
+    server.once("error", () => resolve(false));
     server.listen(port, redirectUrl.hostname, () => {
       server.close(() => resolve(true));
     });
@@ -336,11 +349,11 @@ async function canListenOnRedirectUrl(redirectUrl: URL): Promise<boolean> {
 async function findAvailablePort(): Promise<number> {
   return await new Promise<number>((resolve, reject) => {
     const server = net.createServer();
-    server.on('error', reject);
+    server.on("error", reject);
     server.listen(0, DEFAULT_LOOPBACK_REDIRECT_HOST, () => {
       const address = server.address();
-      if (!address || typeof address === 'string') {
-        server.close(() => reject(new Error('Failed to determine an available loopback port.')));
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("Failed to determine an available loopback port.")));
         return;
       }
       server.close((error) => {

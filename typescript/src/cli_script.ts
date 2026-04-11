@@ -1,23 +1,23 @@
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
-const SCRIPT_MARKER = 'mcp-compressor ts cli-mode script';
-const BRIDGES_MARKER = 'BRIDGES_JSON=';
+const SCRIPT_MARKER = "mcp-compressor ts cli-mode script";
+const BRIDGES_MARKER = "BRIDGES_JSON=";
 
 type Bridges = Record<number, string>;
 
 export async function findScriptDir(): Promise<{ dir: string; onPath: boolean }> {
   const pathDirs = new Set(
-    (process.env.PATH ?? '')
+    (process.env.PATH ?? "")
       .split(path.delimiter)
       .filter(Boolean)
       .map((entry) => path.resolve(entry)),
   );
   const candidates =
-    process.platform === 'win32'
-      ? [path.join(process.env.APPDATA ?? os.homedir(), 'npm')]
-      : [path.join(os.homedir(), '.local', 'bin'), path.join(os.homedir(), 'bin')];
+    process.platform === "win32"
+      ? [path.join(process.env.APPDATA ?? os.homedir(), "npm")]
+      : [path.join(os.homedir(), ".local", "bin"), path.join(os.homedir(), "bin")];
 
   for (const candidate of candidates) {
     const resolved = path.resolve(candidate);
@@ -48,10 +48,10 @@ export async function generateCliScript(
   const bridges = await liveBridges(existing);
   bridges[sessionPid] = `http://127.0.0.1:${bridgePort}`;
 
-  if (process.platform === 'win32') {
-    await fs.writeFile(scriptPath, windowsScript(cliName, bridges), { encoding: 'utf8' });
+  if (process.platform === "win32") {
+    await fs.writeFile(scriptPath, windowsScript(cliName, bridges), { encoding: "utf8" });
   } else {
-    await fs.writeFile(scriptPath, unixScript(cliName, bridges), { encoding: 'utf8', mode: 0o755 });
+    await fs.writeFile(scriptPath, unixScript(cliName, bridges), { encoding: "utf8", mode: 0o755 });
     await fs.chmod(scriptPath, 0o755);
   }
 
@@ -75,17 +75,17 @@ export async function removeCliScriptEntry(
     return;
   }
 
-  if (process.platform === 'win32') {
-    await fs.writeFile(scriptPath, windowsScript(cliName, bridges), { encoding: 'utf8' });
+  if (process.platform === "win32") {
+    await fs.writeFile(scriptPath, windowsScript(cliName, bridges), { encoding: "utf8" });
   } else {
-    await fs.writeFile(scriptPath, unixScript(cliName, bridges), { encoding: 'utf8', mode: 0o755 });
+    await fs.writeFile(scriptPath, unixScript(cliName, bridges), { encoding: "utf8", mode: 0o755 });
     await fs.chmod(scriptPath, 0o755);
   }
 }
 
 export async function removeCliScript(scriptPath: string): Promise<void> {
   try {
-    const content = await fs.readFile(scriptPath, 'utf8');
+    const content = await fs.readFile(scriptPath, "utf8");
     if (!content.includes(SCRIPT_MARKER)) {
       return;
     }
@@ -96,21 +96,21 @@ export async function removeCliScript(scriptPath: string): Promise<void> {
 }
 
 function scriptPathFor(cliName: string, scriptDir: string): string {
-  return path.join(scriptDir, process.platform === 'win32' ? `${cliName}.cmd` : cliName);
+  return path.join(scriptDir, process.platform === "win32" ? `${cliName}.cmd` : cliName);
 }
 
 async function readBridges(scriptPath: string): Promise<Bridges> {
   try {
-    const content = await fs.readFile(scriptPath, 'utf8');
+    const content = await fs.readFile(scriptPath, "utf8");
     const match = content.match(/BRIDGES_JSON=(.+)$/m);
     if (!match) {
       return {};
     }
-    const parsed = JSON.parse(match[1] ?? '{}') as Record<string, string>;
+    const parsed = JSON.parse(match[1] ?? "{}") as Record<string, string>;
     return Object.fromEntries(
       Object.entries(parsed)
         .map(([pid, url]) => [Number.parseInt(pid, 10), url] as const)
-        .filter(([pid, url]) => Number.isInteger(pid) && typeof url === 'string'),
+        .filter(([pid, url]) => Number.isInteger(pid) && typeof url === "string"),
     );
   } catch {
     return {};
@@ -121,7 +121,7 @@ async function checkBridgeAlive(url: string): Promise<boolean> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 1000);
   try {
-    const response = await fetch(`${url}/health`, { method: 'GET', signal: controller.signal });
+    const response = await fetch(`${url}/health`, { method: "GET", signal: controller.signal });
     return response.ok;
   } catch {
     return false;
@@ -132,27 +132,35 @@ async function checkBridgeAlive(url: string): Promise<boolean> {
 
 async function liveBridges(bridges: Bridges): Promise<Bridges> {
   const entries = await Promise.all(
-    Object.entries(bridges).map(async ([pid, url]) => ((await checkBridgeAlive(url)) ? ([pid, url] as const) : null)),
+    Object.entries(bridges).map(async ([pid, url]) =>
+      (await checkBridgeAlive(url)) ? ([pid, url] as const) : null,
+    ),
   );
-  return Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => entry !== null).map(([pid, url]) => [Number.parseInt(pid, 10), url]));
+  return Object.fromEntries(
+    entries
+      .filter((entry): entry is readonly [string, string] => entry !== null)
+      .map(([pid, url]) => [Number.parseInt(pid, 10), url]),
+  );
 }
 
 function bridgesJson(bridges: Bridges): string {
-  return JSON.stringify(Object.fromEntries(Object.entries(bridges).sort(([a], [b]) => Number(a) - Number(b))));
+  return JSON.stringify(
+    Object.fromEntries(Object.entries(bridges).sort(([a], [b]) => Number(a) - Number(b))),
+  );
 }
 
 function bridgesBash(bridges: Bridges): string {
   return Object.entries(bridges)
     .sort(([a], [b]) => Number(a) - Number(b))
     .map(([pid, url]) => `  [${shellQuote(pid)}]=${shellQuote(url)}`)
-    .join('\n');
+    .join("\n");
 }
 
 function bridgesPowerShell(bridges: Bridges): string {
   return Object.entries(bridges)
     .sort(([a], [b]) => Number(a) - Number(b))
     .map(([pid, url]) => `${pid} = '${url.replace(/'/g, "''")}'`)
-    .join('; ');
+    .join("; ");
 }
 
 function unixScript(cliName: string, bridges: Bridges): string {
@@ -218,6 +226,7 @@ request() {
   rm -f "$tmp"
   case "$status" in
     2??) return 0 ;;
+    4??|5??) return 1 ;;
     *) return 1 ;;
   esac
 }

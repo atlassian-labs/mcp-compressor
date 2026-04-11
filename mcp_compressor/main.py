@@ -69,6 +69,36 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+def _check_conflicting_config_options(ctx: typer.Context) -> None:
+    """Raise BadParameter if any transport options that conflict with JSON config were provided."""
+    conflicting = [
+        name
+        for name in ("cwd", "env_list", "header_list", "timeout")
+        if ctx.get_parameter_source(name) == ParameterSource.COMMANDLINE
+    ]
+    if conflicting:
+        joined = ", ".join(f"--{n.removesuffix('_list').replace('_', '-')}" for n in conflicting)
+        raise typer.BadParameter(
+            f"JSON MCP config input cannot be combined with {joined}; configure those values inside the JSON instead.",
+            param_hint="'COMMAND_OR_URL'",
+        )
+
+
+def _resolve_config_server_name(config: MCPConfig, server_name: str | None, cli_mode: bool) -> str | None:
+    """Return the effective server name from a parsed MCP config.
+
+    For single-server configs the JSON key is used as a fallback when no explicit ``--server-name``
+    was provided.  For multi-server configs the caller's ``server_name`` is returned unchanged and
+    used as a common prefix for per-server names.  In multi-server CLI mode, ``None`` is allowed and
+    falls back to the generated ``mcp`` CLI script name while individual servers use their JSON keys.
+    """
+    if len(config.mcpServers) == 1:
+        config_server_name = next(iter(config.mcpServers))
+        return server_name or config_server_name
+
+    return server_name
+
+
 @app.command()
 def main(
     ctx: typer.Context,
@@ -78,8 +108,8 @@ def main(
             ...,
             metavar="COMMAND_OR_URL",
             help=(
-                "The backend to wrap: either a remote MCP URL, a stdio command plus arguments, or a single-server "
-                "MCP config JSON string. Example stdio usage: uvx mcp-server-fetch"
+                "The backend to wrap: either a remote MCP URL, a stdio command plus arguments, or an MCP config "
+                "JSON string with one or more servers. Example stdio usage: uvx mcp-server-fetch"
             ),
         ),
     ],
@@ -220,32 +250,15 @@ def main(
 
     resolved_server_name = server_name
     try:
-        parsed_config = _parse_single_server_mcp_config(command_or_url_list)
+        parsed_config = _parse_mcp_config_json(command_or_url_list)
     except ValueError as exc:
         raise typer.BadParameter(str(exc), param_hint="'COMMAND_OR_URL'") from exc
 
     if parsed_config is not None:
-        conflicting_config_options = [
-            option_name
-            for option_name in ("cwd", "env_list", "header_list", "timeout")
-            if ctx.get_parameter_source(option_name) == ParameterSource.COMMANDLINE
-        ]
-        if conflicting_config_options:
-            joined_options = ", ".join(
-                f"--{name.removesuffix('_list').replace('_', '-')}" for name in conflicting_config_options
-            )
-            raise typer.BadParameter(
-                (
-                    f"JSON MCP config input cannot be combined with {joined_options}; configure those values inside "
-                    "the JSON instead."
-                ),
-                param_hint="'COMMAND_OR_URL'",
-            )
+        _check_conflicting_config_options(ctx)
+        resolved_server_name = _resolve_config_server_name(parsed_config, server_name, cli_mode)
 
-        _config, config_server_name = parsed_config
-        resolved_server_name = server_name or config_server_name
-
-    if cli_mode and resolved_server_name is None:
+    if cli_mode and resolved_server_name is None and (parsed_config is None or len(parsed_config.mcpServers) == 1):
         raise typer.BadParameter("--server-name is required when using --cli-mode.", param_hint="'--server-name'")
     if compression_level == CompressionLevel.MAX and resolved_server_name is None:
         raise typer.BadParameter(
@@ -439,10 +452,24 @@ async def _server(
     exclude_tools: list[str] | None = None,
 ) -> AsyncGenerator[FastMCP, None]:
     command_or_url = " ".join(command_or_url_list)
-    parsed_config = _parse_single_server_mcp_config(command_or_url_list)
+    parsed_config = _parse_mcp_config_json(command_or_url_list)
+    if parsed_config is not None and len(parsed_config.mcpServers) > 1:
+        logger.info(f"Loaded multi-server MCP config JSON with {len(parsed_config.mcpServers)} servers")
+        async with _multi_server(
+            config=parsed_config,
+            compression_level=compression_level,
+            server_name=server_name,
+            toonify=toonify,
+            cli_mode=cli_mode,
+            cli_port=cli_port,
+            include_tools=include_tools,
+            exclude_tools=exclude_tools,
+        ) as mcp:
+            yield mcp
+        return
+
     if parsed_config is not None:
-        config, _config_server_name = parsed_config
-        transport, transport_type = _get_single_server_transport_from_mcp_config(config=config)
+        transport, transport_type = _get_single_server_transport_from_mcp_config(config=parsed_config)
         logger.info("Loaded single-server MCP config JSON")
     else:
         transport_type = _infer_transport_type(command_or_url)
@@ -574,6 +601,67 @@ async def _cli_mode_server(
                 logger.debug("Removed CLI script entry for session_pid={}", session_pid)
 
 
+@asynccontextmanager
+async def _multi_server(
+    config: MCPConfig,
+    compression_level: CompressionLevel,
+    server_name: str | None,
+    toonify: bool,
+    cli_mode: bool,
+    cli_port: int | None,
+    include_tools: list[str] | None,
+    exclude_tools: list[str] | None,
+) -> AsyncGenerator[FastMCP, None]:
+    """Set up a proxy server that aggregates multiple backend servers from an MCP config."""
+    outer_mcp = FastMCP(name="MCP Compressor Proxy")
+    logger.info("Initializing multi-server proxy")
+
+    async with contextlib.AsyncExitStack() as exit_stack:
+        for config_server_name, server_config in config.mcpServers.items():
+            # Naming convention: if a --server-name prefix is provided it is prepended to the JSON
+            # key with an underscore separator, e.g. "myapp_weather".  The TypeScript implementation
+            # mirrors this convention in resolveAllBackends (typescript/src/index.ts).
+            effective_name = f"{server_name}_{config_server_name}" if server_name else config_server_name
+            single_config = MCPConfig(mcpServers={config_server_name: server_config})
+            transport, transport_type = _get_single_server_transport_from_mcp_config(config=single_config)
+
+            if cli_mode:
+                proxy = await exit_stack.enter_async_context(
+                    _cli_mode_server(
+                        transport=transport,
+                        transport_type=transport_type,
+                        cli_name=sanitize_cli_name(effective_name),
+                        compression_level=compression_level,
+                        server_name=effective_name,
+                        toonify=toonify,
+                        cli_port=cli_port,
+                        include_tools=include_tools,
+                        exclude_tools=exclude_tools,
+                    )
+                )
+                outer_mcp.mount(proxy)
+                continue
+
+            client = await exit_stack.enter_async_context(_proxy_client(transport))
+            proxy = create_proxy(client, name=f"MCP Compressor Proxy - {effective_name}")
+            compressed_tools = CompressedTools(
+                proxy,
+                compression_level=compression_level,
+                server_name=effective_name,
+                toonify=toonify,
+                include_tools=include_tools,
+                exclude_tools=exclude_tools,
+            )
+            logger.info(f"Configuring compressed tools for server '{effective_name}'")
+            await compressed_tools.configure_server()
+
+            stats = await compressed_tools.get_compression_stats()
+            print_banner(effective_name, transport_type, stats, compression_level)
+            outer_mcp.mount(proxy)
+
+        yield outer_mcp
+
+
 _OAUTH_CONFIG_DIR = Path.home() / ".config" / "mcp-compressor"
 _OAUTH_TOKEN_DIR = _OAUTH_CONFIG_DIR / "oauth-tokens"
 _OAUTH_KEY_FILE = _OAUTH_CONFIG_DIR / ".key"
@@ -670,6 +758,30 @@ def _parse_single_server_mcp_config(command_or_url_list: list[str]) -> tuple[MCP
 
     server_name = next(iter(config.mcpServers))
     return config, server_name
+
+
+def _parse_mcp_config_json(command_or_url_list: list[str]) -> MCPConfig | None:
+    """Parse a JSON MCP config argument, supporting one or more servers.
+
+    Returns the parsed MCPConfig (with any number of servers), or None if the input is not a JSON
+    config string. Raises ValueError for invalid JSON or an empty mcpServers map.
+    """
+    if len(command_or_url_list) != 1:
+        return None
+
+    command_or_url = command_or_url_list[0].strip()
+    if not command_or_url.startswith("{"):
+        return None
+
+    try:
+        config = MCPConfig.model_validate_json(command_or_url)
+    except ValidationError as exc:
+        raise ValueError("Invalid MCP config JSON provided for COMMAND_OR_URL.") from exc
+
+    if len(config.mcpServers) == 0:
+        raise ValueError("MCP config JSON must contain at least one server in the mcpServers map.")
+
+    return config
 
 
 def _get_single_server_transport_from_mcp_config(

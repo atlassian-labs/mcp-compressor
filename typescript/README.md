@@ -16,7 +16,7 @@ The TypeScript package currently focuses on the core compressed proxy behavior:
   - stdio
   - streamable HTTP
   - SSE
-- support single-server MCP config JSON input
+- support single-server and multi-server MCP config JSON input
 - expose:
   - `get_tool_schema`
   - `invoke_tool`
@@ -29,13 +29,15 @@ The TypeScript package currently focuses on the core compressed proxy behavior:
   - discovery-state persistence
   - stale-auth retry after clearing cached credentials
   - `clear-oauth`
+- CLI mode with generated shell scripts for direct tool invocation
+  - single-server and multi-server CLI mode
+  - per-server generated scripts for multi-server configs
 
 ## Not yet at Python parity
 
 The TypeScript package is intentionally narrower than the Python implementation for now.
 
 Notable differences today:
-- no CLI mode equivalent yet
 - no prompt passthrough yet
 - no resource passthrough beyond the hidden uncompressed-tools resource
 - no OS keyring-backed encryption-key storage yet
@@ -47,29 +49,41 @@ Notable differences today:
 - `src/server.ts` — compressed FastMCP server implementation
 - `src/backend-client.ts` — upstream MCP client lifecycle and retry behavior
 - `src/oauth.ts` — persistent OAuth provider and state handling
-- `src/config.ts` — single-server MCP config JSON parsing
+- `src/config.ts` — single and multi-server MCP config JSON parsing
 - `src/formatting.ts` — compressed tool descriptions and TOON conversion
-- `src/cli.ts` — minimal CLI entrypoint
-- `tests/` — focused Node test coverage
+- `src/cli.ts` — CLI entrypoint (uses [commander](https://github.com/tj/commander.js))
+- `src/cli_mode.ts` — CLI mode session management
+- `src/cli_bridge.ts` — local HTTP bridge for CLI mode
+- `src/cli_script.ts` — generated shell script management
+- `src/cli_tools.ts` — CLI argument parsing and help formatting
+- `tests/` — test coverage using [vitest](https://vitest.dev/)
 
 ## Install dependencies
 
 ```bash
 cd typescript
-npm install
+bun install
 ```
 
 ## Run checks
 
 ```bash
-npm test
-npm run check
+bun run test          # run tests with vitest
+bun run check         # type-check with tsc
+bun run lint          # lint with oxlint
+bun run format:check  # check formatting with oxfmt
+```
+
+## Format code
+
+```bash
+bun run format
 ```
 
 ## Build
 
 ```bash
-npm run build
+bun run build
 ```
 
 ## Library usage
@@ -141,13 +155,13 @@ await startCompressorServer({
 The TypeScript package includes a CLI entrypoint for normal MCP server mode:
 
 ```bash
-node dist/cli.js https://mcp.atlassian.com/v1/mcp
+bun run dist/cli.js https://mcp.atlassian.com/v1/mcp
 ```
 
 For local development, the easiest way to run it is:
 
 ```bash
-npm run dev -- https://mcp.atlassian.com/v1/mcp
+bun run dev -- https://mcp.atlassian.com/v1/mcp
 ```
 
 For remote OAuth backends, the CLI chooses an available `localhost` loopback callback port automatically, opens the browser, and completes the authorization-code exchange before connecting.
@@ -160,37 +174,59 @@ CLI mode starts a local bridge plus a generated shell command for the backend to
 Remote backend example:
 
 ```bash
-npm run dev -- --cli-mode --server-name atlassian -- https://mcp.atlassian.com/v1/mcp
+bun run dev -- --cli-mode --server-name atlassian -- https://mcp.atlassian.com/v1/mcp
 ```
 
 Single-server JSON config example:
 
 ```bash
-npm run dev -- --cli-mode -- '{"mcpServers":{"atlassian":{"url":"https://mcp.atlassian.com/v1/mcp"}}}'
+bun run dev -- --cli-mode -- '{"mcpServers":{"atlassian":{"url":"https://mcp.atlassian.com/v1/mcp"}}}'
 ```
 
 Stdio backend example:
 
 ```bash
-npm run dev -- --cli-mode --server-name filesystem -- npx -y @modelcontextprotocol/server-filesystem .
+bun run dev -- --cli-mode --server-name filesystem -- npx -y @modelcontextprotocol/server-filesystem .
 ```
 
-When CLI mode starts, it prints the generated script path. Keep the TS process running, then invoke the generated command, for example:
+Multi-server JSON config example:
 
 ```bash
+bun run dev -- --cli-mode -- '{"mcpServers":{"weather":{"command":"uvx","args":["mcp-weather"]},"calendar":{"command":"uvx","args":["mcp-calendar"]}}}'
+```
+
+When CLI mode starts, it prints the generated script path(s). Keep the process running, then invoke the generated command(s), for example:
+
+```bash
+# Single-server CLI mode
 atlassian --help
 atlassian search-confluence --query oauth
+
+# Multi-server CLI mode generates one script per server
+weather --help
+calendar --help
 ```
 
 Clear cached OAuth state for a remote backend:
 
 ```bash
-node dist/cli.js clear-oauth https://mcp.atlassian.com/v1/mcp
+bun run dist/cli.js clear-oauth https://mcp.atlassian.com/v1/mcp
 ```
+
+## Development toolchain
+
+| Tool | Purpose |
+|---|---|
+| [bun](https://bun.sh/) | Package manager and runtime |
+| [TypeScript](https://www.typescriptlang.org/) | Type checking (`tsc`) |
+| [vitest](https://vitest.dev/) | Test runner |
+| [oxlint](https://oxc.rs/docs/guide/usage/linter) | Linter |
+| [oxfmt](https://oxc.rs/docs/guide/usage/formatter) | Formatter |
+| [commander](https://github.com/tj/commander.js) | CLI argument parsing |
 
 ## Publishing
 
-This package is configured to publish as unscoped `mcp-compressor` through Atlassian Artifactory forwarding to npm.
+This package is configured to publish as unscoped `mcp-compressor` to the public npm registry.
 
 Relevant files:
 - `package.json` — package metadata and `publishConfig`
@@ -200,7 +236,6 @@ Relevant files:
 ## Relationship to the Python implementation
 
 The Python package remains the more mature implementation today, especially around:
-- CLI mode
 - broader pass-through behavior
 - packaging polish
 

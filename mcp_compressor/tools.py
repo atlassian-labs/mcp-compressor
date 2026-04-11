@@ -127,7 +127,9 @@ class CompressedTools(CatalogTransform):
         self._invoke_tool_name = sanitize_tool_name(f"{self._tool_name_prefix}invoke_tool")
         self._invoke_tool_alias_name = sanitize_tool_name("invoke_tool")
         self._list_tools_name = sanitize_tool_name(f"{self._tool_name_prefix}list_tools")
-        self._uncompressed_tools_resource_uri = "compressor://uncompressed-tools"
+        self._uncompressed_tools_resource_uri = (
+            f"compressor://{server_name}/uncompressed-tools" if server_name else "compressor://uncompressed-tools"
+        )
 
     @property
     def invoke_tool_names(self) -> set[str]:

@@ -1,22 +1,21 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
+import { test, expect } from "vitest";
 
-import { formatCliToolResult, formatToolResult, maybeToonifyText } from '../src/formatting.js';
+import { formatCliToolResult, formatToolResult, maybeToonifyText } from "../src/formatting.js";
 
-test('maybeToonifyText returns non-json text unchanged', () => {
-  assert.equal(maybeToonifyText('hello', true), 'hello');
+test("maybeToonifyText returns non-json text unchanged", () => {
+  expect(maybeToonifyText("hello", true)).toBe("hello");
 });
 
-test('maybeToonifyText toonifies json text when enabled', () => {
-  assert.match(maybeToonifyText('{"hello":"world"}', true), /hello/);
+test("maybeToonifyText toonifies json text when enabled", () => {
+  expect(maybeToonifyText('{"hello":"world"}', true)).toMatch(/hello/);
 });
 
-test('formatToolResult toonifies JSON text blocks inside MCP tool results', () => {
+test("formatToolResult toonifies JSON text blocks inside MCP tool results", () => {
   const output = formatToolResult(
     {
       content: [
         {
-          type: 'text',
+          type: "text",
           text: '{"hello":"world"}',
         },
       ],
@@ -26,16 +25,16 @@ test('formatToolResult toonifies JSON text blocks inside MCP tool results', () =
   );
 
   const parsed = JSON.parse(output) as { content: Array<{ text: string }> };
-  assert.notEqual(parsed.content[0]?.text, '{"hello":"world"}');
-  assert.match(parsed.content[0]?.text ?? '', /hello/);
+  expect(parsed.content[0]?.text).not.toBe('{"hello":"world"}');
+  expect(parsed.content[0]?.text ?? "").toMatch(/hello/);
 });
 
-test('formatCliToolResult unwraps MCP text blocks for CLI output', () => {
+test("formatCliToolResult unwraps MCP text blocks for CLI output", () => {
   const output = formatCliToolResult(
     {
       content: [
         {
-          type: 'text',
+          type: "text",
           text: '{"hello":"world"}',
         },
       ],
@@ -44,6 +43,6 @@ test('formatCliToolResult unwraps MCP text blocks for CLI output', () => {
     true,
   );
 
-  assert.doesNotMatch(output, /"content"/);
-  assert.match(output, /hello/);
+  expect(output).not.toMatch(/"content"/);
+  expect(output).toMatch(/hello/);
 });

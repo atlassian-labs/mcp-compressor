@@ -1,8 +1,9 @@
-import { FastMCP } from 'fastmcp';
-import { z } from 'zod';
+import { FastMCP } from "fastmcp";
+import { VERSION } from "./version.js";
+import { z } from "zod";
 
-import { CompressorRuntime, UNCOMPRESSED_RESOURCE_URI } from './runtime.js';
-import type { BackendToolClient, CommonProxyOptions, StartOptions } from './types.js';
+import { CompressorRuntime, UNCOMPRESSED_RESOURCE_URI } from "./runtime.js";
+import type { BackendToolClient, CommonProxyOptions, StartOptions } from "./types.js";
 
 export interface CompressorServerOptions extends CommonProxyOptions {
   backendClient: BackendToolClient;
@@ -11,18 +12,18 @@ export interface CompressorServerOptions extends CommonProxyOptions {
 export class CompressorServer {
   readonly runtime: CompressorRuntime;
   readonly server: FastMCP;
-  private readonly compressionLevel: CommonProxyOptions['compressionLevel'];
+  private readonly compressionLevel: CommonProxyOptions["compressionLevel"];
   private readonly serverName?: string;
 
   constructor(options: CompressorServerOptions) {
     this.runtime = new CompressorRuntime(options);
-    this.compressionLevel = options.compressionLevel ?? 'medium';
+    this.compressionLevel = options.compressionLevel ?? "medium";
     this.serverName = options.serverName;
 
     this.server = new FastMCP({
-      name: 'MCP Compressor TS',
-      version: '0.2.12',
-      instructions: 'A compressed MCP proxy server.',
+      name: "MCP Compressor TS",
+      version: VERSION,
+      instructions: "A compressed MCP proxy server.",
     });
 
     this.configureServer();
@@ -47,7 +48,7 @@ export class CompressorServer {
   async start(options: StartOptions = {}): Promise<void> {
     await this.connectBackend();
     await this.server.start({
-      transportType: options.transportType ?? 'stdio',
+      transportType: options.transportType ?? "stdio",
       ...(options.httpStream ? options.httpStream : {}),
     });
   }
@@ -56,7 +57,10 @@ export class CompressorServer {
     return this.runtime.getToolSchema(toolName);
   }
 
-  async invokeTool(toolName: string, toolInput: Record<string, unknown> | undefined): Promise<string> {
+  async invokeTool(
+    toolName: string,
+    toolInput: Record<string, unknown> | undefined,
+  ): Promise<string> {
     return this.runtime.invokeTool(toolName, toolInput);
   }
 
@@ -74,15 +78,16 @@ export class CompressorServer {
 
   private configureServer(): void {
     this.server.addTool({
-      name: this.prefixName('get_tool_schema'),
-      description: 'Return the full upstream schema for one backend tool.',
+      name: this.prefixName("get_tool_schema"),
+      description: "Return the full upstream schema for one backend tool.",
       parameters: z.object({ tool_name: z.string() }),
-      execute: async ({ tool_name }) => JSON.stringify(await this.runtime.getToolSchema(tool_name), null, 2),
+      execute: async ({ tool_name }) =>
+        JSON.stringify(await this.runtime.getToolSchema(tool_name), null, 2),
     });
 
     this.server.addTool({
-      name: this.prefixName('invoke_tool'),
-      description: 'Invoke one backend tool by name with a JSON object input.',
+      name: this.prefixName("invoke_tool"),
+      description: "Invoke one backend tool by name with a JSON object input.",
       parameters: z.object({
         tool_name: z.string(),
         tool_input: z.record(z.string(), z.unknown()).optional(),
@@ -90,18 +95,20 @@ export class CompressorServer {
       execute: async ({ tool_name, tool_input }) => this.runtime.invokeTool(tool_name, tool_input),
     });
 
-    if (this.compressionLevel === 'max') {
+    if (this.compressionLevel === "max") {
       this.server.addTool({
-        name: this.prefixName('list_tools'),
-        description: 'List backend tool names.',
+        name: this.prefixName("list_tools"),
+        description: "List backend tool names.",
         execute: async () => JSON.stringify(await this.runtime.listToolNames(), null, 2),
       });
     }
 
     this.server.addResource({
-      uri: UNCOMPRESSED_RESOURCE_URI,
-      name: 'uncompressed-tools',
-      mimeType: 'application/json',
+      uri: this.serverName
+        ? UNCOMPRESSED_RESOURCE_URI.replace("compressor://", `compressor://${this.serverName}/`)
+        : UNCOMPRESSED_RESOURCE_URI,
+      name: "uncompressed-tools",
+      mimeType: "application/json",
       load: async () => ({
         text: JSON.stringify(await this.runtime.listUncompressedTools(), null, 2),
       }),

@@ -25,6 +25,7 @@ from mcp_compressor.main import (
     _get_stdio_transport,
     _get_streamable_http_transport,
     _interpolate_string,
+    _parse_mcp_config_json,
     _parse_single_server_mcp_config,
     _parse_tool_name_list,
     _proxy_client,
@@ -117,6 +118,37 @@ def test_parse_single_server_mcp_config_rejects_multiple_servers() -> None:
 
     with pytest.raises(ValueError, match="exactly one server"):
         _parse_single_server_mcp_config([config_json])
+
+
+def test_parse_mcp_config_json_single_server() -> None:
+    config_json = '{"mcpServers": {"weather": {"command": "uvx", "args": ["mcp-weather"]}}}'
+
+    config = _parse_mcp_config_json([config_json])
+    assert config is not None
+    assert list(config.mcpServers) == ["weather"]
+
+
+def test_parse_mcp_config_json_multiple_servers() -> None:
+    config_json = (
+        '{"mcpServers": {'
+        '"weather": {"command": "uvx", "args": ["mcp-weather"]}, '
+        '"calendar": {"command": "uvx", "args": ["mcp-calendar"]}'
+        "}}"
+    )
+
+    config = _parse_mcp_config_json([config_json])
+    assert config is not None
+    assert list(config.mcpServers) == ["weather", "calendar"]
+
+
+def test_parse_mcp_config_json_returns_none_for_non_json() -> None:
+    assert _parse_mcp_config_json(["uvx", "mcp-server-fetch"]) is None
+    assert _parse_mcp_config_json(["https://example.com/mcp"]) is None
+
+
+def test_parse_mcp_config_json_rejects_empty_servers() -> None:
+    with pytest.raises(ValueError, match="at least one server"):
+        _parse_mcp_config_json(['{"mcpServers": {}}'])
 
 
 # Tests for transport creation functions
@@ -341,9 +373,8 @@ def test_server_name_option_overrides_single_server_mcp_config_name(
     assert captured["server_name"] == "custom"
 
 
-def test_single_server_mcp_config_rejects_multiple_servers_via_cli(
-    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_multi_server_mcp_config_accepted_via_cli(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Multi-server MCP JSON configs are now accepted and passed to _async_main."""
     config_json = (
         '{"mcpServers": {'
         '"weather": {"command": "uvx", "args": ["mcp-weather"]}, '
@@ -359,8 +390,8 @@ def test_single_server_mcp_config_rejects_multiple_servers_via_cli(
     monkeypatch.setattr(main_module, "_async_main", fake_async_main)
     result = runner.invoke(app, [config_json])
 
-    assert result.exit_code != 0
-    assert async_main_called is False
+    assert result.exit_code == 0
+    assert async_main_called is True
 
 
 @pytest.mark.parametrize(
@@ -432,6 +463,116 @@ async def test_server_uses_single_server_config_transport_directly(monkeypatch: 
     assert captured["transport"].command == "uvx"
     assert captured["transport"].args == ["mcp-weather"]
     assert captured["compressed_tools_kwargs"]["server_name"] == "weather"
+
+
+async def test_server_uses_multi_server_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Multi-server JSON config creates separate proxy clients for each backend."""
+    config_json = (
+        '{"mcpServers": {'
+        '"weather": {"command": "uvx", "args": ["mcp-weather"]}, '
+        '"calendar": {"command": "uvx", "args": ["mcp-calendar"]}'
+        "}}"
+    )
+    captured: dict[str, Any] = {"transports": [], "server_names": []}
+
+    @asynccontextmanager
+    async def fake_proxy_client(transport):
+        captured["transports"].append(transport)
+        yield object()
+
+    class FakeCompressedTools:
+        def __init__(self, mcp, **kwargs) -> None:
+            self.mcp = mcp
+            captured["server_names"].append(kwargs.get("server_name"))
+
+        async def configure_server(self) -> None:
+            return None
+
+        async def get_compression_stats(self) -> dict[str, int]:
+            return {"compressed": 1, "original": 1}
+
+    monkeypatch.setattr(main_module, "_proxy_client", fake_proxy_client)
+    monkeypatch.setattr(main_module, "create_proxy", lambda client, name: object())
+    monkeypatch.setattr(main_module, "CompressedTools", FakeCompressedTools)
+    monkeypatch.setattr(main_module, "print_banner", lambda *args, **kwargs: None)
+
+    async with _server(
+        command_or_url_list=[config_json],
+        cwd=None,
+        env_list=None,
+        header_list=None,
+        timeout=10.0,
+        compression_level=CompressionLevel.MEDIUM,
+        server_name=None,
+    ) as mcp:
+        from fastmcp import FastMCP
+
+        assert isinstance(mcp, FastMCP)
+
+    assert len(captured["transports"]) == 2
+    assert isinstance(captured["transports"][0], StdioTransport)
+    assert captured["transports"][0].command == "uvx"
+    assert captured["transports"][0].args == ["mcp-weather"]
+    assert isinstance(captured["transports"][1], StdioTransport)
+    assert captured["transports"][1].command == "uvx"
+    assert captured["transports"][1].args == ["mcp-calendar"]
+    assert captured["server_names"] == ["weather", "calendar"]
+
+
+def test_multi_server_mcp_config_accepts_cli_mode(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--cli-mode can be combined with multi-server MCP JSON config."""
+    config_json = (
+        '{"mcpServers": {'
+        '"weather": {"command": "uvx", "args": ["mcp-weather"]}, '
+        '"calendar": {"command": "uvx", "args": ["mcp-calendar"]}'
+        "}}"
+    )
+    captured: dict[str, Any] = {}
+
+    async def fake_async_main(**kwargs: Any) -> None:
+        captured.update(kwargs)
+
+    original_asyncio_run = main_module.asyncio.run
+
+    def fake_run(coro):
+        original_asyncio_run(coro)
+
+    monkeypatch.setattr(main_module, "_async_main", fake_async_main)
+    monkeypatch.setattr(main_module.asyncio, "run", fake_run)
+    result = runner.invoke(app, ["--cli-mode", config_json])
+
+    assert result.exit_code == 0
+    assert captured.get("cli_mode") is True
+    assert captured.get("server_name") is None
+    assert captured.get("toonify") is True
+
+
+def test_multi_server_mcp_config_with_server_name_prefix(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--server-name acts as a common prefix for all backend names in multi-server mode."""
+    config_json = (
+        '{"mcpServers": {'
+        '"weather": {"command": "uvx", "args": ["mcp-weather"]}, '
+        '"calendar": {"command": "uvx", "args": ["mcp-calendar"]}'
+        "}}"
+    )
+    captured: dict[str, Any] = {}
+
+    async def fake_async_main(**kwargs: Any) -> None:
+        captured.update(kwargs)
+
+    original_asyncio_run = main_module.asyncio.run
+
+    def fake_run(coro):
+        original_asyncio_run(coro)
+
+    monkeypatch.setattr(main_module, "_async_main", fake_async_main)
+    monkeypatch.setattr(main_module.asyncio, "run", fake_run)
+
+    result = runner.invoke(app, ["--server-name", "myapp", config_json])
+
+    assert result.exit_code == 0
+    # server_name is forwarded as-is; _multi_server uses it as a prefix internally
+    assert captured.get("server_name") == "myapp"
 
 
 def test_recoverable_oauth_traceback_filter_suppresses_known_stale_oauth_signatures() -> None:
