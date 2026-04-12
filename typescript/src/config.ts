@@ -1,40 +1,14 @@
 import { InvalidConfigurationError } from "./errors.js";
 import type { BackendConfig, JsonConfigServerEntry, MCPConfigShape } from "./types.js";
 
-export function parseSingleServerConfigJson(
-  input: string,
-): { backend: BackendConfig; serverName: string } | null {
-  const trimmed = input.trim();
-  if (!trimmed.startsWith("{")) {
-    return null;
-  }
-
-  let parsed: MCPConfigShape;
-  try {
-    parsed = JSON.parse(trimmed) as MCPConfigShape;
-  } catch (error) {
-    throw new InvalidConfigurationError(`Invalid MCP config JSON: ${(error as Error).message}`);
-  }
-
-  const names = Object.keys(parsed.mcpServers ?? {});
-  if (names.length !== 1) {
-    throw new InvalidConfigurationError(
-      "MCP config JSON must contain exactly one server in mcpServers.",
-    );
-  }
-
-  const serverName = names[0]!;
-  return { backend: normalizeConfigServer(parsed.mcpServers[serverName]!), serverName };
-}
-
 /**
- * Parse a multi-server MCP config JSON string.
+ * Parse an MCP config JSON string containing one or more servers.
  *
  * Returns an array of `{ backend, serverName }` entries — one per server in `mcpServers` — or
  * `null` if the input is not a JSON object string.  Throws {@link InvalidConfigurationError} for
  * malformed JSON or an empty `mcpServers` map.
  */
-export function parseMultiServerConfigJson(
+export function parseServerConfigJson(
   input: string,
 ): Array<{ backend: BackendConfig; serverName: string }> | null {
   const trimmed = input.trim();
@@ -74,9 +48,7 @@ export function normalizeConfigServer(entry: JsonConfigServerEntry): BackendConf
   }
 
   if (!entry.url) {
-    throw new InvalidConfigurationError(
-      "Single-server MCP config must contain either command or url.",
-    );
+    throw new InvalidConfigurationError("Server config must contain either command or url.");
   }
 
   return {

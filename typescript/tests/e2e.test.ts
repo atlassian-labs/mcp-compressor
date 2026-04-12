@@ -9,8 +9,7 @@ import {
   createCompressorRuntime,
   createMultiCompressorServer,
   initializeCliMode,
-  resolveAllBackends,
-  resolveBackend,
+  resolveBackends,
 } from "../src/index.js";
 import { BackendClient } from "../src/backend-client.js";
 import type { StdioBackendConfig } from "../src/types.js";
@@ -86,7 +85,7 @@ test("TypeScript single-server direct backend proxy works with Python FastMCP e2
 });
 
 test("TypeScript single-server MCP config supports filters and toonify with Python FastMCP e2e server", async () => {
-  const resolved = resolveBackend(singleServerConfigJson());
+  const resolved = resolveBackends(singleServerConfigJson())[0]!;
   expect(resolved.serverName).toBe("alpha");
 
   const runtime = createCompressorRuntime({
@@ -121,7 +120,7 @@ test("TypeScript BackendClient can read Python FastMCP resources directly", asyn
 });
 
 test("TypeScript multi-server proxy works with Python FastMCP e2e servers", async () => {
-  const resolved = resolveAllBackends(multiServerConfigJson(), "suite");
+  const resolved = resolveBackends(multiServerConfigJson(), "suite");
   expect(resolved.map((entry) => entry.serverName)).toEqual(["suite_alpha", "suite_beta"]);
 
   const server = createMultiCompressorServer({

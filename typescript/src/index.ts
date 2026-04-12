@@ -1,6 +1,6 @@
 import { BackendClient } from "./backend-client.js";
 import { VERSION } from "./version.js";
-import { parseMultiServerConfigJson, parseSingleServerConfigJson } from "./config.js";
+import { parseServerConfigJson } from "./config.js";
 import { InvalidConfigurationError } from "./errors.js";
 import { clearAllOAuthState, PersistentOAuthProvider } from "./oauth.js";
 import { CompressorRuntime, UNCOMPRESSED_RESOURCE_URI } from "./runtime.js";
@@ -41,42 +41,13 @@ export interface CreateMultiCompressorServerOptions extends Omit<CommonProxyOpti
   onOAuthRedirect?: (url: URL) => void | Promise<void>;
 }
 
-export function resolveBackend(
-  backend: BackendConfig | string,
-  serverName?: string,
-): { backend: BackendConfig; serverName?: string } {
-  if (typeof backend !== "string") {
-    return { backend, serverName };
-  }
-
-  // Try single-server JSON first (preserves the exact existing behaviour including the
-  // "exactly one server" error for single-server consumers).
-  try {
-    const parsed = parseSingleServerConfigJson(backend);
-    if (parsed) {
-      return { backend: parsed.backend, serverName: serverName ?? parsed.serverName };
-    }
-  } catch {
-    // Not a single-server JSON; fall through to multi-server check.
-  }
-
-  if (backend.startsWith("http://") || backend.startsWith("https://")) {
-    return { backend: { type: "http", url: backend }, serverName };
-  }
-
-  throw new InvalidConfigurationError(
-    "String backend values must be a remote URL or a single-server MCP config JSON string.",
-  );
-}
-
 /**
- * Resolve a backend string into one or more `{ backend, serverName }` entries.
+ * Resolve a backend into one or more `{ backend, serverName }` entries.
  *
- * Unlike `resolveBackend`, this function accepts multi-server MCP config JSON strings and returns
- * an entry for each server in `mcpServers`.  For a single-server config or a plain URL it returns
- * a one-element array.
+ * Accepts a `BackendConfig` object, a remote URL string, or a JSON string containing one or
+ * more servers in the `{ mcpServers: { ... } }` format.  Always returns an array.
  */
-export function resolveAllBackends(
+export function resolveBackends(
   backend: BackendConfig | string,
   serverName?: string,
 ): Array<{ backend: BackendConfig; serverName?: string }> {
@@ -84,9 +55,9 @@ export function resolveAllBackends(
     return [{ backend, serverName }];
   }
 
-  const multiParsed = parseMultiServerConfigJson(backend);
-  if (multiParsed) {
-    return multiParsed.map((entry) => ({
+  const parsed = parseServerConfigJson(backend);
+  if (parsed) {
+    return parsed.map((entry) => ({
       backend: entry.backend,
       serverName: serverName ? `${serverName}_${entry.serverName}` : entry.serverName,
     }));
@@ -97,7 +68,7 @@ export function resolveAllBackends(
   }
 
   throw new InvalidConfigurationError(
-    "String backend values must be a remote URL or an MCP config JSON string (single- or multi-server).",
+    "String backend values must be a remote URL or an MCP config JSON string.",
   );
 }
 
@@ -122,7 +93,7 @@ export async function clearOAuth(
   backend: BackendConfig | string,
   options: Pick<CreateCompressorServerOptions, "oauthConfigDir"> = {},
 ): Promise<boolean> {
-  const resolved = resolveBackend(backend);
+  const resolved = resolveBackends(backend)[0]!;
   const provider = createOAuthProviderForBackend(resolved.backend, options);
   if (!provider) {
     return false;
@@ -138,7 +109,7 @@ export async function clearAllOAuth(
 }
 
 export function createCompressorRuntime(options: CreateCompressorServerOptions): CompressorRuntime {
-  const resolved = resolveBackend(options.backend, options.serverName);
+  const resolved = resolveBackends(options.backend, options.serverName)[0]!;
   const oauthProvider = createOAuthProviderForBackend(resolved.backend, options);
 
   const backendClient = new BackendClient(resolved.backend, oauthProvider);
@@ -184,7 +155,7 @@ export async function initializeCompressedFunctionToolset(
 }
 
 export function createCompressorServer(options: CreateCompressorServerOptions): CompressorServer {
-  const resolved = resolveBackend(options.backend, options.serverName);
+  const resolved = resolveBackends(options.backend, options.serverName)[0]!;
   const oauthProvider = createOAuthProviderForBackend(resolved.backend, options);
 
   const backendClient = new BackendClient(resolved.backend, oauthProvider);

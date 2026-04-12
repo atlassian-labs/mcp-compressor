@@ -7,7 +7,7 @@ import {
   clearAllOAuth,
   clearOAuth,
   initializeCliMode,
-  resolveAllBackends,
+  resolveBackends,
   startCompressorServer,
   startMultipleCompressorServers,
 } from "./index.js";
@@ -311,7 +311,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const resolvedBackends = resolveAllBackends(enrichedBackend, serverName);
+  const resolvedBackends = resolveBackends(enrichedBackend, serverName);
   if (resolvedBackends.length > 1) {
     await startMultipleCompressorServers({
       backends: resolvedBackends.map((r) => ({ backend: r.backend, serverName: r.serverName! })),

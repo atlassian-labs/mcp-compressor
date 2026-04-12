@@ -31,8 +31,8 @@ export interface CliModeSession {
  * which delegates to each runtime's `disconnect()`.
  */
 export async function initializeCliMode(options: CliModeOptions): Promise<CliModeSession> {
-  const { createCompressorRuntime, resolveAllBackends } = await import("./index.js");
-  const resolvedBackends = resolveAllBackends(options.backend, options.serverName);
+  const { createCompressorRuntime, resolveBackends } = await import("./index.js");
+  const resolvedBackends = resolveBackends(options.backend, options.serverName);
   const runtimes: CompressorRuntime[] = [];
 
   try {
