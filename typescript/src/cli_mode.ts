@@ -99,7 +99,7 @@ export async function initializeCliMode(options: CliModeOptions): Promise<CliMod
       tools: primary.tools,
       async close(): Promise<void> {
         await Promise.allSettled(scripts.map((script) => script.bridge.close()));
-        await Promise.allSettled(runtimes.map((runtime) => runtime.close()));
+        await Promise.allSettled(runtimes.map((runtime) => runtime.disconnect()));
         await Promise.allSettled(
           scripts.map((script) =>
             removeCliScriptEntry(script.cliName, sessionPid, options.scriptDir),
@@ -109,7 +109,7 @@ export async function initializeCliMode(options: CliModeOptions): Promise<CliMod
     };
   } catch (error) {
     await Promise.allSettled(scripts.map((script) => script.bridge.close()));
-    await Promise.allSettled(scripts.map((script) => script.runtime.close()));
+    await Promise.allSettled(scripts.map((script) => script.runtime.disconnect()));
     await Promise.allSettled(
       scripts.map((script) => removeCliScriptEntry(script.cliName, sessionPid, options.scriptDir)),
     );

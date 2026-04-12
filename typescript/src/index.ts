@@ -289,7 +289,7 @@ export class MultiCompressorServer {
   }
 
   async closeAll(): Promise<void> {
-    await Promise.all(this.runtimes.map((r) => r.close()));
+    await Promise.all(this.runtimes.map((r) => r.disconnect()));
   }
 
   async start(options: StartOptions = {}): Promise<void> {

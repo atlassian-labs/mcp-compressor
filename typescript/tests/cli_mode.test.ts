@@ -19,7 +19,7 @@ class FakeBackendClient implements BackendToolClient {
   constructor(private readonly tools: Tool[]) {}
 
   async connect(): Promise<void> {}
-  async close(): Promise<void> {}
+  async disconnect(): Promise<void> {}
   async listTools(): Promise<Tool[]> {
     return this.tools;
   }
@@ -101,7 +101,7 @@ test("CliBridge serves shell-friendly help and invokes tools", async () => {
   expect(invalidText).toMatch(/--query/);
 
   await bridge.close();
-  await runtime.close();
+  await runtime.disconnect();
 });
 
 test("generateCliScript writes a launcher script", async () => {

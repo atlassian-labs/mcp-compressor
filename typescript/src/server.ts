@@ -38,7 +38,7 @@ export class CompressorServer {
   }
 
   async close(): Promise<void> {
-    await this.runtime.close();
+    await this.runtime.disconnect();
   }
 
   async refreshToolCache(): Promise<void> {

@@ -39,7 +39,8 @@ export interface JsonConfigServerEntry {
   args?: string[];
   cwd?: string;
   env?: Record<string, string>;
-  url?: string;
+  /** May be a `URL` object or a string — `normalizeConfigServer` coerces to string. */
+  url?: URL | string;
   headers?: Record<string, string>;
   transport?: "sse";
 }
@@ -58,7 +59,7 @@ export interface StartOptions {
 
 export interface BackendToolClient {
   connect(): Promise<void>;
-  close(): Promise<void>;
+  disconnect(): Promise<void>;
   listTools(): Promise<Tool[]>;
   callTool(name: string, args: Record<string, unknown> | undefined): Promise<unknown>;
   readResource?(uri: string): Promise<unknown>;

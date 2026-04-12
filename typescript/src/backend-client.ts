@@ -140,7 +140,7 @@ export class BackendClient {
     }
   }
 
-  async close(): Promise<void> {
+  async disconnect(): Promise<void> {
     await this.client?.close();
     this.connected = false;
     this.client = null;

@@ -81,7 +81,7 @@ test("TypeScript single-server direct backend proxy works with Python FastMCP e2
     ]);
     expect(await toolset.alpha_list_tools()).toMatch(/alpha_add/);
   } finally {
-    await runtime.close();
+    await runtime.disconnect();
   }
 });
 
@@ -105,7 +105,7 @@ test("TypeScript single-server MCP config supports filters and toonify with Pyth
       /Available tools: alpha_object/,
     );
   } finally {
-    await runtime.close();
+    await runtime.disconnect();
   }
 });
 
@@ -116,7 +116,7 @@ test("TypeScript BackendClient can read Python FastMCP resources directly", asyn
     const resource = await backendClient.readResource("e2e://alpha-resource");
     expect(JSON.stringify(resource)).toMatch(/alpha resource/);
   } finally {
-    await backendClient.close();
+    await backendClient.disconnect();
   }
 });
 

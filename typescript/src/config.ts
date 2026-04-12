@@ -81,7 +81,7 @@ export function normalizeConfigServer(entry: JsonConfigServerEntry): BackendConf
 
   return {
     type: entry.transport === "sse" ? "sse" : "http",
-    url: entry.url,
+    url: entry.url.toString(),
     headers: entry.headers,
   };
 }

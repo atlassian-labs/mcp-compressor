@@ -6,7 +6,7 @@ import type { BackendToolClient } from "../src/types.js";
 
 class FakeBackendClient implements BackendToolClient {
   connectCalls = 0;
-  closeCalls = 0;
+  disconnectCalls = 0;
   listToolsCalls = 0;
   callToolCalls: Array<{ name: string; args: Record<string, unknown> | undefined }> = [];
 
@@ -19,8 +19,8 @@ class FakeBackendClient implements BackendToolClient {
     this.connectCalls += 1;
   }
 
-  async close(): Promise<void> {
-    this.closeCalls += 1;
+  async disconnect(): Promise<void> {
+    this.disconnectCalls += 1;
   }
 
   async listTools(): Promise<Tool[]> {
@@ -77,8 +77,8 @@ test("CompressorRuntime exposes wrapper operations in-process", async () => {
   );
   expect(backendClient.callToolCalls).toEqual([{ name: "search_docs", args: { query: "oauth" } }]);
 
-  await runtime.close();
-  expect(backendClient.closeCalls).toBe(1);
+  await runtime.disconnect();
+  expect(backendClient.disconnectCalls).toBe(1);
 });
 
 test("CompressorRuntime function toolset mirrors wrapper tools", async () => {

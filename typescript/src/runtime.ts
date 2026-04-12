@@ -58,8 +58,8 @@ export class CompressorRuntime {
     await this.refreshTools();
   }
 
-  async close(): Promise<void> {
-    await this.backendClient.close();
+  async disconnect(): Promise<void> {
+    await this.backendClient.disconnect();
   }
 
   async refreshTools(): Promise<void> {
