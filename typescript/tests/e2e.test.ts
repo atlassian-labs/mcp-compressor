@@ -183,14 +183,21 @@ test("TypeScript single-server CLI mode works with Python FastMCP MCP config", a
   try {
     expect(session.cliName).toBe("alpha");
     expect(session.runtimes.length).toBe(1);
-    expect(session.tools.map((tool) => tool.name).sort()).toEqual([
+
+    const runtime = session.runtimes[0]!;
+    const tools = await runtime.listUncompressedTools();
+    expect(tools.map((tool) => tool.name).sort()).toEqual([
       "alpha_add",
       "alpha_echo",
       "alpha_object",
     ]);
-    expect(session.helpText).toMatch(/alpha-add/);
 
-    const invokeResponse = await fetch(`${session.bridgeUrl}/exec`, {
+    const aiSdkTools = await runtime.getAiSdkTools();
+    expect(Object.keys(aiSdkTools)).toEqual(["alpha_help"]);
+    expect(aiSdkTools.alpha_help!.description).toMatch(/alpha-add/);
+
+    const script = session.scripts[0]!;
+    const invokeResponse = await fetch(`${script.bridgeUrl}/exec`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ argv: ["alpha-add", "--a", "8", "--b", "9"] }),
@@ -199,7 +206,7 @@ test("TypeScript single-server CLI mode works with Python FastMCP MCP config", a
     expect(await invokeResponse.text()).toBe("17");
 
     try {
-      await execFileAsync(session.scriptPath, ["alpha-echo", "hello"]);
+      await execFileAsync(script.scriptPath!, ["alpha-echo", "hello"]);
       expect.unreachable("Expected execFileAsync to throw");
     } catch (error: unknown) {
       expect(
@@ -230,12 +237,14 @@ test("TypeScript multi-server CLI mode creates one script per Python FastMCP ser
 
     const alphaScript = session.scripts.find((script) => script.cliName === "alpha")!;
     const betaScript = session.scripts.find((script) => script.cliName === "beta")!;
-    expect(alphaScript.tools.map((tool) => tool.name).sort()).toEqual([
+    const alphaTools = await alphaScript.runtime.listUncompressedTools();
+    const betaTools = await betaScript.runtime.listUncompressedTools();
+    expect(alphaTools.map((tool) => tool.name).sort()).toEqual([
       "alpha_add",
       "alpha_echo",
       "alpha_object",
     ]);
-    expect(betaScript.tools.map((tool) => tool.name).sort()).toEqual([
+    expect(betaTools.map((tool) => tool.name).sort()).toEqual([
       "beta_echo",
       "beta_multiply",
       "beta_object",

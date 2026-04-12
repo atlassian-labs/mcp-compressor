@@ -23,6 +23,14 @@ export interface CreateCompressorServerOptions extends CommonProxyOptions {
   oauthConfigDir?: string;
   oauthRedirectUrl?: string;
   onOAuthRedirect?: (url: URL) => void | Promise<void>;
+  /** Enable CLI mode: starts a local HTTP bridge on connect and generates a shell script for bash access. */
+  cliMode?: boolean;
+  /** CLI command name (e.g. "atlassian"). Defaults to serverName or "mcp". Only used when cliMode is true. */
+  cliName?: string;
+  /** Port for the local CLI bridge HTTP server. Defaults to a random free port. Only used when cliMode is true. */
+  cliPort?: number;
+  /** Directory where the CLI script is written. Auto-detected if not set. Only used when cliMode is true. */
+  scriptDir?: string;
 }
 
 /** Options for creating a compressor server from a multi-server MCP config JSON string. */
@@ -141,6 +149,16 @@ export function createCompressorRuntime(options: CreateCompressorServerOptions):
     includeTools: options.includeTools,
     serverName: resolved.serverName,
     toonify: options.toonify,
+    ...(options.cliMode
+      ? {
+          cli: {
+            cliMode: true,
+            cliName: options.cliName,
+            cliPort: options.cliPort,
+            scriptDir: options.scriptDir,
+          },
+        }
+      : {}),
   });
 }
 

@@ -1,11 +1,6 @@
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-
 import type { CompressorRuntime } from "./runtime.js";
-import { formatTopLevelHelp, sanitizeCliName } from "./cli_tools.js";
-import { CliBridge } from "./cli_bridge.js";
-import { generateCliScript, removeCliScriptEntry } from "./cli_script.js";
+import { sanitizeCliName } from "./cli_tools.js";
 import type { CreateCompressorServerOptions } from "./index.js";
-import type { BackendConfig } from "./types.js";
 
 export interface CliModeOptions extends CreateCompressorServerOptions {
   cliName?: string;
@@ -14,58 +9,31 @@ export interface CliModeOptions extends CreateCompressorServerOptions {
 }
 
 export interface CliModeScript {
-  bridge: CliBridge;
-  bridgeUrl: string;
+  bridgeUrl: string | null;
   cliName: string;
-  helpText: string;
   onPath: boolean;
   runtime: CompressorRuntime;
-  scriptPath: string;
-  tools: Tool[];
+  scriptPath: string | null;
 }
 
-export interface CliModeSession extends Omit<CliModeScript, "bridge"> {
+export interface CliModeSession {
+  cliName: string;
   runtimes: CompressorRuntime[];
   scripts: CliModeScript[];
   close(): Promise<void>;
 }
 
-async function initializeSingleCliScript(
-  options: CliModeOptions,
-  backend: BackendConfig,
-  cliName: string,
-  serverName: string | undefined,
-  sessionPid: number,
-): Promise<CliModeScript> {
-  const { initializeCompressorRuntime } = await import("./index.js");
-  const runtime = await initializeCompressorRuntime({
-    ...options,
-    backend,
-    serverName,
-  });
-
-  const bridge = new CliBridge(runtime, cliName);
-  const bridgePort = await bridge.start(options.cliPort ?? 0);
-  const generated = await generateCliScript(cliName, bridgePort, sessionPid, options.scriptDir);
-  const tools = await runtime.listUncompressedTools();
-
-  return {
-    bridge,
-    bridgeUrl: bridge.url,
-    cliName,
-    helpText: formatTopLevelHelp(cliName, tools),
-    onPath: generated.onPath,
-    runtime,
-    scriptPath: generated.scriptPath,
-    tools,
-  };
-}
-
+/**
+ * Initialize one or more CompressorRuntimes in CLI mode from a backend config.
+ *
+ * Each runtime connects to its backend, starts a local HTTP bridge, and writes a CLI script.
+ * Cleanup (bridge teardown, script removal, backend disconnect) is handled by `session.close()`
+ * which delegates to each runtime's `disconnect()`.
+ */
 export async function initializeCliMode(options: CliModeOptions): Promise<CliModeSession> {
-  const { resolveAllBackends } = await import("./index.js");
+  const { createCompressorRuntime, resolveAllBackends } = await import("./index.js");
   const resolvedBackends = resolveAllBackends(options.backend, options.serverName);
-  const sessionPid = process.ppid;
-  const scripts: CliModeScript[] = [];
+  const runtimes: CompressorRuntime[] = [];
 
   try {
     for (const resolved of resolvedBackends) {
@@ -74,45 +42,40 @@ export async function initializeCliMode(options: CliModeOptions): Promise<CliMod
           ? (options.cliName ?? resolved.serverName ?? "mcp")
           : (resolved.serverName ?? options.cliName ?? "mcp"),
       );
-      scripts.push(
-        await initializeSingleCliScript(
-          options,
-          resolved.backend,
-          cliName,
-          resolved.serverName,
-          sessionPid,
-        ),
-      );
+
+      const runtime = createCompressorRuntime({
+        ...options,
+        backend: resolved.backend,
+        serverName: resolved.serverName,
+        cliMode: true,
+        cliName,
+      });
+      await runtime.connect();
+      runtimes.push(runtime);
     }
 
-    const primary = scripts[0]!;
-    const runtimes = scripts.map((script) => script.runtime);
+    const primaryCliName = sanitizeCliName(
+      resolvedBackends.length === 1
+        ? (options.cliName ?? resolvedBackends[0]!.serverName ?? "mcp")
+        : (resolvedBackends[0]!.serverName ?? options.cliName ?? "mcp"),
+    );
+
     return {
-      bridgeUrl: primary.bridgeUrl,
-      cliName: primary.cliName,
-      helpText: primary.helpText,
-      onPath: primary.onPath,
-      runtime: primary.runtime,
+      cliName: primaryCliName,
       runtimes,
-      scripts,
-      scriptPath: primary.scriptPath,
-      tools: primary.tools,
+      scripts: runtimes.map((runtime) => ({
+        bridgeUrl: runtime.cliBridgeUrl,
+        cliName: sanitizeCliName(runtime.serverName ?? "mcp"),
+        onPath: runtime.cliOnPath,
+        runtime,
+        scriptPath: runtime.cliScriptPath,
+      })),
       async close(): Promise<void> {
-        await Promise.allSettled(scripts.map((script) => script.bridge.close()));
         await Promise.allSettled(runtimes.map((runtime) => runtime.disconnect()));
-        await Promise.allSettled(
-          scripts.map((script) =>
-            removeCliScriptEntry(script.cliName, sessionPid, options.scriptDir),
-          ),
-        );
       },
     };
   } catch (error) {
-    await Promise.allSettled(scripts.map((script) => script.bridge.close()));
-    await Promise.allSettled(scripts.map((script) => script.runtime.disconnect()));
-    await Promise.allSettled(
-      scripts.map((script) => removeCliScriptEntry(script.cliName, sessionPid, options.scriptDir)),
-    );
+    await Promise.allSettled(runtimes.map((runtime) => runtime.disconnect()));
     throw error;
   }
 }

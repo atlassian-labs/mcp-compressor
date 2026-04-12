@@ -1,14 +1,31 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
+import { CliBridge } from "./cli_bridge.js";
+import { generateCliScript, removeCliScriptEntry } from "./cli_script.js";
+import { buildHelpToolDescription, sanitizeCliName } from "./cli_tools.js";
 import { ToolNotFoundError } from "./errors.js";
 import { formatCliToolResult, formatToolDescription, formatToolResult } from "./formatting.js";
 import type { BackendToolClient, CommonProxyOptions, CompressionLevel } from "./types.js";
 
 export const UNCOMPRESSED_RESOURCE_URI = "compressor://uncompressed-tools";
 
+/** CLI mode configuration for CompressorRuntime — starts a local HTTP bridge and generates a shell script. */
+export interface RuntimeCliConfig {
+  /** Enable CLI mode: exposes a single help tool and starts a local bridge for bash access. */
+  cliMode: true;
+  /** CLI command name (e.g. "atlassian"). Defaults to serverName or "mcp". */
+  cliName?: string;
+  /** Port for the local HTTP bridge. Defaults to a random free port. */
+  cliPort?: number;
+  /** Directory where the CLI script is written. Auto-detected if not set. */
+  scriptDir?: string;
+}
+
 export interface CompressorRuntimeOptions extends CommonProxyOptions {
   backendClient: BackendToolClient;
+  /** CLI mode options. When set, the runtime starts a CLI bridge on connect and exposes a single help tool. */
+  cli?: RuntimeCliConfig;
 }
 
 export type WrapperToolHandler = (input?: Record<string, unknown>) => Promise<string>;
@@ -36,10 +53,21 @@ export class CompressorRuntime {
   private readonly compressionLevel: CompressionLevel;
   private readonly excludeTools: Set<string>;
   private readonly includeTools: Set<string> | null;
-  private readonly serverName?: string;
+  readonly serverName?: string;
   private readonly toonify: boolean;
   private toolCache = new Map<string, Tool>();
   private toolListCache: Tool[] | null = null;
+
+  // CLI mode state
+  private readonly cliOptions?: RuntimeCliConfig;
+  private cliBridge: CliBridge | null = null;
+  /** Path to the generated CLI script, or null if not in CLI mode or not yet connected. */
+  cliScriptPath: string | null = null;
+  /** Whether the CLI script directory is on the system PATH. */
+  cliOnPath = false;
+  /** URL of the local CLI bridge HTTP server, or null if not in CLI mode or not yet connected. */
+  cliBridgeUrl: string | null = null;
+  private cliSessionPid: number | null = null;
 
   constructor(options: CompressorRuntimeOptions) {
     this.backendClient = options.backendClient;
@@ -51,14 +79,50 @@ export class CompressorRuntime {
     this.excludeTools = new Set(options.excludeTools ?? []);
     this.serverName = options.serverName;
     this.toonify = options.toonify ?? false;
+    this.cliOptions = options.cli;
+  }
+
+  private get isCliMode(): boolean {
+    return this.cliOptions?.cliMode === true;
+  }
+
+  private get cliName(): string {
+    return sanitizeCliName(this.cliOptions?.cliName ?? this.serverName ?? "mcp");
+  }
+
+  private get serverDescription(): string {
+    return this.serverName ? `the ${this.serverName} toolset` : "this toolset";
   }
 
   async connect(): Promise<void> {
     await this.backendClient.connect();
     await this.refreshTools();
+
+    if (this.isCliMode) {
+      this.cliBridge = new CliBridge(this, this.cliName);
+      const bridgePort = await this.cliBridge.start(this.cliOptions?.cliPort ?? 0);
+      this.cliBridgeUrl = this.cliBridge.url;
+      this.cliSessionPid = process.ppid;
+      const generated = await generateCliScript(
+        this.cliName,
+        bridgePort,
+        this.cliSessionPid,
+        this.cliOptions?.scriptDir,
+      );
+      this.cliScriptPath = generated.scriptPath;
+      this.cliOnPath = generated.onPath;
+    }
   }
 
   async disconnect(): Promise<void> {
+    if (this.cliBridge) {
+      await this.cliBridge.close();
+      this.cliBridge = null;
+    }
+    if (this.cliSessionPid !== null) {
+      await removeCliScriptEntry(this.cliName, this.cliSessionPid, this.cliOptions?.scriptDir);
+      this.cliSessionPid = null;
+    }
     await this.backendClient.disconnect();
   }
 
@@ -150,11 +214,40 @@ export class CompressorRuntime {
    * shape expected by the Vercel AI SDK `Tool` type and Mastra's `ToolsInput`.  This allows
    * consumers to use the compressed tools directly without any additional bridging code.
    *
-   * The `get_tool_schema` tool's description embeds the compressed descriptions of all backend
-   * tools so the LLM can discover available tools and request their full schemas on demand.
+   * In normal mode, returns `get_tool_schema` and `invoke_tool` (plus `list_tools` at max
+   * compression). In CLI mode, returns a single `{serverName}_help` tool whose description
+   * contains the full CLI help text — backend tools are invoked via the CLI script instead.
    */
   async getAiSdkTools(): Promise<Record<string, AiSdkTool>> {
     await this.ensureTools();
+
+    if (this.isCliMode) {
+      return this.buildCliAiSdkTools();
+    }
+
+    return this.buildStandardAiSdkTools();
+  }
+
+  private async buildCliAiSdkTools(): Promise<Record<string, AiSdkTool>> {
+    const tools = await this.listUncompressedTools();
+    const description = buildHelpToolDescription(
+      this.cliName,
+      this.serverDescription,
+      tools,
+      this.cliOnPath,
+    );
+    const helpToolName = this.prefixName("help");
+
+    return {
+      [helpToolName]: {
+        description,
+        parameters: z.object({}),
+        execute: async () => description,
+      },
+    };
+  }
+
+  private async buildStandardAiSdkTools(): Promise<Record<string, AiSdkTool>> {
     const compressedDescription = await this.buildCompressedDescription();
 
     const tools: Record<string, AiSdkTool> = {

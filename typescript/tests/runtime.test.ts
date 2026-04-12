@@ -177,6 +177,40 @@ test("CompressorRuntime getAiSdkTools works without serverName prefix", async ()
   expect(tools.get_tool_schema!.description).toContain("default");
 });
 
+test("CompressorRuntime getAiSdkTools returns single help tool in cliMode", async () => {
+  const backendClient = new FakeBackendClient(SAMPLE_TOOLS);
+  const runtime = new CompressorRuntime({
+    backendClient,
+    compressionLevel: "medium",
+    serverName: "docs",
+    cli: { cliMode: true, cliName: "docs", scriptDir: "/tmp/rovodev-test-cli-scripts" },
+  });
+  await runtime.connect();
+
+  try {
+    const tools = await runtime.getAiSdkTools();
+
+    // Should have a single help tool
+    expect(Object.keys(tools)).toEqual(["docs_help"]);
+
+    const helpTool = tools.docs_help!;
+    // Description should contain CLI help text with subcommand names
+    expect(helpTool.description).toContain("docs");
+    expect(helpTool.description).toContain("search-docs");
+    expect(helpTool.description).toContain("create-ticket");
+    expect(helpTool.description).toContain("subcommand");
+    // Should NOT contain get_tool_schema or invoke_tool
+    expect(Object.keys(tools)).not.toContain("docs_get_tool_schema");
+    expect(Object.keys(tools)).not.toContain("docs_invoke_tool");
+
+    // Execute returns the help text
+    const result = await helpTool.execute({});
+    expect(result).toBe(helpTool.description);
+  } finally {
+    await runtime.disconnect();
+  }
+});
+
 test("CompressorRuntime treats an empty includeTools list as no include filter", async () => {
   const backendClient = new FakeBackendClient(SAMPLE_TOOLS);
   const runtime = new CompressorRuntime({

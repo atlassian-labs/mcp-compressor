@@ -55,6 +55,45 @@ export function sanitizeCliName(name: string): string {
   return sanitized;
 }
 
+export function buildHelpToolDescription(
+  cliName: string,
+  serverDescription: string,
+  tools: Tool[],
+  onPath: boolean,
+): string {
+  const invoke = onPath ? cliName : `./${cliName}`;
+  const prefix =
+    `Functionality associated with the ${cliName} toolset is provided via the \`${cliName}\` CLI. ` +
+    `Access the functionality below via the CLI rather than through structured tool/function calling.\n`;
+  const subcommandTable = tools
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((tool) => {
+      const subcommand = toolNameToSubcommand(tool.name);
+      const desc = firstSentence(tool.description);
+      return `  ${subcommand.padEnd(35)} ${desc}`.trimEnd();
+    })
+    .join("\n");
+
+  return (
+    `${prefix}${cliName} - ${serverDescription}\n` +
+    `\n` +
+    `When relevant, outputs from this CLI will prefer using the TOON format for more efficient representation of data.\n` +
+    `\n` +
+    `USAGE:\n` +
+    `  ${cliName} <subcommand> [options]\n` +
+    `\n` +
+    `SUBCOMMANDS:\n` +
+    `${subcommandTable}\n` +
+    `\n` +
+    `Run '${cliName} <subcommand> --help' for subcommand usage.\n` +
+    `\n` +
+    `Run '${invoke} --help' in the shell for usage.\n` +
+    `Run '${invoke} <subcommand> --help' for per-command help.\n` +
+    `Run '${invoke} <subcommand> [options]' to invoke a tool.`
+  );
+}
+
 export function formatTopLevelHelp(cliName: string, tools: Tool[]): string {
   const lines = tools
     .slice()

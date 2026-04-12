@@ -294,7 +294,7 @@ async function main(): Promise<void> {
     console.error("CLI mode active.");
     for (const script of session.scripts) {
       const invoke = script.onPath ? script.cliName : `./${script.cliName}`;
-      console.error(`Generated CLI: ${script.scriptPath}`);
+      console.error(`Generated CLI: ${script.scriptPath ?? "(no script)"}`);
       console.error(`Run '${invoke} --help' for usage.`);
     }
 
