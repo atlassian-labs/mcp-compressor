@@ -218,3 +218,4 @@ typescript/node_modules/
 typescript/dist/
 typescript/dist-test/
 typescript/*.tsbuildinfo
+typescript/package-lock.json
