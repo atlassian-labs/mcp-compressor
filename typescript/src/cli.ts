@@ -218,14 +218,14 @@ async function handleClearOAuth(args: string[]): Promise<boolean> {
   if (removed.length > 0) {
     const removedKey = removed.some((entry) => entry.endsWith("/.key") || entry.endsWith("\\.key"));
     const removedStateFiles = removed.length - (removedKey ? 1 : 0);
-    console.error(
+    console.info(
       `Removed ${removedStateFiles} OAuth state file(s)${removedKey ? " and encryption key" : ""}.`,
     );
-    console.error(
+    console.info(
       "OAuth credentials cleared. You will be prompted to authenticate on next connection.",
     );
   } else {
-    console.error("No stored OAuth credentials found.");
+    console.warn("No stored OAuth credentials found.");
   }
   return true;
 }
@@ -291,11 +291,11 @@ async function main(): Promise<void> {
       toonify,
     });
 
-    console.error("CLI mode active.");
+    console.info("CLI mode active.");
     for (const script of session.scripts) {
       const invoke = script.onPath ? script.cliName : `./${script.cliName}`;
-      console.error(`Generated CLI: ${script.scriptPath ?? "(no script)"}`);
-      console.error(`Run '${invoke} --help' for usage.`);
+      console.info(`Generated CLI: ${script.scriptPath ?? "(no script)"}`);
+      console.info(`Run '${invoke} --help' for usage.`);
     }
 
     const shutdown = async () => {
