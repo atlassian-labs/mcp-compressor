@@ -63,8 +63,8 @@ export function buildHelpToolDescription(
 ): string {
   const invoke = onPath ? cliName : `./${cliName}`;
   const prefix =
-    `Functionality associated with the ${cliName} toolset is provided via the \`${cliName}\` CLI. ` +
-    `Access the functionality below via the CLI rather than through structured tool/function calling.\n`;
+    `Functionality associated with the ${cliName} toolset is provided via the \`${cliName}\` CLI. Do not call this ` +
+    `tool - use the CLI instead.`;
   const subcommandTable = tools
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))

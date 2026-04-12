@@ -33,8 +33,8 @@ OPTIONS:
 """
 
 SCHEMA_PREFIX = """\
-Functionality associated with the {cli_name} toolset is provided via the `{cli_name}` CLI. Access the functionality \
-below via the CLI rather than through structured tool/function calling.\
+Functionality associated with the {cliName} toolset is provided via the `{cliName}` CLI. Do not call this tool - use \
+the CLI instead.\
 """
 
 
