@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/atlassian-labs/mcp-compressor.git",
+    "url": "git+https://github.com/atlassian-labs/mcp-compressor.git",
     "directory": "typescript"
   },
   "type": "module",
@@ -37,7 +37,8 @@
     "lint:fix": "oxlint --fix src/ tests/",
     "test": "vitest run",
     "typecheck": "bun run tsc --noEmit -p tsconfig.json",
-    "check": "bun run lint && bun run format:check && bun run typecheck && bun run test"
+    "check": "bun run lint && bun run format:check && bun run typecheck && bun run test",
+    "check:ci": "bun run lint && bun run format:check && bun run typecheck && vitest run --exclude tests/e2e.test.ts"
   },
   "publishConfig": {
     "registry": "https://packages.atlassian.com/api/npm/atlassian-npm/"
