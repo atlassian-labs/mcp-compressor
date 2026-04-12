@@ -103,6 +103,80 @@ test("CompressorRuntime function toolset mirrors wrapper tools", async () => {
   ).toBe(JSON.stringify({ ok: true }, null, 2));
 });
 
+test("CompressorRuntime getAiSdkTools returns AI SDK-compatible tool objects", async () => {
+  const backendClient = new FakeBackendClient(SAMPLE_TOOLS);
+  const runtime = new CompressorRuntime({
+    backendClient,
+    compressionLevel: "medium",
+    serverName: "docs",
+  });
+  await runtime.connect();
+
+  const tools = await runtime.getAiSdkTools();
+
+  // Should have get_tool_schema and invoke_tool (no list_tools at medium compression)
+  expect(Object.keys(tools).sort()).toEqual(["docs_get_tool_schema", "docs_invoke_tool"]);
+
+  // Each tool should have description, parameters (Zod schema), and execute function
+  const getSchema = tools.docs_get_tool_schema!;
+  expect(getSchema.description).toContain("search_docs");
+  expect(getSchema.description).toContain("create_ticket");
+  expect(getSchema.parameters).toBeDefined();
+  expect(typeof getSchema.execute).toBe("function");
+
+  const invoke = tools.docs_invoke_tool!;
+  expect(invoke.description).toContain("Invoke a tool");
+  expect(invoke.parameters).toBeDefined();
+  expect(typeof invoke.execute).toBe("function");
+
+  // Execute get_tool_schema
+  const schemaResult = await getSchema.execute({ tool_name: "search_docs" });
+  expect(schemaResult).toContain("search_docs");
+
+  // Execute invoke_tool
+  const invokeResult = await invoke.execute({
+    tool_name: "search_docs",
+    tool_input: { query: "test" },
+  });
+  expect(invokeResult).toBe(JSON.stringify({ ok: true }, null, 2));
+  expect(backendClient.callToolCalls).toEqual([{ name: "search_docs", args: { query: "test" } }]);
+});
+
+test("CompressorRuntime getAiSdkTools includes list_tools at max compression", async () => {
+  const backendClient = new FakeBackendClient(SAMPLE_TOOLS);
+  const runtime = new CompressorRuntime({
+    backendClient,
+    compressionLevel: "max",
+    serverName: "docs",
+  });
+  await runtime.connect();
+
+  const tools = await runtime.getAiSdkTools();
+
+  expect(Object.keys(tools).sort()).toEqual([
+    "docs_get_tool_schema",
+    "docs_invoke_tool",
+    "docs_list_tools",
+  ]);
+
+  const listResult = await tools.docs_list_tools!.execute({});
+  expect(JSON.parse(listResult)).toEqual(["create_ticket", "search_docs"]);
+});
+
+test("CompressorRuntime getAiSdkTools works without serverName prefix", async () => {
+  const backendClient = new FakeBackendClient(SAMPLE_TOOLS);
+  const runtime = new CompressorRuntime({
+    backendClient,
+    compressionLevel: "medium",
+  });
+  await runtime.connect();
+
+  const tools = await runtime.getAiSdkTools();
+
+  expect(Object.keys(tools).sort()).toEqual(["get_tool_schema", "invoke_tool"]);
+  expect(tools.get_tool_schema!.description).toContain("default");
+});
+
 test("CompressorRuntime treats an empty includeTools list as no include filter", async () => {
   const backendClient = new FakeBackendClient(SAMPLE_TOOLS);
   const runtime = new CompressorRuntime({
