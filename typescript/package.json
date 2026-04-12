@@ -1,5 +1,5 @@
 {
-  "name": "mcp-compressor",
+  "name": "@atlassian/mcp-compressor",
   "version": "0.0.0",
   "description": "TypeScript MCP server wrapper for reducing tokens consumed by MCP tools.",
   "license": "Apache-2.0",
@@ -25,7 +25,8 @@
     }
   },
   "bin": {
-    "mcp-compressor": "dist/cli.js"
+    "mcp-compressor": "dist/cli.js",
+    "atlassian-mcp-compressor": "dist/cli.js"
   },
   "scripts": {
     "build": "bun run tsc -p tsconfig.build.json",
@@ -39,7 +40,7 @@
     "check": "bun run lint && bun run format:check && bun run typecheck && bun run test"
   },
   "publishConfig": {
-    "registry": "https://registry.npmjs.org/"
+    "registry": "https://packages.atlassian.com/api/npm/atlassian-npm/"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

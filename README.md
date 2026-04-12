@@ -90,6 +90,8 @@ With 30k+ tokens just for tool descriptions, costs can reach **1-10 cents per re
 
 Use the Python implementation when you want the most mature feature set today. Use the TypeScript implementation when you want Node.js-native usage, in-process embedding, or tighter TypeScript ecosystem integration.
 
+> **TypeScript package name:** `@atlassian/mcp-compressor` on npm.
+
 ## Installation
 
 Install using pip or uv:

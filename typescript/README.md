@@ -1,4 +1,4 @@
-# mcp-compressor (TypeScript)
+# @atlassian/mcp-compressor (TypeScript)
 
 This directory contains the TypeScript implementation of `mcp-compressor`.
 
@@ -91,7 +91,7 @@ bun run build
 ### Start an MCP server
 
 ```ts
-import { startCompressorServer } from 'mcp-compressor';
+import { startCompressorServer } from '@atlassian/mcp-compressor';
 
 await startCompressorServer({
   backend: {
@@ -112,7 +112,7 @@ await startCompressorServer({
 For agent frameworks like Mastra, you can use the compression/runtime layer directly and skip the FastMCP server transport entirely:
 
 ```ts
-import { initializeCompressedFunctionToolset } from 'mcp-compressor';
+import { initializeCompressedFunctionToolset } from '@atlassian/mcp-compressor';
 
 const { runtime, toolset } = await initializeCompressedFunctionToolset({
   backend: {
@@ -142,7 +142,7 @@ If you need more direct control, you can also use `initializeCompressorRuntime(.
 You can also pass a single-server MCP config JSON string as the backend:
 
 ```ts
-import { startCompressorServer } from 'mcp-compressor';
+import { startCompressorServer } from '@atlassian/mcp-compressor';
 
 await startCompressorServer({
   backend: '{"mcpServers":{"atlassian":{"url":"https://mcp.atlassian.com/v1/mcp"}}}',
@@ -226,12 +226,18 @@ bun run dist/cli.js clear-oauth https://mcp.atlassian.com/v1/mcp
 
 ## Publishing
 
-This package is configured to publish as unscoped `mcp-compressor` to the public npm registry.
+This package is published as `@atlassian/mcp-compressor` through Atlassian Artifactory forwarding to npmJS.
+
+```bash
+npm install @atlassian/mcp-compressor
+```
 
 Relevant files:
 - `package.json` — package metadata and `publishConfig`
 - `.github/workflows/publish-typescript.yml` — publish workflow
 - `.github/workflows/main.yml` — CI checks for the TypeScript package
+
+The GitHub Actions publish workflow uses the `atlassian-labs/artifact-publish-token` action with OIDC to authenticate against Atlassian Artifactory (`npm-public`), which then forwards the package to npmJS.
 
 ## Relationship to the Python implementation
 

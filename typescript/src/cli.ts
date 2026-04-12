@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-import { fileURLToPath } from "node:url";
-
 import { Command, Option } from "commander";
 
 import { VERSION } from "./version.js";
@@ -337,9 +335,7 @@ async function main(): Promise<void> {
   });
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main().catch((error: unknown) => {
-    console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
-    process.exitCode = 1;
-  });
-}
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
+  process.exitCode = 1;
+});
