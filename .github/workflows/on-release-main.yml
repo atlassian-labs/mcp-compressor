@@ -93,12 +93,18 @@ jobs:
         id: publish-token
         uses: atlassian-labs/artifact-publish-token@v1.0.1
         with:
-          output-modes: npm
+          output-modes: environment
+
+      - name: Configure .npmrc for internal registry
+        run: |
+          printf '@atlassian:registry=https://packages.atlassian.com/api/npm/atlassian-npm/\n' > ${{ github.workspace }}/.npmrc-internal
+          printf '//packages.atlassian.com/api/npm/atlassian-npm/:_password=%s\n' "${ARTIFACTORY_PASSWORD_BASE64}" >> ${{ github.workspace }}/.npmrc-internal
+          printf '//packages.atlassian.com/api/npm/atlassian-npm/:username=%s\n' "${ARTIFACTORY_USERNAME}" >> ${{ github.workspace }}/.npmrc-internal
+          printf '//packages.atlassian.com/api/npm/atlassian-npm/:always-auth=true\n' >> ${{ github.workspace }}/.npmrc-internal
+          chmod 600 ${{ github.workspace }}/.npmrc-internal
 
       - name: Publish package to Atlassian internal registry
-        run: npm publish --userconfig ${{ github.workspace }}/.npmrc-public
-        env:
-          NPM_CONFIG_REGISTRY: https://packages.atlassian.com/api/npm/atlassian-npm/
+        run: npm publish --userconfig ${{ github.workspace }}/.npmrc-internal
 
   deploy-docs:
     needs: publish
