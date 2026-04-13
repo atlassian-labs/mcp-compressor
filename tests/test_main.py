@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import pytest
+from fastmcp import FastMCP
 from fastmcp.client.auth.bearer import BearerAuth
 from fastmcp.client.auth.oauth import ClientNotFoundError, OAuth
 from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
@@ -15,6 +16,7 @@ from typer.testing import CliRunner
 
 import mcp_compressor.logging as logging_module
 import mcp_compressor.main as main_module
+import mcp_compressor.oauth as oauth_module
 from mcp_compressor.logging import (
     _RecoverableOAuthTracebackFilter,
     suppress_recoverable_oauth_traceback_logging,
@@ -161,7 +163,7 @@ def test_get_single_server_transport_from_mcp_config_remote_defaults_to_oauth(mo
     config, _ = parsed
 
     token_storage = object()
-    monkeypatch.setattr(main_module, "_build_token_storage", lambda: token_storage)
+    monkeypatch.setattr(oauth_module, "_build_token_storage", lambda: token_storage)
 
     transport, transport_type = _get_single_server_transport_from_mcp_config(config=config)
 
@@ -561,8 +563,6 @@ async def test_server_uses_multi_server_config(monkeypatch: pytest.MonkeyPatch) 
         compression_level=CompressionLevel.MEDIUM,
         server_name=None,
     ) as mcp:
-        from fastmcp import FastMCP
-
         assert isinstance(mcp, FastMCP)
 
     assert len(captured["transports"]) == 2
