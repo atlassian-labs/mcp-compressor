@@ -236,3 +236,72 @@ async def test_multi_server_config_cli_mode_exposes_prefixed_help_tools(multi_se
         beta_help = await client.call_tool("beta_help", {})
         assert "Functionality associated with the alpha toolset" in alpha_help.content[0].text
         assert "Functionality associated with the beta toolset" in beta_help.content[0].text
+
+
+async def test_single_server_just_bash_mode_exposes_single_bash_tool(single_server_config_json: str) -> None:
+    async with (
+        _server(
+            command_or_url_list=[single_server_config_json],
+            cwd=None,
+            env_list=None,
+            header_list=None,
+            timeout=10.0,
+            compression_level=CompressionLevel.LOW,
+            server_name="alpha",
+            toonify=True,
+            just_bash=True,
+        ) as mcp,
+        Client(mcp) as client,
+    ):
+        tool_names = {tool.name for tool in await client.list_tools()}
+        assert tool_names == {"bash_tool"}
+
+        # Tool description should mention custom commands
+        tools = await client.list_tools()
+        bash_desc = next(t for t in tools if t.name == "bash_tool").description
+        assert "just-bash" in bash_desc
+        assert "alpha" in bash_desc
+
+        # Execute a custom command via bash
+        result = await client.call_tool("bash_tool", {"command": "alpha alpha-echo --message hello"})
+        assert "hello" in result.content[0].text
+
+        # Help should list subcommands
+        help_result = await client.call_tool("bash_tool", {"command": "alpha --help"})
+        assert "alpha-echo" in help_result.content[0].text
+        assert "alpha-add" in help_result.content[0].text
+
+
+async def test_multi_server_just_bash_mode_aggregates_all_servers(
+    multi_server_config_json: str,
+) -> None:
+    async with (
+        _server(
+            command_or_url_list=[multi_server_config_json],
+            cwd=None,
+            env_list=None,
+            header_list=None,
+            timeout=10.0,
+            compression_level=CompressionLevel.LOW,
+            server_name=None,
+            toonify=True,
+            just_bash=True,
+        ) as mcp,
+        Client(mcp) as client,
+    ):
+        tool_names = {tool.name for tool in await client.list_tools()}
+        assert tool_names == {"bash_tool"}
+
+        # Description should mention both servers
+        tools = await client.list_tools()
+        bash_desc = next(t for t in tools if t.name == "bash_tool").description
+        assert "alpha" in bash_desc
+        assert "beta" in bash_desc
+
+        # Call alpha tool
+        alpha_result = await client.call_tool("bash_tool", {"command": "alpha alpha-add --a 3 --b 7"})
+        assert "10" in alpha_result.content[0].text
+
+        # Call beta tool
+        beta_result = await client.call_tool("bash_tool", {"command": "beta beta-multiply --a 4 --b 5"})
+        assert "20" in beta_result.content[0].text

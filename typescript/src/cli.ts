@@ -333,7 +333,11 @@ async function main(): Promise<void> {
     }
 
     const allCommands = serverCmds.map((sc) => sc.command);
-    const bash = new Bash({ customCommands: allCommands });
+    const { ReadWriteFs } = await import("just-bash");
+    const bash = new Bash({
+      customCommands: allCommands,
+      fs: new ReadWriteFs({ root: process.cwd() }),
+    });
     const description = bashCommandsModule.buildBashToolDescription(serverCmds) as string;
 
     // Serve as a single "bash" MCP tool via FastMCP
