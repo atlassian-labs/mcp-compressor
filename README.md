@@ -19,7 +19,7 @@ An MCP server wrapper for reducing tokens consumed by MCP tools.
 
 #### 2026-04-12 — just-bash Mode
 
-All backend MCP tools can now be registered as custom commands in a [just-bash](https://pypi.org/project/just-bash/) sandboxed shell. The agent gets a single `bash` tool that supports standard Unix utilities plus MCP tools — with pipes, composition, and all. Available in both Python and TypeScript.
+> All backend MCP tools can now be registered as custom commands in a [just-bash](https://pypi.org/project/just-bash/) sandboxed shell. The agent gets a single `bash` tool that supports standard Unix utilities plus MCP tools converted to CLIs automatically — with pipes, composition, and all. Available in both Python and TypeScript.
 
 #### 2026-04-10 — Multi-Server MCP Config JSON + CLI Mode
 
