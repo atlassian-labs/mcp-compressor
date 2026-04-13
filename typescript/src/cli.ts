@@ -337,6 +337,9 @@ async function main(): Promise<void> {
     const bash = new Bash({
       customCommands: allCommands,
       fs: new ReadWriteFs({ root: process.cwd() }),
+      cwd: "/",
+      python: true,
+      javascript: true,
     });
     const description = bashCommandsModule.buildBashToolDescription(serverCmds) as string;
 
