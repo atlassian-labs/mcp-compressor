@@ -684,6 +684,7 @@ async def _just_bash_server(
         bash = Bash(
             commands={command.name: command},
             fs=cast("IFileSystem", ReadWriteFs(ReadWriteFsOptions(root=os.getcwd()))),
+            cwd="/",
         )
         description = build_bash_tool_description([
             {
@@ -795,7 +796,9 @@ async def _multi_server(
 
             all_commands = {sc["command"].name: sc["command"] for sc in server_commands}
             bash = Bash(
-                commands=all_commands, fs=cast("IFileSystem", ReadWriteFs(ReadWriteFsOptions(root=os.getcwd())))
+                commands=all_commands,
+                fs=cast("IFileSystem", ReadWriteFs(ReadWriteFsOptions(root=os.getcwd()))),
+                cwd="/",
             )
             description = build_bash_tool_description(server_commands)
 
