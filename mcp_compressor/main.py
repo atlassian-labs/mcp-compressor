@@ -18,7 +18,7 @@ import warnings
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Literal, overload
+from typing import TYPE_CHECKING, Annotated, Any, Literal, cast, overload
 
 import anyio
 import keyring
@@ -50,6 +50,9 @@ from .cli_tools import sanitize_cli_name
 from .logging import configure_logging, suppress_recoverable_oauth_traceback_logging
 from .tools import CompressedTools
 from .types import CompressionLevel, LogLevel, TransportType
+
+if TYPE_CHECKING:
+    from just_bash.types import IFileSystem
 
 # Suppress known third-party deprecation warnings that are not actionable from this project.
 # uvicorn's websockets implementation uses WebSocketServerProtocol which was deprecated in websockets 14.0.
@@ -205,6 +208,18 @@ def main(
             ),
         ),
     ] = False,
+    just_bash: Annotated[
+        bool,
+        typer.Option(
+            ...,
+            "--just-bash",
+            help=(
+                "Start in just-bash mode: expose a single 'bash' MCP tool powered by "
+                "just-bash, with all backend server tools available as custom commands. "
+                "--toonify is automatically enabled in this mode."
+            ),
+        ),
+    ] = False,
     cli_port: Annotated[
         int | None,
         typer.Option(
@@ -258,8 +273,14 @@ def main(
         _check_conflicting_config_options(ctx)
         resolved_server_name = _resolve_config_server_name(parsed_config, server_name, cli_mode)
 
-    if cli_mode and resolved_server_name is None and (parsed_config is None or len(parsed_config.mcpServers) == 1):
-        raise typer.BadParameter("--server-name is required when using --cli-mode.", param_hint="'--server-name'")
+    if (
+        (cli_mode or just_bash)
+        and resolved_server_name is None
+        and (parsed_config is None or len(parsed_config.mcpServers) == 1)
+    ):
+        raise typer.BadParameter(
+            "--server-name is required when using --cli-mode or --just-bash.", param_hint="'--server-name'"
+        )
     if compression_level == CompressionLevel.MAX and resolved_server_name is None:
         raise typer.BadParameter(
             "--server-name is required when using --compression-level=max.", param_hint="'--server-name'"
@@ -298,8 +319,9 @@ def main(
             compression_level=compression_level,
             server_name=resolved_server_name,
             log_level=log_level,
-            toonify=toonify or cli_mode,
+            toonify=toonify or cli_mode or just_bash,
             cli_mode=cli_mode,
+            just_bash=just_bash,
             cli_port=cli_port,
             include_tools=_parse_tool_name_list(include_tools),
             exclude_tools=_parse_tool_name_list(exclude_tools),
@@ -411,6 +433,7 @@ async def _async_main(
     log_level: LogLevel,
     toonify: bool,
     cli_mode: bool = False,
+    just_bash: bool = False,
     cli_port: int | None = None,
     include_tools: list[str] | None = None,
     exclude_tools: list[str] | None = None,
@@ -428,6 +451,7 @@ async def _async_main(
         server_name=server_name,
         toonify=toonify,
         cli_mode=cli_mode,
+        just_bash=just_bash,
         cli_port=cli_port,
         include_tools=include_tools,
         exclude_tools=exclude_tools,
@@ -447,6 +471,7 @@ async def _server(
     server_name: str | None,
     toonify: bool = False,
     cli_mode: bool = False,
+    just_bash: bool = False,
     cli_port: int | None = None,
     include_tools: list[str] | None = None,
     exclude_tools: list[str] | None = None,
@@ -461,6 +486,7 @@ async def _server(
             server_name=server_name,
             toonify=toonify,
             cli_mode=cli_mode,
+            just_bash=just_bash,
             cli_port=cli_port,
             include_tools=include_tools,
             exclude_tools=exclude_tools,
@@ -484,6 +510,18 @@ async def _server(
             transport = _get_streamable_http_transport(url=command_or_url, header_list=header_list, timeout=timeout)
         elif transport_type == "sse":
             transport = _get_sse_transport(url=command_or_url, header_list=header_list, timeout=timeout)
+
+    if just_bash:
+        async with _just_bash_server(
+            transport=transport,
+            compression_level=compression_level,
+            server_name=server_name,
+            toonify=toonify,
+            include_tools=include_tools,
+            exclude_tools=exclude_tools,
+        ) as mcp:
+            yield mcp
+        return
 
     if cli_mode:
         cli_name = sanitize_cli_name(server_name or "mcp")
@@ -602,30 +640,100 @@ async def _cli_mode_server(
 
 
 @asynccontextmanager
+async def _just_bash_server(
+    transport: TransportType,
+    compression_level: CompressionLevel,
+    server_name: str | None,
+    toonify: bool,
+    include_tools: list[str] | None,
+    exclude_tools: list[str] | None,
+) -> AsyncGenerator[FastMCP, None]:
+    """Set up a just-bash server that exposes a single 'bash' MCP tool.
+
+    All backend MCP tools are registered as custom commands in a just-bash sandboxed
+    shell with ReadWriteFs rooted at the current working directory.
+    """
+    from just_bash import Bash
+    from just_bash.fs import ReadWriteFs
+    from just_bash.fs.read_write_fs import ReadWriteFsOptions
+
+    from mcp_compressor.bash_commands import build_bash_tool_description, create_bash_command
+
+    async with _proxy_client(transport) as client:
+        logger.info("Initializing proxy server for just-bash mode")
+        # Use a proxy to connect to the backend and fetch tools, but serve via a fresh FastMCP
+        proxy = create_proxy(client, name="MCP Compressor Backend")
+
+        compressed_tools = CompressedTools(
+            proxy,
+            compression_level=compression_level,
+            server_name=server_name,
+            toonify=toonify,
+            include_tools=include_tools,
+            exclude_tools=exclude_tools,
+        )
+        await compressed_tools.configure_server()
+
+        cli_name = sanitize_cli_name(server_name or "mcp")
+        backend_tools = await compressed_tools.get_backend_tools()
+        tools_list = list(backend_tools.values())
+
+        command = create_bash_command(
+            cli_name, compressed_tools._server_description, cast(list[Any], tools_list), compressed_tools.invoke_tool
+        )
+        bash = Bash(
+            commands={command.name: command},
+            fs=cast("IFileSystem", ReadWriteFs(ReadWriteFsOptions(root=os.getcwd()))),
+        )
+        description = build_bash_tool_description([
+            {
+                "server_name": cli_name,
+                "server_description": compressed_tools._server_description,
+                "command": command,
+                "tools": cast(list[Any], tools_list),
+            }
+        ])
+
+        # Serve only the bash tool via a fresh FastMCP (not the proxy with backend tools)
+        mcp = FastMCP(name="MCP Compressor Proxy")
+
+        @mcp.tool(description=description)
+        async def bash_tool(command: str) -> str:
+            """Execute a bash command."""
+            result = await bash.exec(command)
+            if result.exit_code != 0:
+                return f"Exit code: {result.exit_code}\n{result.stdout}\n{f'STDERR: {result.stderr}' if result.stderr else ''}"
+            return result.stdout or "(no output)"
+
+        logger.info("Starting MCP Compressor server in just-bash mode")
+        yield mcp
+
+
+@asynccontextmanager
 async def _multi_server(
     config: MCPConfig,
     compression_level: CompressionLevel,
     server_name: str | None,
     toonify: bool,
     cli_mode: bool,
-    cli_port: int | None,
-    include_tools: list[str] | None,
-    exclude_tools: list[str] | None,
+    just_bash: bool = False,
+    cli_port: int | None = None,
+    include_tools: list[str] | None = None,
+    exclude_tools: list[str] | None = None,
 ) -> AsyncGenerator[FastMCP, None]:
     """Set up a proxy server that aggregates multiple backend servers from an MCP config."""
     outer_mcp = FastMCP(name="MCP Compressor Proxy")
     logger.info("Initializing multi-server proxy")
 
     async with contextlib.AsyncExitStack() as exit_stack:
+        server_commands: list[dict] = []  # For just-bash aggregation
+
         for config_server_name, server_config in config.mcpServers.items():
-            # Naming convention: if a --server-name prefix is provided it is prepended to the JSON
-            # key with an underscore separator, e.g. "myapp_weather".  The TypeScript implementation
-            # mirrors this convention in resolveAllBackends (typescript/src/index.ts).
             effective_name = f"{server_name}_{config_server_name}" if server_name else config_server_name
             single_config = MCPConfig(mcpServers={config_server_name: server_config})
             transport, transport_type = _get_single_server_transport_from_mcp_config(config=single_config)
 
-            if cli_mode:
+            if cli_mode and not just_bash:
                 proxy = await exit_stack.enter_async_context(
                     _cli_mode_server(
                         transport=transport,
@@ -655,9 +763,52 @@ async def _multi_server(
             logger.info(f"Configuring compressed tools for server '{effective_name}'")
             await compressed_tools.configure_server()
 
-            stats = await compressed_tools.get_compression_stats()
-            print_banner(effective_name, transport_type, stats, compression_level)
-            outer_mcp.mount(proxy)
+            if just_bash:
+                from mcp_compressor.bash_commands import create_bash_command
+
+                cli_name = sanitize_cli_name(effective_name)
+                backend_tools = await compressed_tools.get_backend_tools()
+                tools_list = list(backend_tools.values())
+                command = create_bash_command(
+                    cli_name,
+                    compressed_tools._server_description,
+                    cast(list[Any], tools_list),
+                    compressed_tools.invoke_tool,
+                )
+                server_commands.append({
+                    "server_name": cli_name,
+                    "server_description": compressed_tools._server_description,
+                    "command": command,
+                    "tools": cast(list[Any], tools_list),
+                })
+            else:
+                stats = await compressed_tools.get_compression_stats()
+                print_banner(effective_name, transport_type, stats, compression_level)
+                outer_mcp.mount(proxy)
+
+        if just_bash and server_commands:
+            from just_bash import Bash
+            from just_bash.fs import ReadWriteFs
+            from just_bash.fs.read_write_fs import ReadWriteFsOptions
+
+            from mcp_compressor.bash_commands import build_bash_tool_description
+
+            all_commands = {sc["command"].name: sc["command"] for sc in server_commands}
+            bash = Bash(
+                commands=all_commands, fs=cast("IFileSystem", ReadWriteFs(ReadWriteFsOptions(root=os.getcwd())))
+            )
+            description = build_bash_tool_description(server_commands)
+
+            @outer_mcp.tool(description=description)
+            async def bash_tool(command: str) -> str:
+                """Execute a bash command."""
+                result = await bash.exec(command)
+                if result.exit_code != 0:
+                    return (
+                        f"Exit code: {result.exit_code}\n{result.stdout}\n"
+                        f"{f'STDERR: {result.stderr}' if result.stderr else ''}"
+                    )
+                return result.stdout or "(no output)"
 
         yield outer_mcp
 
