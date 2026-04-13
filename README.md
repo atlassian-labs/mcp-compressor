@@ -363,7 +363,7 @@ result = await bash.exec("atlassian search-issues --jql 'project=PROJ'")
 
 ### TypeScript usage
 
-See the [TypeScript README](typescript/README.md#just-bash-mode) for in-process library usage with `@atlassian/mcp-compressor/bash`.
+See the [TypeScript README](https://github.com/atlassian-labs/mcp-compressor/blob/main/typescript/README.md#just-bash-mode) for in-process library usage with `@atlassian/mcp-compressor/bash`.
 
 ## How It Works
 
