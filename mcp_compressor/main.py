@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal, cast, overload
 
 import anyio
+import httpx
 import keyring
 import keyring.errors
 import psutil
@@ -962,10 +963,10 @@ def _get_single_server_transport_from_mcp_config(
     if isinstance(server_config, RemoteMCPServer):
         transport_type = "sse" if (server_config.transport == "sse") else _infer_transport_type(server_config.url)
         auth = server_config.auth
-        if auth in (None, "oauth"):
-            auth = OAuth(mcp_url=server_config.url, token_storage=_build_token_storage())
-
         headers = {key: _interpolate_string(value) for key, value in server_config.headers.items()}
+        if auth in (None, "oauth"):
+            # If an Authorization header is explicitly provided, use it instead of OAuth.
+            auth = build_auth(headers, server_config.url)
         if transport_type == "http":
             return (
                 StreamableHttpTransport(
@@ -1009,6 +1010,24 @@ def _interpolate_string(value: str) -> str:
         return value
 
 
+def _has_auth_header(headers: dict[str, str]) -> bool:
+    """Check if any header is an Authorization header (case-insensitive)."""
+    return any(key.lower() == "authorization" for key in headers)
+
+
+def build_auth(headers: dict[str, str], url: str) -> httpx.Auth | None:
+    """Return None if an Authorization header is present in *headers*, otherwise OAuth.
+
+    When users explicitly provide an Authorization header, we leave it in the headers
+    dict and skip OAuth entirely. This prevents OAuth from silently overriding the
+    user's token. The header is passed through to the httpx client as-is, which means
+    any scheme (Bearer, Basic, etc.) is supported.
+    """
+    if _has_auth_header(headers):
+        return None
+    return OAuth(mcp_url=url, token_storage=_build_token_storage())
+
+
 def _infer_transport_type(command_or_url: str) -> Literal["stdio", "http", "sse"]:
     """Infer a transport type from a command or URL string."""
     if not command_or_url.startswith(("http://", "https://")):
@@ -1048,11 +1067,12 @@ def _get_remote_transport(
             key, val = header.split("=", 1)
             header_dict[key] = _interpolate_string(val)
 
-    oauth = OAuth(mcp_url=url, token_storage=_build_token_storage())
+    # If an Authorization header is explicitly provided, use it as-is instead of OAuth so we don't override it.
+    auth = build_auth(header_dict, url)
 
     if transport_type == "http":
-        return StreamableHttpTransport(url=url, headers=header_dict, auth=oauth)
-    return SSETransport(url=url, headers=header_dict, auth=oauth, sse_read_timeout=timeout)
+        return StreamableHttpTransport(url=url, headers=header_dict, auth=auth)
+    return SSETransport(url=url, headers=header_dict, auth=auth, sse_read_timeout=timeout)
 
 
 def _get_streamable_http_transport(url: str, header_list: list[str] | None, timeout: float) -> StreamableHttpTransport:

@@ -186,6 +186,25 @@ def test_get_single_server_transport_from_mcp_config_remote_preserves_explicit_a
     assert transport.auth.token.get_secret_value() == "abc"
 
 
+def test_get_single_server_transport_from_mcp_config_auth_header_skips_oauth() -> None:
+    """When headers contain Authorization and auth is not explicitly set, skip OAuth."""
+    config_json = (
+        '{"mcpServers": {"weather": {"url": "https://example.com/mcp",'
+        ' "headers": {"Authorization": "Bearer my-token"}}}}'
+    )
+    parsed = _parse_single_server_mcp_config([config_json])
+    assert parsed is not None
+    config, _ = parsed
+
+    transport, transport_type = _get_single_server_transport_from_mcp_config(config=config)
+
+    assert transport_type == "http"
+    assert isinstance(transport, StreamableHttpTransport)
+    assert transport.auth is None
+    # Authorization header stays in headers and is passed through as-is
+    assert transport.headers["Authorization"] == "Bearer my-token"
+
+
 def test_get_single_server_transport_from_mcp_config_sse_uses_only_config_timeout() -> None:
     config_json = '{"mcpServers": {"weather": {"url": "https://example.com/sse", "transport": "sse"}}}'
     parsed = _parse_single_server_mcp_config([config_json])
@@ -250,19 +269,33 @@ def test_get_stdio_transport_explicit_env_overrides_parent(monkeypatch: pytest.M
     assert transport.env["KEEP_VAR"] == "keep_this"  # Inherited from parent
 
 
-def test_get_streamable_http_transport() -> None:
-    """Test that HTTP transport is created with correct parameters."""
+def test_get_streamable_http_transport_with_auth_header_skips_oauth() -> None:
+    """Test that HTTP transport skips OAuth when an Authorization header is provided."""
     transport = _get_streamable_http_transport(
         url="https://example.com/mcp",
         header_list=["Authorization=Bearer token"],
         timeout=30.0,
     )
     assert isinstance(transport, StreamableHttpTransport)
+    assert transport.auth is None
+    # Authorization header stays in the headers dict and is passed through as-is
+    assert transport.headers["Authorization"] == "Bearer token"
+
+
+def test_get_streamable_http_transport_without_auth_header_uses_oauth() -> None:
+    """Test that HTTP transport uses OAuth when no Authorization header is provided."""
+    transport = _get_streamable_http_transport(
+        url="https://example.com/mcp",
+        header_list=["X-Custom=value"],
+        timeout=30.0,
+    )
+    assert isinstance(transport, StreamableHttpTransport)
     assert isinstance(transport.auth, OAuth)
+    assert transport.headers == {"X-Custom": "value"}
 
 
-def test_get_sse_transport() -> None:
-    """Test that SSE transport is created with correct parameters."""
+def test_get_sse_transport_without_auth_header_uses_oauth() -> None:
+    """Test that SSE transport uses OAuth when no Authorization header is provided."""
     transport = _get_sse_transport(
         url="https://example.com/sse",
         header_list=["X-Custom=value"],
@@ -270,6 +303,29 @@ def test_get_sse_transport() -> None:
     )
     assert isinstance(transport, SSETransport)
     assert isinstance(transport.auth, OAuth)
+
+
+def test_get_sse_transport_with_auth_header_skips_oauth() -> None:
+    """Test that SSE transport skips OAuth when an Authorization header is provided."""
+    transport = _get_sse_transport(
+        url="https://example.com/sse",
+        header_list=["Authorization=Bearer my-secret-token"],
+        timeout=15.0,
+    )
+    assert isinstance(transport, SSETransport)
+    assert transport.auth is None
+    assert transport.headers["Authorization"] == "Bearer my-secret-token"
+
+
+def test_get_remote_transport_auth_header_case_insensitive() -> None:
+    """Test that Authorization header detection is case-insensitive."""
+    transport = _get_streamable_http_transport(
+        url="https://example.com/mcp",
+        header_list=["authorization=Bearer token123"],
+        timeout=30.0,
+    )
+    assert transport.auth is None
+    assert transport.headers["authorization"] == "Bearer token123"
 
 
 async def test_remote_server_connects_eagerly() -> None:
