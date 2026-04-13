@@ -4,9 +4,21 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
-from fastmcp.tools import Tool
+
+@runtime_checkable
+class ToolLike(Protocol):
+    """Minimal interface for MCP tool objects used by CLI helpers.
+
+    Compatible with both ``fastmcp.tools.Tool`` and ``mcp.types.Tool``
+    (the latter requires ``parameters`` to be set as an alias for ``inputSchema``).
+    """
+
+    name: str
+    description: str | None
+    parameters: dict[str, Any]
+
 
 TOP_LEVEL_HELP_TEMPLATE = """\
 {prefix}{cli_name} - {server_description}
@@ -33,7 +45,7 @@ OPTIONS:
 """
 
 SCHEMA_PREFIX = """\
-Functionality associated with the {cliName} toolset is provided via the `{cliName}` CLI. Do not call this tool - use \
+Functionality associated with the {cli_name} toolset is provided via the `{cli_name}` CLI. Do not call this tool - use \
 the CLI instead.\
 """
 
@@ -81,7 +93,7 @@ def sanitize_cli_name(name: str) -> str:
 
 
 def format_top_level_help(
-    cli_name: str, server_description: str, tools: list[Tool], for_tool_schema: bool = False
+    cli_name: str, server_description: str, tools: list[ToolLike], for_tool_schema: bool = False
 ) -> str:
     """Format top-level --help output listing all subcommands."""
     prefix = ""
@@ -100,7 +112,7 @@ def format_top_level_help(
     )
 
 
-def format_tool_help(cli_name: str, tool: Tool) -> str:
+def format_tool_help(cli_name: str, tool: ToolLike) -> str:
     """Format per-tool --help output."""
     subcommand = tool_name_to_subcommand(tool.name)
     description = (tool.description or "").strip()
@@ -171,7 +183,7 @@ def _schema_type_label(schema: dict[str, Any]) -> str:
 
 
 def build_help_tool_description(
-    cli_name: str, server_description: str, tools: list[Tool], on_path: bool = False
+    cli_name: str, server_description: str, tools: list[ToolLike], on_path: bool = False
 ) -> str:
     """Build the description string for the single <server_name>_help MCP tool.
 
@@ -188,7 +200,7 @@ def build_help_tool_description(
     )
 
 
-def parse_argv_to_tool_input(argv: list[str], tool: Tool) -> dict[str, Any]:
+def parse_argv_to_tool_input(argv: list[str], tool: ToolLike) -> dict[str, Any]:
     """Parse CLI argv into a tool_input dict based on the tool's JSON Schema.
 
     Supports:

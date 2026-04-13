@@ -5,12 +5,11 @@ description = "An MCP server wrapper for reducing tokens consumed by MCP tools."
 authors = [{ name = "Tim Esler", email = "tesler@atlassian.com" }]
 readme = "README.md"
 keywords = ['python']
-requires-python = ">=3.10,<4.0"
+requires-python = ">=3.11,<4.0"
 classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -33,6 +32,7 @@ dependencies = [
     "typer>=0.16.0",
     "uvicorn>=0.30.0",
     "click>=8.3.1",
+    "just-bash>=0.1.16",
 ]
 
 [project.urls]

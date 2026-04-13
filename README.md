@@ -17,6 +17,10 @@ An MCP server wrapper for reducing tokens consumed by MCP tools.
 
 ## 📋 What's New
 
+#### 2026-04-12 — just-bash Mode
+
+All backend MCP tools can now be registered as custom commands in a [just-bash](https://pypi.org/project/just-bash/) sandboxed shell. The agent gets a single `bash` tool that supports standard Unix utilities plus MCP tools — with pipes, composition, and all. Available in both Python and TypeScript.
+
 #### 2026-04-10 — Multi-Server MCP Config JSON + CLI Mode
 
 > `COMMAND_OR_URL` can now be a multi-server MCP config JSON string. Each configured server gets its own prefixed wrapper tools and, in CLI mode, its own generated CLI script. For example, a config with `weather` and `calendar` servers generates separate `weather` and `calendar` CLI commands.
@@ -72,6 +76,7 @@ With 30k+ tokens just for tool descriptions, costs can reach **1-10 cents per re
 - **Universal Compatibility**: Works with any MCP server (stdio, HTTP, SSE)
 - **TOON Output Conversion**: Optionally convert JSON backend tool results to [TOON](https://github.com/toon-format/spec) with `--toonify`
 - **CLI Mode**: Convert any MCP server into a local CLI with `--cli-mode` — generates shell scripts that let you (or an AI agent) interact with backends via familiar command-line syntax. Supports both single and multi-server configs.
+- **just-bash Mode**: Register all backend MCP tools as custom commands in a [just-bash](https://pypi.org/project/just-bash/) sandboxed shell with `--just-bash`. The agent gets a single `bash` tool that supports standard Unix utilities and MCP tools with pipes and composition.
 - **Zero Functionality Loss**: All tools remain fully accessible through the wrapper interface
 - **Easy Integration**: Drop-in replacement for existing MCP servers
 
@@ -84,6 +89,7 @@ With 30k+ tokens just for tool descriptions, costs can reach **1-10 cents per re
 | Single and multi-server MCP config JSON input | ✅ | ✅ |
 | Persistent OAuth support | ✅ | ✅ |
 | CLI mode (single and multi-server) | ✅ | ✅ |
+| just-bash mode | ✅ | ✅ |
 | In-process runtime API for app/agent embedding | ⚠️ not first-class | ✅ first-class |
 | Prompt/resource passthrough parity | ✅ broader | ⚠️ narrower |
 | Production maturity | ✅ primary implementation | ⚠️ newer implementation |
@@ -292,6 +298,72 @@ mcp-compressor https://mcp.atlassian.com/v1/mcp --server-name atlassian --cli-mo
 mcp-compressor uvx mcp-server-fetch --log-level debug
 mcp-compressor uvx mcp-server-fetch -l warning
 ```
+
+## just-bash Mode
+
+just-bash mode takes CLI mode one step further — instead of generating shell scripts and a local HTTP bridge, it registers all backend MCP tools as custom commands in a [just-bash](https://pypi.org/project/just-bash/) sandboxed shell environment and exposes a single `bash` MCP tool.
+
+The agent can run standard Unix utilities (`grep`, `cat`, `jq`, `sed`, `awk`, etc.) and MCP tools in the same shell, including pipes and composition.
+
+```bash
+# Python
+uvx mcp-compressor --just-bash -- '{"mcpServers":{"github":{"command":"uvx","args":["mcp-server-github"]},"fetch":{"command":"uvx","args":["mcp-server-fetch"]}}}'
+
+# TypeScript (requires just-bash to be installed)
+npx @atlassian/mcp-compressor --just-bash -- '{"mcpServers":{"atlassian":{"url":"https://mcp.atlassian.com/v1/mcp"},"github":{"command":"npx","args":["-y","@modelcontextprotocol/server-github"]}}}'
+```
+
+### How it works
+
+```mermaid
+graph LR
+    LLM["LLM Agent"] -->|"bash(command)"| B["just-bash Sandbox"]
+    B -->|standard commands| Unix["grep, cat, jq, sed, ..."]
+    B -->|MCP commands| CMD["server-name subcommand --args"]
+    CMD -->|invoke| Runtime["CompressorRuntime"]
+    Runtime -->|MCP protocol| Backend["Backend MCP Server"]
+```
+
+The agent sees one tool: `bash`. MCP tools appear as parent commands (named after the server) with subcommands (named after the tools):
+
+```bash
+# Help for a server's available tools
+atlassian --help
+
+# Invoke a tool as a subcommand
+atlassian search-issues --jql "project=PROJ AND status='In Progress'"
+
+# Pipe MCP output through Unix tools
+atlassian search-issues --jql "project=PROJ" | jq '.issues[].key'
+
+# Subcommand help
+atlassian search-issues --help
+```
+
+### Why just-bash mode matters
+
+- **Single tool surface**: The agent gets one `bash` tool instead of `get_tool_schema` + `invoke_tool` or per-server help tools
+- **Composability**: MCP tools can be piped through `jq`, `grep`, `sed`, and other Unix utilities
+- **No subprocess overhead**: Unlike CLI mode, there is no HTTP bridge or generated shell scripts — everything runs in-process
+- **Familiar interface**: Agents that already know how to use bash can immediately use MCP tools
+
+### Python usage
+
+```python
+from mcp_compressor.bash_commands import create_bash_command, build_bash_tool_description
+from just_bash import Bash
+
+# Assuming `compressed_tools` is a connected CompressedTools instance
+cmd = create_bash_command("atlassian", "Atlassian tools", tools, compressed_tools.invoke_tool)
+bash = Bash(commands={cmd.name: cmd})
+
+# Execute commands
+result = await bash.exec("atlassian search-issues --jql 'project=PROJ'")
+```
+
+### TypeScript usage
+
+See the [TypeScript README](https://github.com/atlassian-labs/mcp-compressor/blob/main/typescript/README.md#just-bash-mode) for in-process library usage with `@atlassian/mcp-compressor/bash`.
 
 ## How It Works
 

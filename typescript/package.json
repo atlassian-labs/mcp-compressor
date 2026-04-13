@@ -22,6 +22,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./bash": {
+      "import": "./dist/bash_commands.js",
+      "types": "./dist/bash_commands.d.ts"
     }
   },
   "bin": {
@@ -50,8 +54,17 @@
     "fastmcp": "^3.35.0",
     "zod": "^4.1.13"
   },
+  "peerDependencies": {
+    "just-bash": "^2.14.0"
+  },
+  "peerDependenciesMeta": {
+    "just-bash": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/node": "^24.10.1",
+    "just-bash": "^2.14.0",
     "oxfmt": "^0.44.0",
     "oxlint": "^1.59.0",
     "typescript": "^5.9.3",

@@ -213,6 +213,89 @@ Clear cached OAuth state for a remote backend:
 bun run dist/cli.js clear-oauth https://mcp.atlassian.com/v1/mcp
 ```
 
+### just-bash mode
+
+just-bash mode registers all backend MCP tools as custom commands in a [just-bash](https://www.npmjs.com/package/just-bash) sandboxed shell environment, then exposes a single `bash` MCP tool. The agent can run standard Unix utilities and MCP tools in the same shell, including pipes and composition.
+
+Requires the `just-bash` package to be installed (optional peer dependency).
+
+#### CLI usage
+
+```bash
+# Install just-bash first
+npm install just-bash
+
+# Single-server
+bun run dev -- --just-bash --server-name atlassian -- https://mcp.atlassian.com/v1/mcp
+
+# Multi-server JSON config
+bun run dev -- --just-bash -- '{"mcpServers":{"weather":{"command":"uvx","args":["mcp-weather"]},"calendar":{"command":"uvx","args":["mcp-calendar"]}}}'
+```
+
+The agent then sees a single `bash` tool. MCP tools are available as parent commands with subcommands:
+
+```bash
+# List available subcommands for a server
+atlassian --help
+
+# Invoke a tool
+atlassian search-confluence --query oauth
+
+# Pipe MCP output through standard Unix tools
+atlassian search-issues --jql "project=PROJ" | jq '.issues[].key'
+
+# Standard bash commands work alongside MCP commands
+echo "hello" | grep hello
+```
+
+#### In-process (library) usage
+
+For agent frameworks, use the `@atlassian/mcp-compressor/bash` entrypoint to create just-bash commands from a `CompressorRuntime`:
+
+```ts
+import { createCompressorRuntime } from '@atlassian/mcp-compressor';
+import { createBashCommand, buildBashToolDescription } from '@atlassian/mcp-compressor/bash';
+import { Bash } from 'just-bash';
+
+// Connect to the backend
+const runtime = createCompressorRuntime({
+  backend: { type: 'http', url: 'https://mcp.atlassian.com/v1/mcp' },
+  serverName: 'atlassian',
+  toonify: true,
+});
+await runtime.connect();
+
+// Create a parent command with subcommands for each MCP tool
+const tools = await runtime.listUncompressedTools();
+const command = createBashCommand(runtime, tools);
+
+// Create a Bash instance with the command
+const bash = new Bash({ customCommands: [command] });
+
+// Build the tool description for the LLM
+const description = buildBashToolDescription([
+  { serverName: 'atlassian', command, tools },
+]);
+
+// Use as a single AI SDK tool
+const bashTool = {
+  description,
+  parameters: z.object({ command: z.string() }),
+  execute: async (args) => {
+    const result = await bash.exec(args.command);
+    return result.stdout || `Exit ${result.exitCode}: ${result.stderr}`;
+  },
+};
+```
+
+Multiple servers can be combined into a single `Bash` instance — each becomes a separate parent command:
+
+```ts
+const allCommands = runtimes.map(({ runtime, tools }) => createBashCommand(runtime, tools));
+const bash = new Bash({ customCommands: allCommands });
+// Agent can now run: `atlassian search-issues --jql "..."` and `github list-repos --org acme`
+```
+
 ## Development toolchain
 
 | Tool | Purpose |
