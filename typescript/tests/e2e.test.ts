@@ -221,6 +221,104 @@ test("TypeScript single-server CLI mode works with Python FastMCP MCP config", a
   }
 });
 
+test("TypeScript single-server just-bash mode works with Python FastMCP e2e server", async () => {
+  const { createBashCommand, buildBashToolDescription } = await import("../src/bash_commands.js");
+  const { Bash } = await import("just-bash");
+
+  const resolved = resolveBackends(singleServerConfigJson())[0]!;
+  const runtime = createCompressorRuntime({
+    backend: resolved.backend,
+    compressionLevel: "low",
+    serverName: resolved.serverName,
+    toonify: true,
+  });
+  await runtime.connect();
+
+  try {
+    const tools = await runtime.listUncompressedTools();
+    const command = createBashCommand(runtime, tools);
+    const bash = new Bash({ customCommands: [command] });
+
+    // Parent command should be named after the server
+    expect(command.name).toBe("alpha");
+
+    // Invoke a subcommand: `alpha alpha-add --a 8 --b 9`
+    const addResult = await bash.exec("alpha alpha-add --a 8 --b 9");
+    expect(addResult.exitCode).toBe(0);
+    expect(addResult.stdout).toBe("17");
+
+    // Help on parent should list subcommands
+    const helpResult = await bash.exec("alpha --help");
+    expect(helpResult.exitCode).toBe(0);
+    expect(helpResult.stdout).toContain("alpha-echo");
+    expect(helpResult.stdout).toContain("alpha-add");
+
+    // Help on subcommand should show options
+    const subHelpResult = await bash.exec("alpha alpha-echo --help");
+    expect(subHelpResult.exitCode).toBe(0);
+    expect(subHelpResult.stdout).toContain("--message");
+
+    // Tool description should list all subcommands
+    const description = buildBashToolDescription([{ serverName: "alpha", command, tools }]);
+    expect(description).toContain("alpha-add");
+    expect(description).toContain("alpha-echo");
+    expect(description).toContain("custom commands are installed");
+
+    // Standard bash built-ins should also work alongside MCP commands
+    const echoResult = await bash.exec('echo "hello world"');
+    expect(echoResult.exitCode).toBe(0);
+    expect(echoResult.stdout.trim()).toBe("hello world");
+  } finally {
+    await runtime.disconnect();
+  }
+});
+
+test("TypeScript multi-server just-bash mode works with Python FastMCP e2e servers", async () => {
+  const { createBashCommand, buildBashToolDescription } = await import("../src/bash_commands.js");
+  const { Bash } = await import("just-bash");
+
+  const resolvedBackends = resolveBackends(multiServerConfigJson(), "suite");
+  const runtimes = [];
+  const serverCmds = [];
+
+  try {
+    for (const resolved of resolvedBackends) {
+      const runtime = createCompressorRuntime({
+        backend: resolved.backend,
+        compressionLevel: "low",
+        serverName: resolved.serverName,
+        toonify: true,
+      });
+      await runtime.connect();
+      runtimes.push(runtime);
+
+      const tools = await runtime.listUncompressedTools();
+      const command = createBashCommand(runtime, tools);
+      serverCmds.push({ serverName: resolved.serverName ?? "mcp", command, tools });
+    }
+
+    const allCommands = serverCmds.map((sc) => sc.command);
+    const bash = new Bash({ customCommands: allCommands });
+
+    // Both servers should be available as parent commands with subcommands
+    const addResult = await bash.exec("suite-alpha alpha-add --a 6 --b 7");
+    expect(addResult.exitCode).toBe(0);
+    expect(addResult.stdout).toBe("13");
+
+    const multiplyResult = await bash.exec("suite-beta beta-multiply --a 6 --b 7");
+    expect(multiplyResult.exitCode).toBe(0);
+    expect(multiplyResult.stdout).toBe("42");
+
+    // Description should include commands from both servers
+    const description = buildBashToolDescription(serverCmds);
+    expect(description).toContain("alpha-add");
+    expect(description).toContain("beta-multiply");
+    expect(description).toContain("custom commands are installed");
+  } finally {
+    await Promise.allSettled(runtimes.map((r) => r.disconnect()));
+  }
+});
+
 test("TypeScript multi-server CLI mode creates one script per Python FastMCP server", async () => {
   const session = await initializeCliMode({
     backend: multiServerConfigJson(),

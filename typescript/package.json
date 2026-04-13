@@ -22,6 +22,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./bash": {
+      "import": "./dist/bash_commands.js",
+      "types": "./dist/bash_commands.d.ts"
     }
   },
   "bin": {
@@ -49,6 +53,14 @@
     "commander": "^14.0.3",
     "fastmcp": "^3.35.0",
     "zod": "^4.1.13"
+  },
+  "peerDependencies": {
+    "just-bash": "^2.14.0"
+  },
+  "peerDependenciesMeta": {
+    "just-bash": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

@@ -29,6 +29,7 @@ function parseBackendArg(backendArgs: string[]): BackendConfig | string {
 
 export interface ParsedCliArgs {
   backend: BackendConfig | string;
+  justBash: boolean;
   cliMode: boolean;
   cliPort: string | undefined;
   compressionLevel: "low" | "medium" | "high" | "max" | undefined;
@@ -127,6 +128,13 @@ function buildProgram(options: { exitOverride?: boolean } = {}): Command {
       "Port for the local CLI bridge HTTP server (default: random free port).",
     )
     .option(
+      "--just-bash",
+      "Start in just-bash mode: expose a single 'bash' MCP tool powered by\n" +
+        "just-bash, with all backend server tools available as custom commands.\n" +
+        "Requires the 'just-bash' package to be installed. --toonify is\n" +
+        "automatically enabled in this mode.",
+    )
+    .option(
       "--include-tool <tool>",
       "Wrapped server tool name to expose. Can be used multiple times.\n" +
         "If omitted, all tools are included.",
@@ -153,6 +161,7 @@ function parseCliArgsWithOptions(
   const program = buildProgram(parseOptions);
   program.parse(argv, { from: "user" });
   const parsedOptions = program.opts<{
+    justBash?: boolean;
     cliMode?: boolean;
     cliPort?: string;
     compressionLevel?: ParsedCliArgs["compressionLevel"];
@@ -167,11 +176,13 @@ function parseCliArgsWithOptions(
     toonify?: boolean;
   }>();
   const backend = parseBackendArg(program.args);
+  const justBash = parsedOptions.justBash ?? false;
   const cliMode = parsedOptions.cliMode ?? false;
-  const toonify = (parsedOptions.toonify ?? false) || cliMode;
+  const toonify = (parsedOptions.toonify ?? false) || cliMode || justBash;
 
   return {
     backend,
+    justBash,
     cliMode,
     cliPort: parsedOptions.cliPort,
     compressionLevel: parsedOptions.compressionLevel,
@@ -238,6 +249,7 @@ async function main(): Promise<void> {
 
   const {
     backend,
+    justBash,
     cliMode,
     cliPort,
     compressionLevel,
@@ -278,6 +290,83 @@ async function main(): Promise<void> {
     console.warn(
       `[mcp-compressor-ts] log-level ${logLevel} requested; detailed logging is not implemented yet.`,
     );
+  }
+
+  if (justBash) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let Bash: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let bashCommandsModule: any;
+    try {
+      ({ Bash } = await import("just-bash"));
+      bashCommandsModule = await import("./bash_commands.js");
+    } catch {
+      throw new Error(
+        "Bash mode requires the 'just-bash' package. Install it with: npm install just-bash",
+      );
+    }
+
+    const resolvedBackends = resolveBackends(enrichedBackend, serverName);
+    const { createCompressorRuntime } = await import("./index.js");
+    const runtimes: Awaited<ReturnType<typeof createCompressorRuntime>>[] = [];
+    const serverCmds: Array<{
+      serverName: string;
+      command: { name: string };
+      tools: unknown[];
+    }> = [];
+
+    for (const resolved of resolvedBackends) {
+      const runtime = createCompressorRuntime({
+        backend: resolved.backend,
+        compressionLevel,
+        excludeTools: excludeTools.length > 0 ? excludeTools : undefined,
+        includeTools: includeTools.length > 0 ? includeTools : undefined,
+        serverName: resolved.serverName,
+        toonify,
+      });
+      await runtime.connect();
+      runtimes.push(runtime);
+
+      const tools = await runtime.listUncompressedTools();
+      const command = bashCommandsModule.createBashCommand(runtime, tools);
+      serverCmds.push({ serverName: resolved.serverName ?? "mcp", command, tools });
+    }
+
+    const allCommands = serverCmds.map((sc) => sc.command);
+    const bash = new Bash({ customCommands: allCommands });
+    const description = bashCommandsModule.buildBashToolDescription(serverCmds) as string;
+
+    // Serve as a single "bash" MCP tool via FastMCP
+    const { FastMCP } = await import("fastmcp");
+    const { z } = await import("zod");
+    const mcp = new FastMCP({ name: "mcp-compressor-bash", version: "1.0.0" });
+    mcp.addTool({
+      name: "bash",
+      description,
+      parameters: z.object({
+        command: z.string().describe("The bash command to execute."),
+      }),
+      execute: async (args: { command: string }) => {
+        const result = await bash.exec(args.command);
+        if (result.exitCode !== 0) {
+          return `Exit code: ${result.exitCode}\n${result.stdout}${result.stderr ? `\nSTDERR: ${result.stderr}` : ""}`;
+        }
+        return result.stdout || "(no output)";
+      },
+    });
+
+    console.error("Bash mode active.");
+    console.error(`Available commands: ${allCommands.map((c) => c.name).join(", ")}`);
+
+    const shutdown = async () => {
+      await Promise.allSettled(runtimes.map((r) => r.disconnect()));
+      process.exit(0);
+    };
+    process.once("SIGINT", () => void shutdown());
+    process.once("SIGTERM", () => void shutdown());
+
+    await mcp.start({ transportType: "stdio" });
+    return;
   }
 
   if (cliMode) {

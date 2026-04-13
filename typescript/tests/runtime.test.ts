@@ -211,6 +211,70 @@ test("CompressorRuntime getAiSdkTools returns single help tool in cliMode", asyn
   }
 });
 
+test("createBashCommand creates a parent command with subcommands", async () => {
+  const { createBashCommand } = await import("../src/bash_commands.js");
+  const { Bash } = await import("just-bash");
+
+  const backendClient = new FakeBackendClient(SAMPLE_TOOLS);
+  const runtime = new CompressorRuntime({
+    backendClient,
+    compressionLevel: "medium",
+    serverName: "docs",
+  });
+  await runtime.connect();
+
+  const tools = await runtime.listUncompressedTools();
+  const command = createBashCommand(runtime, tools);
+
+  // Should create a single parent command named after the server
+  expect(command.name).toBe("docs");
+
+  // Subcommands should work: `docs search-docs --query test`
+  const bash = new Bash({ customCommands: [command] });
+  const result = await bash.exec("docs search-docs --query test");
+  expect(result.stdout).toBe(JSON.stringify({ ok: true }, null, 2));
+  expect(result.exitCode).toBe(0);
+
+  // Parent --help should list subcommands
+  const helpResult = await bash.exec("docs --help");
+  expect(helpResult.stdout).toContain("search-docs");
+  expect(helpResult.stdout).toContain("create-ticket");
+  expect(helpResult.exitCode).toBe(0);
+
+  // Subcommand --help should show tool options
+  const subHelpResult = await bash.exec("docs search-docs --help");
+  expect(subHelpResult.stdout).toContain("--query");
+  expect(subHelpResult.exitCode).toBe(0);
+
+  // Unknown subcommand should error with help
+  const errorResult = await bash.exec("docs unknown-sub");
+  expect(errorResult.exitCode).toBe(1);
+  expect(errorResult.stderr).toContain("unknown subcommand");
+});
+
+test("buildBashToolDescription reuses CLI-mode help per server", async () => {
+  const { createBashCommand, buildBashToolDescription } = await import("../src/bash_commands.js");
+
+  const backendClient = new FakeBackendClient(SAMPLE_TOOLS);
+  const runtime = new CompressorRuntime({
+    backendClient,
+    compressionLevel: "medium",
+    serverName: "docs",
+  });
+  await runtime.connect();
+
+  const tools = await runtime.listUncompressedTools();
+  const command = createBashCommand(runtime, tools);
+
+  const description = buildBashToolDescription([{ serverName: "docs", command, tools }]);
+
+  expect(description).toContain("sandboxed environment");
+  expect(description).toContain("custom commands are installed");
+  expect(description).toContain("search-docs");
+  expect(description).toContain("create-ticket");
+  expect(description).toContain("docs");
+});
+
 test("CompressorRuntime treats an empty includeTools list as no include filter", async () => {
   const backendClient = new FakeBackendClient(SAMPLE_TOOLS);
   const runtime = new CompressorRuntime({
