@@ -87,8 +87,8 @@ def _get_or_create_encryption_key() -> bytes:
         new_key = Fernet.generate_key()
         keyring.set_password(_KEYRING_SERVICE, _KEYRING_USERNAME, new_key.decode())
         logger.debug("OAuth encryption key generated and stored in OS keychain")
-    except keyring.errors.NoKeyringError:
-        logger.debug("No OS keychain available; falling back to file-based encryption key")
+    except (keyring.errors.NoKeyringError, keyring.errors.PasswordSetError, keyring.errors.KeyringError):
+        logger.debug("OS keychain unavailable or access denied; falling back to file-based encryption key")
     else:
         return new_key
 
