@@ -938,20 +938,21 @@ def _interpolate_string(value: str) -> str:
     """Interpolate environment variables in a single string.
 
     Args:
-        value: A string that may contain environment variable references like ${VAR_NAME}.
+        value: A string that may contain environment variable references like ${VAR_NAME} or $VAR_NAME.
 
     Returns:
         The string with interpolated environment variables. If a variable cannot be interpolated, it is left as-is
             without interpolation.
     """
-    try:
-        if not value or "${" not in value:
-            return value
-        # Replace ${VAR_NAME} with {VAR_NAME} and use format() with environment variables
-        return value.replace("${", "{").format(**os.environ)
-    except Exception as e:
-        logger.warning(f"Failed to interpolate environment variable {value}: {e}, using uninterpolated value")
+    if not value:
         return value
+
+    def _replace(match: re.Match[str]) -> str:
+        var_name = match.group(1) or match.group(2)
+        return os.environ.get(var_name, match.group(0))
+
+    # Match ${VAR_NAME} or $VAR_NAME (bare dollar, followed by word characters)
+    return re.sub(r"\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)", _replace, value)
 
 
 def _infer_transport_type(command_or_url: str) -> Literal["stdio", "http", "sse"]:

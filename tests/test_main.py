@@ -63,8 +63,9 @@ def setup_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
         # No variables - pass through unchanged
         ("plain_string", "plain_string"),
         ("", ""),
-        # Dollar sign without braces - unchanged
-        ("$TEST_VAR", "$TEST_VAR"),
+        # Bare dollar sign without braces
+        ("$TEST_VAR", "test_value"),
+        ("Bearer $API_KEY", "Bearer secret123"),
     ],
 )
 def test_interpolate_string(input_str: str, expected: str) -> None:
@@ -73,15 +74,15 @@ def test_interpolate_string(input_str: str, expected: str) -> None:
 
 
 def test_interpolate_string_missing_var_returns_original() -> None:
-    """Test that missing variables return the original string."""
-    result = _interpolate_string("${NONEXISTENT_VAR}")
-    assert result == "${NONEXISTENT_VAR}"
+    """Test that missing variables return the original placeholder."""
+    assert _interpolate_string("${NONEXISTENT_VAR}") == "${NONEXISTENT_VAR}"
+    assert _interpolate_string("$NONEXISTENT_VAR") == "$NONEXISTENT_VAR"
 
 
-def test_interpolate_string_partial_missing_returns_original() -> None:
-    """Test that partial interpolation failure returns original string."""
+def test_interpolate_string_partial_missing_leaves_missing_placeholder() -> None:
+    """Test that set variables are substituted and missing ones are left as-is."""
     result = _interpolate_string("${TEST_VAR}_${NONEXISTENT}")
-    assert result == "${TEST_VAR}_${NONEXISTENT}"
+    assert result == "test_value_${NONEXISTENT}"
 
 
 @pytest.mark.parametrize(
