@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { interpolateString, parseServerConfigJson } from "../src/config.js";
+import { interpolateMCPConfig, interpolateString, parseServerConfigJson } from "../src/config.js";
 
 test("parseServerConfigJson parses a single stdio server", () => {
   const parsed = parseServerConfigJson(
@@ -84,4 +84,59 @@ test("parseServerConfigJson interpolates env values for stdio server", () => {
     env: { API_KEY: "key_xyz" },
   });
   delete process.env["API_KEY"];
+});
+
+test("interpolateMCPConfig interpolates headers in an HTTP server", () => {
+  process.env["MCP_TOKEN"] = "tok_123";
+  const result = interpolateMCPConfig({
+    mcpServers: {
+      myServer: { url: "https://example.com", headers: { Authorization: "Bearer $MCP_TOKEN" } },
+    },
+  });
+  expect(result.mcpServers["myServer"]?.headers?.["Authorization"]).toBe("Bearer tok_123");
+  delete process.env["MCP_TOKEN"];
+});
+
+test("interpolateMCPConfig interpolates env in a stdio server", () => {
+  process.env["MY_KEY"] = "abc";
+  const result = interpolateMCPConfig({
+    mcpServers: { srv: { command: "uvx", env: { MY_KEY: "${MY_KEY}" } } },
+  });
+  expect(result.mcpServers["srv"]?.env?.["MY_KEY"]).toBe("abc");
+  delete process.env["MY_KEY"];
+});
+
+test("interpolateMCPConfig interpolates url", () => {
+  process.env["MCP_HOST"] = "myhost.example.com";
+  const result = interpolateMCPConfig({
+    mcpServers: { srv: { url: "https://${MCP_HOST}/mcp" } },
+  });
+  expect(result.mcpServers["srv"]?.url).toBe("https://myhost.example.com/mcp");
+  delete process.env["MCP_HOST"];
+});
+
+test("interpolateMCPConfig accepts a JSON string", () => {
+  process.env["MCP_TOKEN"] = "tok_json";
+  const result = interpolateMCPConfig(
+    '{"mcpServers":{"srv":{"url":"https://example.com","headers":{"Authorization":"Bearer $MCP_TOKEN"}}}}',
+  );
+  expect(result.mcpServers["srv"]?.headers?.["Authorization"]).toBe("Bearer tok_json");
+  delete process.env["MCP_TOKEN"];
+});
+
+test("interpolateMCPConfig interpolates args in a stdio server", () => {
+  process.env["EXTRA_ARG"] = "--turbo";
+  const result = interpolateMCPConfig({
+    mcpServers: { srv: { command: "uvx", args: ["run", "$EXTRA_ARG"] } },
+  });
+  expect(result.mcpServers["srv"]?.args).toEqual(["run", "--turbo"]);
+  delete process.env["EXTRA_ARG"];
+});
+
+test("interpolateMCPConfig preserves unset placeholders", () => {
+  delete process.env["UNSET_VAR"];
+  const result = interpolateMCPConfig({
+    mcpServers: { srv: { url: "https://example.com", headers: { X: "${UNSET_VAR}" } } },
+  });
+  expect(result.mcpServers["srv"]?.headers?.["X"]).toBe("${UNSET_VAR}");
 });

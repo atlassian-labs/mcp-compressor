@@ -232,6 +232,20 @@ def test_get_stdio_transport(tmp_path) -> None:
     assert isinstance(transport, StdioTransport)
 
 
+def test_get_stdio_transport_interpolates_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that args are interpolated with environment variables."""
+    monkeypatch.setenv("MY_MODULE", "my_server")
+    monkeypatch.setenv("MY_FLAG", "--debug")
+    transport = _get_stdio_transport(
+        command="python",
+        args=["-m", "$MY_MODULE", "${MY_FLAG}"],
+        cwd=None,
+        env_list=None,
+    )
+    assert isinstance(transport, StdioTransport)
+    assert transport.args == ["-m", "my_server", "--debug"]
+
+
 def test_get_stdio_transport_no_env() -> None:
     """Test stdio transport with no environment variables."""
     transport = _get_stdio_transport(command="python", args=[], cwd=None, env_list=None)

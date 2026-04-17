@@ -1050,7 +1050,7 @@ def _get_stdio_transport(command: str, args: list[str], cwd: str | None, env_lis
         for var in env_list:
             key, val = var.split("=", 1)
             env[key] = _interpolate_string(val)
-    return StdioTransport(command=command, args=args, env=env, cwd=cwd)
+    return StdioTransport(command=command, args=[_interpolate_string(a) for a in args], env=env, cwd=cwd)
 
 
 def entrypoint() -> None:
