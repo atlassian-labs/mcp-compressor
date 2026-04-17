@@ -80,14 +80,29 @@ export function createOAuthProviderForBackend(
     "oauthConfigDir" | "oauthRedirectUrl" | "onOAuthRedirect"
   > = {},
 ): PersistentOAuthProvider | undefined {
-  return backend.type === "http" || backend.type === "sse"
-    ? new PersistentOAuthProvider({
-        serverUrl: backend.url,
-        configDir: options.oauthConfigDir,
-        redirectUrl: options.oauthRedirectUrl,
-        onRedirect: options.onOAuthRedirect,
-      })
-    : undefined;
+  if (backend.type !== "http" && backend.type !== "sse") {
+    return undefined;
+  }
+
+  // Don't create an OAuth provider when the backend already has an Authorization
+  // header pre-configured — the static header should be used as-is without
+  // triggering OAuth discovery or interactive redirect flows.
+  if (hasAuthorizationHeader(backend.headers)) {
+    return undefined;
+  }
+
+  return new PersistentOAuthProvider({
+    serverUrl: backend.url,
+    configDir: options.oauthConfigDir,
+    redirectUrl: options.oauthRedirectUrl,
+    onRedirect: options.onOAuthRedirect,
+  });
+}
+
+/** Check whether a headers record contains an Authorization header (case-insensitive). */
+function hasAuthorizationHeader(headers?: Record<string, string>): boolean {
+  if (!headers) return false;
+  return Object.keys(headers).some((k) => k.toLowerCase() === "authorization");
 }
 
 export async function clearOAuth(

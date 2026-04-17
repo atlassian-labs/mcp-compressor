@@ -136,8 +136,14 @@ export class CompressorClient {
 
     this.runtimeEntries = resolved.map(({ backend, serverName }) => {
       const perServer = options.serverOptions?.[serverName];
+      // Don't create an OAuth provider when the backend already has an Authorization
+      // header pre-configured — the static header should be used as-is.
+      const hasAuthHeader =
+        (backend.type === "http" || backend.type === "sse") &&
+        backend.headers &&
+        Object.keys(backend.headers).some((k) => k.toLowerCase() === "authorization");
       const oauthProvider =
-        backend.type === "http" || backend.type === "sse"
+        (backend.type === "http" || backend.type === "sse") && !hasAuthHeader
           ? new PersistentOAuthProvider({
               serverUrl: backend.url,
               configDir: options.oauthConfigDir,
