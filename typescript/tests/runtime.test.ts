@@ -174,7 +174,7 @@ test("CompressorRuntime getAiSdkTools works without serverName prefix", async ()
   const tools = await runtime.getAiSdkTools();
 
   expect(Object.keys(tools).sort()).toEqual(["get_tool_schema", "invoke_tool"]);
-  expect(tools.get_tool_schema!.description).toContain("default");
+  expect(tools.get_tool_schema!.description).toContain("this toolset");
 });
 
 test("CompressorRuntime getAiSdkTools returns single help tool in cliMode", async () => {

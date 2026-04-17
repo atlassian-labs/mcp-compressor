@@ -36,7 +36,7 @@ from pydantic import ValidationError
 from .banner import print_banner
 from .cli_bridge import CliBridge
 from .cli_script import generate_cli_script, remove_cli_script_entry
-from .cli_tools import sanitize_cli_name
+from .cli_tools import build_help_tool_description, sanitize_cli_name
 from .logging import configure_logging, suppress_recoverable_oauth_traceback_logging
 from .oauth import (
     _KEYRING_SERVICE,
@@ -664,7 +664,7 @@ async def _just_bash_server(
             }
         ])
 
-        # Serve only the bash tool via a fresh FastMCP (not the proxy with backend tools)
+        # Serve only the bash tool + per-server help tools via a fresh FastMCP
         mcp = FastMCP(name="MCP Compressor Proxy")
 
         @mcp.tool(description=description)
@@ -674,6 +674,20 @@ async def _just_bash_server(
             if result.exit_code != 0:
                 return f"Exit code: {result.exit_code}\n{result.stdout}\n{f'STDERR: {result.stderr}' if result.stderr else ''}"
             return result.stdout or "(no output)"
+
+        # Per-server help tool (identical to CLI mode help tools)
+        help_description = build_help_tool_description(
+            cli_name=cli_name,
+            server_description=compressed_tools._server_description,
+            tools=cast(list[Any], tools_list),
+            on_path=True,
+        )
+        help_tool_name = f"{server_name}_help" if server_name else "help"
+
+        @mcp.tool(name=help_tool_name, description=help_description)
+        async def help_tool() -> str:
+            """Show available commands and usage."""
+            return help_description
 
         logger.info("Starting MCP Compressor server in just-bash mode")
         yield mcp
@@ -781,6 +795,26 @@ async def _multi_server(
                         f"{f'STDERR: {result.stderr}' if result.stderr else ''}"
                     )
                 return result.stdout or "(no output)"
+
+            # Per-server help tools (identical to CLI mode help tools)
+            for sc in server_commands:
+                sc_cli_name = sc["server_name"]
+                sc_help_desc = build_help_tool_description(
+                    cli_name=sc_cli_name,
+                    server_description=sc["server_description"],
+                    tools=sc["tools"],
+                    on_path=True,
+                )
+                sc_help_name = f"{sc_cli_name}_help"
+
+                # Use a factory to capture the description in each closure
+                def _make_help(desc: str) -> Any:
+                    async def _help() -> str:
+                        return desc
+
+                    return _help
+
+                outer_mcp.tool(name=sc_help_name, description=sc_help_desc)(_make_help(sc_help_desc))
 
         yield outer_mcp
 

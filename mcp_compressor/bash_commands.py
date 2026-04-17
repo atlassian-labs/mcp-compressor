@@ -114,38 +114,20 @@ def create_bash_command(
     )
 
 
-BASH_TOOL_DESCRIPTION_TEMPLATE = """\
-Execute bash commands in a sandboxed environment (just-bash).
-
-Supports standard Unix utilities (grep, cat, jq, sed, awk, sort, find, and many more). \
-In addition, the following custom commands are installed in the bash environment:
-
-{commands_help}
-
-When possible, these commands will return TOON-formatted responses to minimize token usage.
-
-Run '<command> --help' for per-command/subcommand usage and options.
-Run '<command> <subcommand> --json \\'{{\"key\":\"value\"}}\\'' for raw JSON input."""
+BASH_TOOL_DESCRIPTION = """\
+Execute bash commands in a sandboxed environment (just-bash). \
+Supports standard Unix utilities (grep, cat, jq, sed, awk, sort, find, and many more) \
+as well as custom commands from connected MCP servers. \
+See the help tools for available server commands and usage."""
 
 
 def build_bash_tool_description(
     server_commands: list[dict[str, Any]],
 ) -> str:
-    """Build the tool description for a bash tool with MCP server commands.
+    """Build the simple tool description for the bash tool.
 
-    Each entry in ``server_commands`` should have keys:
-    - ``server_name``: str
-    - ``server_description``: str
-    - ``command``: McpServerCommand
-    - ``tools``: list[Tool]
-
-    Reuses the CLI-mode top-level help text for each server.
+    This returns a short, fixed description. Per-server help is provided
+    via separate ``<server_name>_help`` tools rather than being embedded
+    in the bash tool description.
     """
-    help_sections: list[str] = []
-    for entry in server_commands:
-        cli_name = tool_name_to_subcommand(entry["server_name"])
-        help_text = format_top_level_help(cli_name, entry["server_description"], entry["tools"])
-        help_sections.append(help_text)
-
-    commands_help = "\n\n---\n\n".join(help_sections)
-    return BASH_TOOL_DESCRIPTION_TEMPLATE.format(commands_help=commands_help)
+    return BASH_TOOL_DESCRIPTION

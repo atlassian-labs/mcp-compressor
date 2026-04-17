@@ -99,19 +99,49 @@ export class CompressorRuntime {
     await this.refreshTools();
 
     if (this.isCliMode) {
-      this.cliBridge = new CliBridge(this, this.cliName);
-      const bridgePort = await this.cliBridge.start(this.cliOptions?.cliPort ?? 0);
-      this.cliBridgeUrl = this.cliBridge.url;
-      this.cliSessionPid = process.ppid;
-      const generated = await generateCliScript(
-        this.cliName,
-        bridgePort,
-        this.cliSessionPid,
-        this.cliOptions?.scriptDir,
-      );
-      this.cliScriptPath = generated.scriptPath;
-      this.cliOnPath = generated.onPath;
+      await this.startCliBridge(this.cliOptions?.cliPort, this.cliOptions?.scriptDir);
     }
+  }
+
+  /**
+   * Start the CLI bridge HTTP server and generate the CLI shell script.
+   *
+   * This is called automatically during `connect()` when `cli.cliMode` is set.  It can also be
+   * called directly after `connect()` to lazily enable CLI mode on a runtime that was not
+   * originally created with `cliMode: true`.
+   *
+   * Returns info about the generated script and bridge.
+   */
+  async startCliBridge(
+    port?: number,
+    scriptDir?: string,
+  ): Promise<{ scriptPath: string | null; onPath: boolean; bridgeUrl: string }> {
+    if (this.cliBridge) {
+      return {
+        scriptPath: this.cliScriptPath,
+        onPath: this.cliOnPath,
+        bridgeUrl: this.cliBridgeUrl!,
+      };
+    }
+
+    this.cliBridge = new CliBridge(this, this.cliName);
+    const bridgePort = await this.cliBridge.start(port ?? 0);
+    this.cliBridgeUrl = this.cliBridge.url;
+    this.cliSessionPid = process.ppid;
+    const generated = await generateCliScript(
+      this.cliName,
+      bridgePort,
+      this.cliSessionPid,
+      scriptDir,
+    );
+    this.cliScriptPath = generated.scriptPath;
+    this.cliOnPath = generated.onPath;
+
+    return {
+      scriptPath: this.cliScriptPath,
+      onPath: this.cliOnPath,
+      bridgeUrl: this.cliBridgeUrl,
+    };
   }
 
   async disconnect(): Promise<void> {
@@ -253,9 +283,8 @@ export class CompressorRuntime {
     const tools: Record<string, AiSdkTool> = {
       [this.prefixName("get_tool_schema")]: {
         description:
-          `<summary>Get the input schema for a specific tool from the ${this.serverName ?? "default"} toolset.\n\n` +
-          `${compressedDescription}</summary>\n` +
-          `<returns>\n<description>The input schema for the specified tool.</description>\n</returns>`,
+          `Get the input schema for a specific tool from ${this.serverDescription}.\n\n` +
+          `Available tools are:\n${compressedDescription}`,
         parameters: z.object({
           tool_name: z.string().describe("The name of the tool to get the schema for."),
         }),
@@ -263,9 +292,7 @@ export class CompressorRuntime {
           JSON.stringify(await this.getToolSchema(args.tool_name), null, 2),
       },
       [this.prefixName("invoke_tool")]: {
-        description:
-          `<summary>Invoke a tool from the ${this.serverName ?? "default"} toolset.</summary>\n` +
-          `<returns>\n<description>The output from the tool.</description>\n</returns>`,
+        description: `Invoke a tool from ${this.serverDescription}.`,
         parameters: z.object({
           tool_name: z.string().describe("The name of the tool to invoke."),
           tool_input: z
@@ -282,7 +309,7 @@ export class CompressorRuntime {
 
     if (this.compressionLevel === "max") {
       tools[this.prefixName("list_tools")] = {
-        description: `List available tool names in the ${this.serverName ?? "default"} toolset.`,
+        description: `List all available tools in ${this.serverDescription}.`,
         parameters: z.object({}),
         execute: async () => JSON.stringify(await this.listToolNames(), null, 2),
       };

@@ -34,6 +34,7 @@
   },
   "scripts": {
     "build": "bun run tsc -p tsconfig.build.json",
+    "cli": "bun src/cli.ts",
     "dev": "bun run build && bun run dist/cli.js",
     "format": "oxfmt src/ tests/ '!**/node_modules/**' '!**/dist/**' '!**/coverage/**'",
     "format:check": "oxfmt --check src/ tests/ '!**/node_modules/**' '!**/dist/**' '!**/coverage/**'",

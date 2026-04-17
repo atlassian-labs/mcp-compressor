@@ -10,6 +10,7 @@ import { FastMCP } from "fastmcp";
 import { z } from "zod";
 
 export * from "./backend-client.js";
+export * from "./client.js";
 export * from "./config.js";
 export * from "./errors.js";
 export * from "./oauth.js";

@@ -4,7 +4,7 @@ function firstSentence(text: string | undefined): string {
   if (!text) {
     return "";
   }
-  return text.trim().split(/\n+/u)[0]?.split(". ")[0] ?? "";
+  return text.trim().split(/\n+/u)[0]?.split(".")[0] ?? "";
 }
 
 function getInputSchema(tool: Tool): Record<string, unknown> {

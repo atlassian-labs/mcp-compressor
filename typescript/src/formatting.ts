@@ -8,15 +8,19 @@ export function formatToolDescription(tool: Tool, compressionLevel: CompressionL
   const inputSchema = tool.inputSchema as { properties?: Record<string, unknown> } | undefined;
   const parameterNames = Object.keys(inputSchema?.properties ?? {});
 
+  const params = `(${parameterNames.join(", ")})`;
+  const descSuffix = (desc: string) => (desc ? `: ${desc}` : "");
+
   switch (compressionLevel) {
     case "low":
-      return `<tool>${tool.name}: ${description}</tool>`;
+      return `<tool>${tool.name}${params}${descSuffix(description)}</tool>`;
     case "medium": {
-      const firstSentence = description.split(". ")[0]?.trim() ?? description;
-      return `<tool>${tool.name}(${parameterNames.join(", ")}): ${firstSentence}</tool>`;
+      const firstLine = description.split("\n")[0] ?? description;
+      const firstSentence = firstLine.split(".")[0]?.trim() ?? firstLine;
+      return `<tool>${tool.name}${params}${descSuffix(firstSentence)}</tool>`;
     }
     case "high":
-      return `<tool>${tool.name}(${parameterNames.join(", ")})</tool>`;
+      return `<tool>${tool.name}${params}</tool>`;
     case "max":
       return `<tool>${tool.name}</tool>`;
   }

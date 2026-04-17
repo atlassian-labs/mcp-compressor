@@ -238,7 +238,7 @@ async def test_multi_server_config_cli_mode_exposes_prefixed_help_tools(multi_se
         assert "Functionality associated with the beta toolset" in beta_help.content[0].text
 
 
-async def test_single_server_just_bash_mode_exposes_single_bash_tool(single_server_config_json: str) -> None:
+async def test_single_server_just_bash_mode_exposes_bash_and_help_tools(single_server_config_json: str) -> None:
     async with (
         _server(
             command_or_url_list=[single_server_config_json],
@@ -254,22 +254,32 @@ async def test_single_server_just_bash_mode_exposes_single_bash_tool(single_serv
         Client(mcp) as client,
     ):
         tool_names = {tool.name for tool in await client.list_tools()}
-        assert tool_names == {"bash_tool"}
+        assert tool_names == {"bash_tool", "alpha_help"}
 
-        # Tool description should mention custom commands
+        # Bash tool description should be simple
         tools = await client.list_tools()
         bash_desc = next(t for t in tools if t.name == "bash_tool").description
         assert "just-bash" in bash_desc
-        assert "alpha" in bash_desc
+        assert "help tools" in bash_desc
+
+        # Help tool should list subcommands (identical to CLI mode help)
+        help_desc = next(t for t in tools if t.name == "alpha_help").description
+        assert "alpha-echo" in help_desc
+        assert "alpha-add" in help_desc
+        assert "Do not call this tool" in help_desc
+
+        # Help tool should return its description when called
+        help_result = await client.call_tool("alpha_help", {})
+        assert "alpha-echo" in help_result.content[0].text
 
         # Execute a custom command via bash
         result = await client.call_tool("bash_tool", {"command": "alpha alpha-echo --message hello"})
         assert "hello" in result.content[0].text
 
-        # Help should list subcommands
-        help_result = await client.call_tool("bash_tool", {"command": "alpha --help"})
-        assert "alpha-echo" in help_result.content[0].text
-        assert "alpha-add" in help_result.content[0].text
+        # Bash help should also list subcommands
+        bash_help_result = await client.call_tool("bash_tool", {"command": "alpha --help"})
+        assert "alpha-echo" in bash_help_result.content[0].text
+        assert "alpha-add" in bash_help_result.content[0].text
 
 
 async def test_multi_server_just_bash_mode_aggregates_all_servers(
@@ -290,13 +300,20 @@ async def test_multi_server_just_bash_mode_aggregates_all_servers(
         Client(mcp) as client,
     ):
         tool_names = {tool.name for tool in await client.list_tools()}
-        assert tool_names == {"bash_tool"}
+        assert tool_names == {"bash_tool", "alpha_help", "beta_help"}
 
-        # Description should mention both servers
+        # Bash tool description should be simple
         tools = await client.list_tools()
         bash_desc = next(t for t in tools if t.name == "bash_tool").description
-        assert "alpha" in bash_desc
-        assert "beta" in bash_desc
+        assert "just-bash" in bash_desc
+        assert "help tools" in bash_desc
+
+        # Per-server help tools should describe subcommands
+        alpha_help = next(t for t in tools if t.name == "alpha_help").description
+        assert "alpha-add" in alpha_help
+        assert "alpha-echo" in alpha_help
+        beta_help = next(t for t in tools if t.name == "beta_help").description
+        assert "beta-multiply" in beta_help
 
         # Call alpha tool
         alpha_result = await client.call_tool("bash_tool", {"command": "alpha alpha-add --a 3 --b 7"})
