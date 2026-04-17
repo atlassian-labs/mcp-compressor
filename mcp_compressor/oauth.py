@@ -51,8 +51,16 @@ async def handle_stale_oauth_error(exc: Exception, transport: Any) -> bool:
     if not isinstance(auth, OAuth):
         return False
 
-    exc_str = str(exc)
-    is_stale = "Unexpected authorization response: 500" in exc_str or "OAuth client not found" in exc_str
+    # Any HTTP 4xx/5xx auth failure from an OAuth-enabled transport indicates a stale token.
+    # Common cases:
+    # - 401 Unauthorized: token expired or revoked (any OAuth server)
+    # - 500 with "OAuth client not found" or "Unexpected authorization response": Atlassian-specific stale state
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (401, 403):
+        is_stale = True
+    else:
+        exc_str = str(exc)
+        is_stale = "Unexpected authorization response: 500" in exc_str or "OAuth client not found" in exc_str
+
     if not is_stale:
         return False
 
