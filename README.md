@@ -48,12 +48,7 @@ An MCP server wrapper for reducing tokens consumed by MCP tools.
 
 ## Overview
 
-MCP Compressor is a proxy server that wraps existing [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers and compresses their tool descriptions to significantly reduce token consumption. Instead of exposing all tools with full schemas directly to language models, it provides a two-step interface:
-
-1. **`get_tool_schema(tool_name)`** - Retrieve the full schema for a specific tool when needed
-2. **`invoke_tool(tool_name, tool_input)`** - Execute a tool with the provided arguments
-
-This approach dramatically reduces the number of tokens sent in the initial context while maintaining full functionality.
+MCP Compressor is a proxy server that wraps existing [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers and compresses their tool descriptions to significantly reduce token consumption. Instead of exposing all tools with full schemas directly to language models, it provides a small number of proxy tools or CLI commands instead.
 
 ## Why?
 
@@ -79,6 +74,14 @@ With 30k+ tokens just for tool descriptions, costs can reach **1-10 cents per re
 - **just-bash Mode**: Register all backend MCP tools as custom commands in a [just-bash](https://pypi.org/project/just-bash/) sandboxed shell with `--just-bash`. The agent gets a single `bash` tool that supports standard Unix utilities and MCP tools with pipes and composition.
 - **Zero Functionality Loss**: All tools remain fully accessible through the wrapper interface
 - **Easy Integration**: Drop-in replacement for existing MCP servers
+
+### Three modes
+
+| Mode | Tools exposed | How the LLM invokes tools |
+|---|---|---|
+| **Compressed** (default) | `get_tool_schema` + `invoke_tool` | Via MCP tool calls |
+| **CLI** | Per-server `_help` tools | Via bash CLI commands (bridge + generated scripts) |
+| **Bash** | Per-server `_help` tools + `bash` tool | Via a sandboxed [just-bash](https://pypi.org/project/just-bash/) shell |
 
 ## Python vs TypeScript
 
