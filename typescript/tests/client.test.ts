@@ -210,10 +210,9 @@ test("compressed mode: getTools returns merged compressed tools for multiple ser
 });
 
 test("compressed mode: includes list_tools at max compression", async () => {
-  const { client, fakes } = createClientWithFakes(
-    [{ serverName: "jira", tools: ALPHA_TOOLS }],
-    { compressionLevel: "max" },
-  );
+  const { client, fakes } = createClientWithFakes([{ serverName: "jira", tools: ALPHA_TOOLS }], {
+    compressionLevel: "max",
+  });
   await connectTestClient(client, fakes);
 
   const tools = await client.getTools();
@@ -243,9 +242,7 @@ test("compressed mode: invoke_tool calls backend", async () => {
   });
 
   expect(result).toContain("issues");
-  expect(fakes[0]!.callToolCalls).toEqual([
-    { name: "search_issues", args: { query: "bug" } },
-  ]);
+  expect(fakes[0]!.callToolCalls).toEqual([{ name: "search_issues", args: { query: "bug" } }]);
 
   await client.close();
 });
@@ -266,11 +263,7 @@ test("bash mode: getTools returns bash tool + per-server help tools", async () =
 
   const tools = await client.getTools();
 
-  expect(Object.keys(tools).sort()).toEqual([
-    "bash",
-    "confluence_help",
-    "jira_help",
-  ]);
+  expect(Object.keys(tools).sort()).toEqual(["bash", "confluence_help", "jira_help"]);
 
   // bash tool has a simple description
   expect(tools.bash!.description).toContain("bash commands");
@@ -295,18 +288,15 @@ test("bash mode: bash tool executes server commands", async () => {
   const result = await tools.bash!.execute({ command: "jira search-issues --query test" });
 
   expect(result).toContain("JIRA-1");
-  expect(fakes[0]!.callToolCalls).toEqual([
-    { name: "search_issues", args: { query: "test" } },
-  ]);
+  expect(fakes[0]!.callToolCalls).toEqual([{ name: "search_issues", args: { query: "test" } }]);
 
   await client.close();
 });
 
 test("bash mode: help tool returns its description", async () => {
-  const { client, fakes } = createClientWithFakes(
-    [{ serverName: "jira", tools: ALPHA_TOOLS }],
-    { mode: "bash" },
-  );
+  const { client, fakes } = createClientWithFakes([{ serverName: "jira", tools: ALPHA_TOOLS }], {
+    mode: "bash",
+  });
   await connectTestClient(client, fakes);
 
   const tools = await client.getTools();
@@ -330,10 +320,10 @@ test("bash mode: with pre-existing Bash instance", async () => {
   }));
   const existingBash = new Bash({ customCommands: [myCommand] });
 
-  const { client, fakes } = createClientWithFakes(
-    [{ serverName: "jira", tools: ALPHA_TOOLS }],
-    { mode: "bash", bash: { bash: existingBash } },
-  );
+  const { client, fakes } = createClientWithFakes([{ serverName: "jira", tools: ALPHA_TOOLS }], {
+    mode: "bash",
+    bash: { bash: existingBash },
+  });
   await connectTestClient(client, fakes);
 
   // Should reuse the existing bash instance
@@ -352,10 +342,9 @@ test("bash mode: with pre-existing Bash instance", async () => {
 });
 
 test("bash mode: client.bash accessor returns the Bash instance", async () => {
-  const { client, fakes } = createClientWithFakes(
-    [{ serverName: "jira", tools: ALPHA_TOOLS }],
-    { mode: "bash" },
-  );
+  const { client, fakes } = createClientWithFakes([{ serverName: "jira", tools: ALPHA_TOOLS }], {
+    mode: "bash",
+  });
   await connectTestClient(client, fakes);
 
   expect(client.bash).not.toBeNull();
@@ -366,9 +355,7 @@ test("bash mode: client.bash accessor returns the Bash instance", async () => {
 });
 
 test("bash mode: client.bash is null in compressed mode", async () => {
-  const { client, fakes } = createClientWithFakes(
-    [{ serverName: "jira", tools: ALPHA_TOOLS }],
-  );
+  const { client, fakes } = createClientWithFakes([{ serverName: "jira", tools: ALPHA_TOOLS }]);
   await connectTestClient(client, fakes);
 
   expect(client.bash).toBeNull();
@@ -489,17 +476,12 @@ test("resolveServersMap throws on empty servers map", () => {
 // ---------------------------------------------------------------------------
 
 test("default mode is compressed", async () => {
-  const { client, fakes } = createClientWithFakes([
-    { serverName: "jira", tools: ALPHA_TOOLS },
-  ]);
+  const { client, fakes } = createClientWithFakes([{ serverName: "jira", tools: ALPHA_TOOLS }]);
   await connectTestClient(client, fakes);
 
   const tools = await client.getTools();
   // Should have compressed tools, not help/bash tools
-  expect(Object.keys(tools).sort()).toEqual([
-    "jira_get_tool_schema",
-    "jira_invoke_tool",
-  ]);
+  expect(Object.keys(tools).sort()).toEqual(["jira_get_tool_schema", "jira_invoke_tool"]);
 
   await client.close();
 });

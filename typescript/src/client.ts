@@ -15,15 +15,8 @@ import { BackendClient } from "./backend-client.js";
 import { parseServerConfigJson, normalizeConfigServer } from "./config.js";
 import { InvalidConfigurationError } from "./errors.js";
 import { PersistentOAuthProvider } from "./oauth.js";
-import {
-  CompressorRuntime,
-  type AiSdkTool,
-} from "./runtime.js";
-import type {
-  BackendConfig,
-  CommonProxyOptions,
-  JsonConfigServerEntry,
-} from "./types.js";
+import { CompressorRuntime, type AiSdkTool } from "./runtime.js";
+import type { BackendConfig, CommonProxyOptions, JsonConfigServerEntry } from "./types.js";
 import { buildHelpToolDescription, sanitizeCliName } from "./cli_tools.js";
 
 // ---------------------------------------------------------------------------
@@ -302,9 +295,11 @@ export class CompressorClient {
 
       // In CLI mode, onPath comes from the bridge result. In bash mode, commands
       // are always available directly by name (they're registered in the bash env).
-      const onPath = this.mode === "bash"
-        ? true
-        : (this.cliScripts?.find((s) => s.serverName === (runtime.serverName ?? serverName))?.onPath ?? true);
+      const onPath =
+        this.mode === "bash"
+          ? true
+          : (this.cliScripts?.find((s) => s.serverName === (runtime.serverName ?? serverName))
+              ?.onPath ?? true);
 
       const description = buildHelpToolDescription(
         cliName,
@@ -313,9 +308,7 @@ export class CompressorClient {
         onPath,
       );
 
-      const helpToolName = runtime.serverName
-        ? `${runtime.serverName}_help`
-        : "help";
+      const helpToolName = runtime.serverName ? `${runtime.serverName}_help` : "help";
 
       tools[helpToolName] = {
         description,
