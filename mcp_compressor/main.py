@@ -623,6 +623,7 @@ async def _just_bash_server(
     shell with ReadWriteFs rooted at the current working directory.
     """
     from just_bash import Bash
+    from just_bash.commands import create_command_registry
     from just_bash.fs import ReadWriteFs
     from just_bash.fs.read_write_fs import ReadWriteFsOptions
 
@@ -650,8 +651,10 @@ async def _just_bash_server(
         command = create_bash_command(
             cli_name, compressed_tools._server_description, cast(list[Any], tools_list), compressed_tools.invoke_tool
         )
+        commands = create_command_registry()
+        commands[command.name] = command
         bash = Bash(
-            commands={command.name: command},
+            commands=commands,
             fs=cast("IFileSystem", ReadWriteFs(ReadWriteFsOptions(root=os.getcwd()))),
             cwd="/",
         )
@@ -772,12 +775,14 @@ async def _multi_server(
 
         if just_bash and server_commands:
             from just_bash import Bash
+            from just_bash.commands import create_command_registry
             from just_bash.fs import ReadWriteFs
             from just_bash.fs.read_write_fs import ReadWriteFsOptions
 
             from mcp_compressor.bash_commands import build_bash_tool_description
 
-            all_commands = {sc["command"].name: sc["command"] for sc in server_commands}
+            all_commands = create_command_registry()
+            all_commands.update({sc["command"].name: sc["command"] for sc in server_commands})
             bash = Bash(
                 commands=all_commands,
                 fs=cast("IFileSystem", ReadWriteFs(ReadWriteFsOptions(root=os.getcwd()))),
