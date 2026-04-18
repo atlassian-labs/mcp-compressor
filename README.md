@@ -5,7 +5,7 @@
 [![Commit activity](https://img.shields.io/github/commit-activity/m/atlassian-labs/mcp-compressor)](https://img.shields.io/github/commit-activity/m/atlassian-labs/mcp-compressor)
 [![License](https://img.shields.io/github/license/atlassian-labs/mcp-compressor)](https://img.shields.io/github/license/atlassian-labs/mcp-compressor)
 
-An MCP server wrapper for reducing tokens consumed by MCP tools.
+An MCP server wrapper for reducing tokens consumed by MCP tools, available in both Python and TypeScript libraries.
 
 - **Github repository**: <https://github.com/atlassian-labs/mcp-compressor/>
 - **Documentation** <https://atlassian-labs.github.io/mcp-compressor/>
