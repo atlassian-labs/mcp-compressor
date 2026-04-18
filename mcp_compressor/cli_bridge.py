@@ -26,8 +26,8 @@ if TYPE_CHECKING:
     from fastmcp import FastMCP
 
 # Type alias for the direct backend call callable — receives tool_name + arguments + quiet flag,
-# returns a ToolResult (not a CallToolResult)
-InvokeFn = Callable[[str, dict[str, Any] | None, bool], Coroutine[Any, Any, Any]]
+# plus an optional ``toonify`` keyword override, and returns a ToolResult.
+InvokeFn = Callable[..., Coroutine[Any, Any, Any]]
 # Type alias for the lazy tool fetch callable
 GetToolsFn = Callable[[], Coroutine[Any, Any, dict[str, Tool]]]
 
@@ -91,7 +91,9 @@ class CliBridge:
             return PlainTextResponse("error: invalid JSON body\n", status_code=400)
 
         argv: list[str] = body.get("argv", [])
-        logger.debug("CLI exec argv={}", argv)
+        # Per-call hint from the client script (False when stdout is not a TTY).
+        toonify_hint = body.get("toonify")
+        logger.debug("CLI exec argv={} toonify={}", argv, toonify_hint)
 
         # Ensure tools are loaded (lazy, handles deferred auth)
         try:
@@ -110,7 +112,7 @@ class CliBridge:
         if rest in (["--help"], ["-h"]):
             return self._subcommand_help(subcommand)
 
-        return await self._invoke_subcommand(subcommand, rest)
+        return await self._invoke_subcommand(subcommand, rest, toonify=toonify_hint)
 
     # -- helpers to keep _exec below the complexity threshold --
 
@@ -128,8 +130,11 @@ class CliBridge:
             return PlainTextResponse(f"error: unknown subcommand '{subcommand}'\n", status_code=400)
         return PlainTextResponse(format_tool_help(self._cli_name, self._tools[tool_name]) + "\n")
 
-    async def _invoke_subcommand(self, subcommand: str, rest: list[str]) -> Response:
-        """Resolve, parse, invoke, and format a subcommand call."""
+    async def _invoke_subcommand(self, subcommand: str, rest: list[str], toonify: bool | None = None) -> Response:
+        """Resolve, parse, invoke, and format a subcommand call.
+
+        Explicit ``--toon``/``--json`` in ``rest`` overrides the *toonify* hint.
+        """
         assert self._tools is not None  # noqa: S101
         tool_name = self._subcommand_map.get(subcommand)
         if tool_name is None:
@@ -143,10 +148,18 @@ class CliBridge:
 
         tool = self._tools[tool_name]
 
-        # Extract --quiet before passing argv to the tool-schema-driven parser,
-        # since quiet is a universal flag not present in any individual tool schema.
+        # Strip universal flags not present in any individual tool schema.
         quiet = "--quiet" in rest
-        rest = [arg for arg in rest if arg != "--quiet"]
+        explicit_toon = "--toon" in rest
+        explicit_json = "--json" in rest
+        rest = [arg for arg in rest if arg not in ("--quiet", "--toon", "--json")]
+
+        if explicit_toon:
+            effective_toonify: bool | None = True
+        elif explicit_json:
+            effective_toonify = False
+        else:
+            effective_toonify = toonify
 
         try:
             tool_input = parse_argv_to_tool_input(rest, tool)
@@ -163,9 +176,9 @@ class CliBridge:
                 # stateful backends like chrome-devtools-mcp fail with
                 # "No active context found".
                 async with Context(fastmcp=self._fastmcp):
-                    result = await self._invoke_fn(tool_name, tool_input, quiet)
+                    result = await self._invoke_fn(tool_name, tool_input, quiet, toonify=effective_toonify)
             else:
-                result = await self._invoke_fn(tool_name, tool_input, quiet)
+                result = await self._invoke_fn(tool_name, tool_input, quiet, toonify=effective_toonify)
         except Exception as exc:
             return PlainTextResponse(f"error: {exc}\n", status_code=400)
 

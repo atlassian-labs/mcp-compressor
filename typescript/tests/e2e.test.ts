@@ -223,6 +223,7 @@ test("TypeScript single-server CLI mode works with Python FastMCP MCP config", a
 
 test("TypeScript single-server just-bash mode works with Python FastMCP e2e server", async () => {
   const { createBashCommand, buildBashToolDescription } = await import("../src/bash_commands.js");
+  const { installPipingHintPlugin } = await import("../src/just_bash_transform.js");
   const { Bash } = await import("just-bash");
 
   const resolved = resolveBackends(singleServerConfigJson())[0]!;
@@ -238,6 +239,7 @@ test("TypeScript single-server just-bash mode works with Python FastMCP e2e serv
     const tools = await runtime.listUncompressedTools();
     const command = createBashCommand(runtime, tools);
     const bash = new Bash({ customCommands: [command] });
+    installPipingHintPlugin(bash, [command.name]);
 
     // Parent command should be named after the server
     expect(command.name).toBe("alpha");
@@ -258,16 +260,42 @@ test("TypeScript single-server just-bash mode works with Python FastMCP e2e serv
     expect(subHelpResult.exitCode).toBe(0);
     expect(subHelpResult.stdout).toContain("--message");
 
-    // Tool description should list all subcommands
+    // Tool description lists only the top-level command + TOON note.
     const description = buildBashToolDescription([{ serverName: "alpha", command, tools }]);
-    expect(description).toContain("alpha-add");
-    expect(description).toContain("alpha-echo");
+    expect(description).toContain("- `alpha`");
     expect(description).toContain("custom commands are installed");
+    expect(description).toContain("TOON");
+    // Subcommands belong in the per-server help tools, not the bash description.
+    expect(description).not.toContain("alpha-add");
+    expect(description).not.toContain("alpha-echo");
 
     // Standard bash built-ins should also work alongside MCP commands
     const echoResult = await bash.exec('echo "hello world"');
     expect(echoResult.exitCode).toBe(0);
     expect(echoResult.stdout.trim()).toBe("hello world");
+
+    // Auto-detect: unpiped output is TOON (no leading '{').
+    const objectResult = await bash.exec("alpha alpha-object");
+    expect(objectResult.exitCode).toBe(0);
+    expect(objectResult.stdout.trim().startsWith("{")).toBe(false);
+    expect(objectResult.stdout).toContain("alpha");
+
+    // Auto-detect: piped output is JSON (parseable by jq).
+    const jqResult = await bash.exec("alpha alpha-object | jq -r .server");
+    expect(jqResult.exitCode).toBe(0);
+    expect(jqResult.stdout.trim()).toBe("alpha");
+
+    // Explicit --json forces JSON regardless of pipe context.
+    const jsonResult = await bash.exec("alpha alpha-object --json");
+    expect(jsonResult.exitCode).toBe(0);
+    expect(jsonResult.stdout.trim().startsWith("{")).toBe(true);
+    expect(jsonResult.stdout).toContain('"server"');
+
+    // Explicit --toon forces TOON regardless of pipe context.
+    const toonResult = await bash.exec("alpha alpha-object --toon");
+    expect(toonResult.exitCode).toBe(0);
+    expect(toonResult.stdout.trim().startsWith("{")).toBe(false);
+    expect(toonResult.stdout).toContain("alpha");
   } finally {
     await runtime.disconnect();
   }
@@ -275,6 +303,7 @@ test("TypeScript single-server just-bash mode works with Python FastMCP e2e serv
 
 test("TypeScript multi-server just-bash mode works with Python FastMCP e2e servers", async () => {
   const { createBashCommand, buildBashToolDescription } = await import("../src/bash_commands.js");
+  const { installPipingHintPlugin } = await import("../src/just_bash_transform.js");
   const { Bash } = await import("just-bash");
 
   const resolvedBackends = resolveBackends(multiServerConfigJson(), "suite");
@@ -299,6 +328,10 @@ test("TypeScript multi-server just-bash mode works with Python FastMCP e2e serve
 
     const allCommands = serverCmds.map((sc) => sc.command);
     const bash = new Bash({ customCommands: allCommands });
+    installPipingHintPlugin(
+      bash,
+      allCommands.map((c) => c.name),
+    );
 
     // Both servers should be available as parent commands with subcommands
     const addResult = await bash.exec("suite-alpha alpha-add --a 6 --b 7");
@@ -309,11 +342,31 @@ test("TypeScript multi-server just-bash mode works with Python FastMCP e2e serve
     expect(multiplyResult.exitCode).toBe(0);
     expect(multiplyResult.stdout).toBe("42");
 
-    // Description should include commands from both servers
+    // Description lists each server's top-level command + TOON note (no subcommands).
     const description = buildBashToolDescription(serverCmds);
-    expect(description).toContain("alpha-add");
-    expect(description).toContain("beta-multiply");
+    expect(description).toContain("- `suite-alpha`");
+    expect(description).toContain("- `suite-beta`");
     expect(description).toContain("custom commands are installed");
+    expect(description).toContain("TOON");
+    expect(description).not.toContain("alpha-add");
+    expect(description).not.toContain("beta-multiply");
+
+    // Auto-toonification across both servers: unpiped is TOON, piped is JSON.
+    for (const [server, value] of [
+      ["suite-alpha", "alpha"],
+      ["suite-beta", "beta"],
+    ] as const) {
+      // ``suite-alpha alpha-object`` / ``suite-beta beta-object``.
+      const subcommand = `${value}-object`;
+      const toonResult = await bash.exec(`${server} ${subcommand}`);
+      expect(toonResult.exitCode).toBe(0);
+      expect(toonResult.stdout.trim().startsWith("{")).toBe(false);
+      expect(toonResult.stdout).toContain(value);
+
+      const jqResult = await bash.exec(`${server} ${subcommand} | jq -r .server`);
+      expect(jqResult.exitCode).toBe(0);
+      expect(jqResult.stdout.trim()).toBe(value);
+    }
   } finally {
     await Promise.allSettled(runtimes.map((r) => r.disconnect()));
   }

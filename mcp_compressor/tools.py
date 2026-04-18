@@ -247,11 +247,16 @@ class CompressedTools(CatalogTransform):
         tool_input: dict[str, Any] | None = None,
         quiet: bool = False,
         ctx: Context | None = None,
+        toonify: bool | None = None,
     ) -> ToolResult:
-        """Invoke a backend tool from the compressed catalog."""
+        """Invoke a backend tool from the compressed catalog.
+
+        ``toonify`` overrides the instance default for this call (``None`` =
+        use the instance setting).
+        """
         if ctx is None:
             async with Context(fastmcp=self._proxy_server) as active_ctx:
-                return await self.invoke_tool(tool_name, tool_input, quiet, active_ctx)
+                return await self.invoke_tool(tool_name, tool_input, quiet, active_ctx, toonify)
         tool = await self._get_backend_tool(ctx, tool_name)
         try:
             if isinstance(tool, ProxyTool):
@@ -264,7 +269,8 @@ class CompressedTools(CatalogTransform):
             if self._is_validation_error_message(str(exc)):
                 raise ToolError(await self._format_validation_error(ctx, tool_name, str(exc))) from exc
             raise
-        if self._toonify:
+        effective_toonify = self._toonify if toonify is None else toonify
+        if effective_toonify:
             tool_result = self._toonify_tool_result(tool_result)
         if not quiet:
             return tool_result

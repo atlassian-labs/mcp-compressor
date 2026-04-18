@@ -622,11 +622,6 @@ async def _just_bash_server(
     All backend MCP tools are registered as custom commands in a just-bash sandboxed
     shell with ReadWriteFs rooted at the current working directory.
     """
-    from just_bash import Bash
-    from just_bash.commands import create_command_registry
-    from just_bash.fs import ReadWriteFs
-    from just_bash.fs.read_write_fs import ReadWriteFsOptions
-
     from mcp_compressor.bash_commands import build_bash_tool_description, create_bash_command
 
     async with _proxy_client(transport) as client:
@@ -651,13 +646,7 @@ async def _just_bash_server(
         command = create_bash_command(
             cli_name, compressed_tools._server_description, cast(list[Any], tools_list), compressed_tools.invoke_tool
         )
-        commands = create_command_registry()
-        commands[command.name] = command
-        bash = Bash(
-            commands=commands,
-            fs=cast("IFileSystem", ReadWriteFs(ReadWriteFsOptions(root=os.getcwd()))),
-            cwd="/",
-        )
+        bash = _build_bash_with_custom_commands([command])
         description = build_bash_tool_description([
             {
                 "server_name": cli_name,
@@ -774,20 +763,9 @@ async def _multi_server(
                 outer_mcp.mount(proxy)
 
         if just_bash and server_commands:
-            from just_bash import Bash
-            from just_bash.commands import create_command_registry
-            from just_bash.fs import ReadWriteFs
-            from just_bash.fs.read_write_fs import ReadWriteFsOptions
-
             from mcp_compressor.bash_commands import build_bash_tool_description
 
-            all_commands = create_command_registry()
-            all_commands.update({sc["command"].name: sc["command"] for sc in server_commands})
-            bash = Bash(
-                commands=all_commands,
-                fs=cast("IFileSystem", ReadWriteFs(ReadWriteFsOptions(root=os.getcwd()))),
-                cwd="/",
-            )
+            bash = _build_bash_with_custom_commands([sc["command"] for sc in server_commands])
             description = build_bash_tool_description(server_commands)
 
             @outer_mcp.tool(description=description)
@@ -825,6 +803,24 @@ async def _multi_server(
 
 
 _OAUTH_TOKEN_DIR = _OAUTH_CONFIG_DIR / "oauth-tokens"
+
+
+def _build_bash_with_custom_commands(custom_commands: list[Any]) -> Any:
+    """Build a :class:`just_bash.Bash` with built-ins plus *custom_commands*.
+
+    Uses :func:`build_piping_aware_bash` so each wrapper invocation gets an
+    ``MCP_TOONIFY=true|false`` env hint based on pipe/redirect context.
+    """
+    from just_bash.fs import ReadWriteFs
+    from just_bash.fs.read_write_fs import ReadWriteFsOptions
+
+    from .just_bash_transform import build_piping_aware_bash
+
+    return build_piping_aware_bash(
+        custom_commands,
+        fs=cast("IFileSystem", ReadWriteFs(ReadWriteFsOptions(root=os.getcwd()))),
+        cwd="/",
+    )
 
 
 def _find_free_port() -> int:

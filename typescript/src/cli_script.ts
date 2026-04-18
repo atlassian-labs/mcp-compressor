@@ -259,6 +259,12 @@ main() {
   for arg in "$@"; do
     args+=(--data-urlencode "argv=$arg")
   done
+  # Skip TOON when stdout is piped/redirected so downstream tools get raw JSON.
+  local toonify="true"
+  if [ ! -t 1 ]; then
+    toonify="false"
+  fi
+  args+=(--data-urlencode "toonify=$toonify")
   request POST "$bridge/tools/$subcommand" "\${args[@]}" || exit 1
 }
 
@@ -284,6 +290,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$subcommand = $argvList[0]; $rest = @(); if ($argvList.Count -gt 1) { $rest = $argvList[1..($argvList.Count-1)] } ; " ^
   "if ($rest.Count -gt 0 -and ($rest[0] -eq '--help' -or $rest[0] -eq '-h')) { $r = Invoke-WebRequest -Uri ($bridge+'/tools/'+$subcommand+'/help') -UseBasicParsing -ErrorAction Stop; Write-Host $r.Content; exit 0 } ; " ^
   "$pairs = New-Object System.Collections.Generic.List[string]; foreach ($arg in $rest) { $pairs.Add('argv=' + [System.Uri]::EscapeDataString([string]$arg)) } ; " ^
+  "try { $toonify = -not [Console]::IsOutputRedirected } catch { $toonify = $true } ; " ^
+  "$pairs.Add('toonify=' + $toonify.ToString().ToLower()); " ^
   "$body = [string]::Join('&', $pairs); " ^
   "try { $r = Invoke-WebRequest -Uri ($bridge+'/tools/'+$subcommand) -Method POST -ContentType 'application/x-www-form-urlencoded' -Body $body -UseBasicParsing -ErrorAction Stop; Write-Host $r.Content; exit 0 } catch { $e = $_.Exception; if ($e -is [System.Net.WebException] -and $e.Response) { $sr = New-Object System.IO.StreamReader($e.Response.GetResponseStream()); Write-Error $sr.ReadToEnd(); exit 1 }; Write-Error ('error: ' + $e.Message); exit 1 }"
 `;
