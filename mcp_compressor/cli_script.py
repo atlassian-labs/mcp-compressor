@@ -279,7 +279,12 @@ def main() -> None:
         sys.exit(1)
 
     argv = sys.argv[1:]
-    payload = json.dumps({{"argv": argv}}).encode()
+    # Skip TOON when stdout is piped/redirected so downstream tools get raw JSON.
+    try:
+        toonify_hint = sys.stdout.isatty()
+    except Exception:
+        toonify_hint = True
+    payload = json.dumps({{"argv": argv, "toonify": toonify_hint}}).encode()
     req = urllib.request.Request(
         bridge + "/exec",
         data=payload,
@@ -334,7 +339,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "  try {{ if ((Invoke-WebRequest -Uri ($u+'/health') -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop).StatusCode -eq 200) {{ $bridge = $u; break }} }} catch {{}} " ^
   "}}}}; " ^
   "if (-not $bridge) {{ Write-Error 'error: no live mcp-compressor bridge found'; exit 1 }}; " ^
-  "$payload = @{{ argv = @(%*) }} | ConvertTo-Json -Compress; " ^
+  "try {{ $toonify = -not [Console]::IsOutputRedirected }} catch {{ $toonify = $true }}; " ^
+  "$payload = @{{ argv = @(%*); toonify = $toonify }} | ConvertTo-Json -Compress; " ^
   "try {{ " ^
   "  $r = Invoke-WebRequest -Uri ($bridge+'/exec') -Method POST -ContentType 'application/json' -Body $payload -UseBasicParsing -ErrorAction Stop; " ^
   "  Write-Host $r.Content; exit 0 " ^

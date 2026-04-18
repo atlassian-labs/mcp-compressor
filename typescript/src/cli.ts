@@ -341,6 +341,12 @@ async function main(): Promise<void> {
       python: true,
       javascript: true,
     });
+    // Auto-inject MCP_TOONIFY hints based on pipe/redirection at the AST level.
+    const { installPipingHintPlugin } = await import("./just_bash_transform.js");
+    installPipingHintPlugin(
+      bash,
+      allCommands.map((c) => c.name),
+    );
     const description = bashCommandsModule.buildBashToolDescription(serverCmds) as string;
 
     // Serve as a single "bash" MCP tool via FastMCP

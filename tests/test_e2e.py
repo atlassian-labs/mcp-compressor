@@ -256,11 +256,12 @@ async def test_single_server_just_bash_mode_exposes_bash_and_help_tools(single_s
         tool_names = {tool.name for tool in await client.list_tools()}
         assert tool_names == {"bash_tool", "alpha_help"}
 
-        # Bash tool description should be simple
+        # Bash tool description should list the top-level custom command + TOON note.
         tools = await client.list_tools()
         bash_desc = next(t for t in tools if t.name == "bash_tool").description
         assert "just-bash" in bash_desc
-        assert "help tools" in bash_desc
+        assert "- `alpha`" in bash_desc
+        assert "TOON" in bash_desc
 
         # Help tool should list subcommands (identical to CLI mode help)
         help_desc = next(t for t in tools if t.name == "alpha_help").description
@@ -280,6 +281,39 @@ async def test_single_server_just_bash_mode_exposes_bash_and_help_tools(single_s
         bash_help_result = await client.call_tool("bash_tool", {"command": "alpha --help"})
         assert "alpha-echo" in bash_help_result.content[0].text
         assert "alpha-add" in bash_help_result.content[0].text
+
+        # Regression: built-ins remain available alongside custom commands.
+        echo_result = await client.call_tool("bash_tool", {"command": "echo hello-from-builtin"})
+        assert "hello-from-builtin" in echo_result.content[0].text
+
+        # Pipe into a built-in (verifies custom-cmd-then-builtin pipeline works).
+        piped = await client.call_tool(
+            "bash_tool",
+            {"command": "alpha alpha-add --a 3 --b 7 | wc -c"},
+        )
+        assert "command not found" not in piped.content[0].text
+
+        # Auto-detect: piped output is JSON (parseable by jq).
+        jq_result = await client.call_tool(
+            "bash_tool",
+            {"command": "alpha alpha-object | jq -r .server"},
+        )
+        assert "alpha" in jq_result.content[0].text
+        assert "command not found" not in jq_result.content[0].text
+
+        # Auto-detect: unpiped output is TOON (no leading '{').
+        toon_result = await client.call_tool(
+            "bash_tool",
+            {"command": "alpha alpha-object"},
+        )
+        assert not toon_result.content[0].text.lstrip().startswith("{")
+
+        # Explicit --json overrides the unpiped auto-detection.
+        json_result = await client.call_tool(
+            "bash_tool",
+            {"command": "alpha alpha-object --json"},
+        )
+        assert json_result.content[0].text.lstrip().startswith("{")
 
 
 async def test_multi_server_just_bash_mode_aggregates_all_servers(
@@ -302,11 +336,13 @@ async def test_multi_server_just_bash_mode_aggregates_all_servers(
         tool_names = {tool.name for tool in await client.list_tools()}
         assert tool_names == {"bash_tool", "alpha_help", "beta_help"}
 
-        # Bash tool description should be simple
+        # Bash tool description should list each server's top-level command + TOON note.
         tools = await client.list_tools()
         bash_desc = next(t for t in tools if t.name == "bash_tool").description
         assert "just-bash" in bash_desc
-        assert "help tools" in bash_desc
+        assert "- `alpha`" in bash_desc
+        assert "- `beta`" in bash_desc
+        assert "TOON" in bash_desc
 
         # Per-server help tools should describe subcommands
         alpha_help = next(t for t in tools if t.name == "alpha_help").description
@@ -322,3 +358,21 @@ async def test_multi_server_just_bash_mode_aggregates_all_servers(
         # Call beta tool
         beta_result = await client.call_tool("bash_tool", {"command": "beta beta-multiply --a 4 --b 5"})
         assert "20" in beta_result.content[0].text
+
+        # Auto-toonification across both servers: unpiped is TOON, piped is JSON.
+        for server, value in (("alpha", "alpha"), ("beta", "beta")):
+            toon_result = await client.call_tool(
+                "bash_tool",
+                {"command": f"{server} {server}-object"},
+            )
+            text = toon_result.content[0].text.lstrip()
+            assert not text.startswith("{"), f"{server} unpiped output should be TOON, got: {text!r}"
+            assert value in text
+
+            jq_result = await client.call_tool(
+                "bash_tool",
+                {"command": f"{server} {server}-object | jq -r .server"},
+            )
+            jq_text = jq_result.content[0].text
+            assert "command not found" not in jq_text
+            assert value in jq_text, f"{server} piped output should parse as JSON for jq, got: {jq_text!r}"

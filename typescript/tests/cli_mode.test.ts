@@ -118,15 +118,109 @@ test("generateCliScript writes a launcher script", async () => {
     if (process.platform === "win32") {
       expect(content).toMatch(/Get-Process -Id \$PID/);
       expect(content).toMatch(/ContainsKey\(\$proc.Id\)/);
+      // Forwards toonify form param derived from [Console]::IsOutputRedirected.
+      expect(content).toMatch(/IsOutputRedirected/);
+      expect(content).toMatch(/'toonify='/);
     } else {
       expect(content).toMatch(/^#!\/usr\/bin\/env bash/m);
       expect(content).toMatch(/declare -A BRIDGES/);
       expect(content).toMatch(/ps -o ppid=/);
       expect(content).toMatch(/curl -sS -o/);
+      // Forwards toonify form param derived from [ -t 1 ].
+      expect(content).toMatch(/\[ ! -t 1 \]/);
+      expect(content).toMatch(/toonify=\$toonify/);
     }
     expect(content).toMatch(/mcp-compressor ts cli-mode script/);
   } finally {
     await stopHealthServer(server);
+  }
+});
+
+test("CliBridge respects toonify hint and explicit --toon/--json flags", async () => {
+  const objectTool = {
+    name: "alphaObject",
+    description: "Returns a JSON object.",
+    inputSchema: { type: "object", properties: {} },
+  } as Tool;
+
+  class JsonBackend implements BackendToolClient {
+    callToolCalls: Array<{ name: string; args: Record<string, unknown> | undefined }> = [];
+    async connect(): Promise<void> {}
+    async disconnect(): Promise<void> {}
+    async listTools(): Promise<Tool[]> {
+      return [objectTool];
+    }
+    async callTool(name: string, args: Record<string, unknown> | undefined): Promise<unknown> {
+      this.callToolCalls.push({ name, args });
+      // Return a JSON-ish content block so we can detect TOON conversion.
+      return { content: [{ type: "text", text: '{"server":"alpha","values":[1,2]}' }] };
+    }
+  }
+
+  const backendClient = new JsonBackend();
+  const runtime = new CompressorRuntime({
+    backendClient,
+    compressionLevel: "max",
+    serverName: "atlassian",
+    toonify: true, // runtime default; per-call hint should override this
+  });
+  await runtime.connect();
+
+  const bridge = new CliBridge(runtime, "atlassian");
+  await bridge.start(0);
+
+  try {
+    // toonify=false hint (script detected piping/redirection): expect raw JSON
+    const piped = new URLSearchParams();
+    piped.append("toonify", "false");
+    const pipedResp = await fetch(`${bridge.url}/tools/alpha-object`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded;charset=UTF-8" },
+      body: piped,
+    });
+    expect(pipedResp.status).toBe(200);
+    const pipedText = await pipedResp.text();
+    expect(pipedText).toContain('"server"');
+    expect(pipedText.trim().startsWith("{")).toBe(true);
+
+    // toonify=true hint: expect TOON output (no leading ``{``)
+    const tty = new URLSearchParams();
+    tty.append("toonify", "true");
+    const ttyResp = await fetch(`${bridge.url}/tools/alpha-object`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded;charset=UTF-8" },
+      body: tty,
+    });
+    expect(ttyResp.status).toBe(200);
+    const ttyText = await ttyResp.text();
+    expect(ttyText.trim().startsWith("{")).toBe(false);
+
+    // Explicit --toon argv flag wins over toonify=false hint
+    const explicitToon = new URLSearchParams();
+    explicitToon.append("argv", "--toon");
+    explicitToon.append("toonify", "false");
+    const explicitToonResp = await fetch(`${bridge.url}/tools/alpha-object`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded;charset=UTF-8" },
+      body: explicitToon,
+    });
+    expect(explicitToonResp.status).toBe(200);
+    expect((await explicitToonResp.text()).trim().startsWith("{")).toBe(false);
+
+    // Explicit --json argv flag wins over toonify=true hint
+    const explicitJson = new URLSearchParams();
+    explicitJson.append("argv", "--json");
+    explicitJson.append("toonify", "true");
+    const explicitJsonResp = await fetch(`${bridge.url}/tools/alpha-object`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded;charset=UTF-8" },
+      body: explicitJson,
+    });
+    expect(explicitJsonResp.status).toBe(200);
+    expect((await explicitJsonResp.text()).trim().startsWith("{")).toBe(true);
+  } finally {
+    await bridge.close();
+    await runtime.disconnect();
   }
 });
 

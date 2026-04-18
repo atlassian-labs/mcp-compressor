@@ -229,11 +229,17 @@ test("createBashCommand creates a parent command with subcommands", async () => 
   // Should create a single parent command named after the server
   expect(command.name).toBe("docs");
 
-  // Subcommands should work: `docs search-docs --query test`
+  // Without installPipingHintPlugin the wrapper defaults to TOON.  See
+  // just_bash_transform.test.ts for the auto-detect-on-pipe behavior.
   const bash = new Bash({ customCommands: [command] });
   const result = await bash.exec("docs search-docs --query test");
-  expect(result.stdout).toBe(JSON.stringify({ ok: true }, null, 2));
+  expect(result.stdout).toBe("ok: true");
   expect(result.exitCode).toBe(0);
+
+  // Explicit --json forces raw JSON.
+  const jsonResult = await bash.exec("docs search-docs --query test --json");
+  expect(jsonResult.stdout).toBe(JSON.stringify({ ok: true }, null, 2));
+  expect(jsonResult.exitCode).toBe(0);
 
   // Parent --help should list subcommands
   const helpResult = await bash.exec("docs --help");
@@ -252,7 +258,7 @@ test("createBashCommand creates a parent command with subcommands", async () => 
   expect(errorResult.stderr).toContain("unknown subcommand");
 });
 
-test("buildBashToolDescription reuses CLI-mode help per server", async () => {
+test("buildBashToolDescription lists top-level commands only (not subcommands)", async () => {
   const { createBashCommand, buildBashToolDescription } = await import("../src/bash_commands.js");
 
   const backendClient = new FakeBackendClient(SAMPLE_TOOLS);
@@ -270,9 +276,11 @@ test("buildBashToolDescription reuses CLI-mode help per server", async () => {
 
   expect(description).toContain("sandboxed environment");
   expect(description).toContain("custom commands are installed");
-  expect(description).toContain("search-docs");
-  expect(description).toContain("create-ticket");
-  expect(description).toContain("docs");
+  expect(description).toContain("- `docs`");
+  expect(description).toContain("TOON");
+  // Subcommands belong in the per-server help tools, not the bash description.
+  expect(description).not.toContain("search-docs");
+  expect(description).not.toContain("create-ticket");
 });
 
 test("CompressorRuntime treats an empty includeTools list as no include filter", async () => {

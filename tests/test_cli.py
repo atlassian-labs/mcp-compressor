@@ -403,12 +403,21 @@ def bridge_tools(add_tool: Tool, do_nothing_tool: Tool) -> dict:
 def mock_invoke_fn(add_tool: Tool):
     from fastmcp.tools.tool import ToolResult
 
-    async def invoke(tool_name: str, tool_input: dict | None, quiet: bool = False) -> ToolResult:
+    async def invoke(
+        tool_name: str,
+        tool_input: dict | None,
+        quiet: bool = False,
+        toonify: bool | None = None,
+    ) -> ToolResult:
         if tool_name == "add":
             val = (tool_input or {}).get("a", 0) + (tool_input or {}).get("b", 0)
             text = str(val)
             if quiet:
                 text = f"[quiet] {text}"
+            if toonify is True:
+                text = f"[toon] {text}"
+            elif toonify is False:
+                text = f"[json] {text}"
             return ToolResult(content=[TextContent(type="text", text=text)])
         return ToolResult(content=[TextContent(type="text", text="ok")])
 
@@ -518,3 +527,61 @@ async def test_format_tool_help_includes_quiet_flag(add_tool: Tool) -> None:
     help_text = format_tool_help("mycli", add_tool)
     assert "--quiet" in help_text
     assert "Truncate large output" in help_text
+
+
+async def test_bridge_toonify_hint_true_is_forwarded(bridge: CliBridge) -> None:
+    """The body's ``toonify`` hint is forwarded to the invoke function."""
+
+    client = TestClient(bridge.app)
+    response = client.post(
+        "/exec",
+        json={"argv": ["add", "--a", "5", "--b", "3"], "toonify": True},
+    )
+    assert response.status_code == 200
+    assert "[toon] 8" in response.text
+
+
+async def test_bridge_toonify_hint_false_is_forwarded(bridge: CliBridge) -> None:
+    """A ``toonify=False`` hint disables toon, e.g. when stdout is piped to ``jq``."""
+
+    client = TestClient(bridge.app)
+    response = client.post(
+        "/exec",
+        json={"argv": ["add", "--a", "5", "--b", "3"], "toonify": False},
+    )
+    assert response.status_code == 200
+    assert "[json] 8" in response.text
+
+
+async def test_bridge_explicit_toon_flag_overrides_hint(bridge: CliBridge) -> None:
+    """An explicit ``--toon`` argv flag wins over a ``False`` toonify hint from stdout-isatty."""
+
+    client = TestClient(bridge.app)
+    response = client.post(
+        "/exec",
+        json={"argv": ["add", "--a", "5", "--b", "3", "--toon"], "toonify": False},
+    )
+    assert response.status_code == 200
+    assert "[toon] 8" in response.text
+
+
+async def test_bridge_explicit_json_flag_overrides_hint(bridge: CliBridge) -> None:
+    """An explicit ``--json`` argv flag wins over a ``True`` toonify hint."""
+
+    client = TestClient(bridge.app)
+    response = client.post(
+        "/exec",
+        json={"argv": ["add", "--a", "5", "--b", "3", "--json"], "toonify": True},
+    )
+    assert response.status_code == 200
+    assert "[json] 8" in response.text
+
+
+def test_generate_cli_script_passes_toonify_hint_from_isatty(tmp_path: Path) -> None:
+    """The generated Unix script must derive ``toonify`` from ``sys.stdout.isatty()``."""
+    from mcp_compressor.cli_script import generate_cli_script
+
+    script_path, _ = generate_cli_script("mycli", 12345, 999, script_dir=tmp_path)
+    contents = script_path.read_text()
+    assert "sys.stdout.isatty()" in contents
+    assert '"toonify"' in contents

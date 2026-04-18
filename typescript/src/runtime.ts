@@ -170,11 +170,12 @@ export class CompressorRuntime {
   async invokeTool(
     toolName: string,
     toolInput: Record<string, unknown> | undefined,
+    options: { toonify?: boolean } = {},
   ): Promise<string> {
     await this.ensureTools();
     try {
       const result = await this.backendClient.callTool(toolName, toolInput);
-      return formatToolResult(result, this.toonify);
+      return formatToolResult(result, options.toonify ?? this.toonify);
     } catch (error) {
       const schema = await this.getToolSchema(toolName);
       throw new Error(
@@ -183,14 +184,19 @@ export class CompressorRuntime {
     }
   }
 
+  /**
+   * Invoke a tool for CLI/bash mode.  ``options.toonify`` overrides the
+   * runtime default for this call (``undefined`` = use the runtime setting).
+   */
   async invokeToolForCli(
     toolName: string,
     toolInput: Record<string, unknown> | undefined,
+    options: { toonify?: boolean } = {},
   ): Promise<string> {
     await this.ensureTools();
     try {
       const result = await this.backendClient.callTool(toolName, toolInput);
-      return formatCliToolResult(result, this.toonify);
+      return formatCliToolResult(result, options.toonify ?? this.toonify);
     } catch (error) {
       const schema = await this.getToolSchema(toolName);
       throw new Error(

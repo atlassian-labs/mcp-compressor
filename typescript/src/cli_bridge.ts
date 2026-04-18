@@ -12,12 +12,15 @@ interface CliBridgeRuntime {
   invokeToolForCli(
     toolName: string,
     toolInput: Record<string, unknown> | undefined,
+    options?: { toonify?: boolean },
   ): Promise<string>;
   listUncompressedTools(): Promise<Tool[]>;
 }
 
 interface ExecBody {
   argv?: string[];
+  /** Per-call hint from the client script (false when stdout is not a TTY). */
+  toonify?: boolean;
 }
 
 export class CliBridge {
@@ -136,14 +139,15 @@ export class CliBridge {
 
       const form = await this.readFormBody(request);
       const argv = form.getAll("argv").map(String);
-      const result = await this.invokeToolFromArgv(tool, argv);
+      const toonifyHint = parseBoolField(form.get("toonify"));
+      const result = await this.invokeToolFromArgv(tool, argv, toonifyHint);
       this.send(response, result.statusCode, result.body);
       return;
     }
 
     if (request.method === "POST" && url.pathname === "/exec") {
       const body = (await this.readJsonBody(request)) as ExecBody;
-      const result = await this.exec(body.argv ?? []);
+      const result = await this.exec(body.argv ?? [], body.toonify);
       this.send(response, result.statusCode, result.body);
       return;
     }
@@ -174,7 +178,10 @@ export class CliBridge {
     return Buffer.concat(chunks).toString("utf8");
   }
 
-  private async exec(argv: string[]): Promise<{ statusCode: number; body: string }> {
+  private async exec(
+    argv: string[],
+    toonifyHint?: boolean,
+  ): Promise<{ statusCode: number; body: string }> {
     await this.ensureTools();
 
     if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
@@ -195,18 +202,35 @@ export class CliBridge {
       return { statusCode: 200, body: formatToolHelp(this.cliName, tool) };
     }
 
-    return this.invokeToolFromArgv(tool, rest);
+    return this.invokeToolFromArgv(tool, rest, toonifyHint);
   }
 
   private async invokeToolFromArgv(
     tool: Tool,
     argv: string[],
+    toonifyHint?: boolean,
   ): Promise<{ statusCode: number; body: string }> {
     try {
-      const toolInput = parseArgvToToolInput(argv, tool);
+      // Explicit --toon/--json overrides the request hint.
+      const explicitToon = argv.includes("--toon");
+      const explicitJson = argv.includes("--json");
+      const filteredArgv = argv.filter((arg) => arg !== "--toon" && arg !== "--json");
+
+      let effectiveToonify: boolean | undefined;
+      if (explicitToon) {
+        effectiveToonify = true;
+      } else if (explicitJson) {
+        effectiveToonify = false;
+      } else {
+        effectiveToonify = toonifyHint;
+      }
+
+      const toolInput = parseArgvToToolInput(filteredArgv, tool);
       return {
         statusCode: 200,
-        body: await this.runtime.invokeToolForCli(tool.name, toolInput),
+        body: await this.runtime.invokeToolForCli(tool.name, toolInput, {
+          toonify: effectiveToonify,
+        }),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -216,4 +240,18 @@ export class CliBridge {
       };
     }
   }
+}
+
+function parseBoolField(value: string | null): boolean | undefined {
+  if (value === null) {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "0") {
+    return false;
+  }
+  return undefined;
 }

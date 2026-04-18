@@ -20,8 +20,9 @@ from mcp_compressor.cli_tools import (
     tool_name_to_subcommand,
 )
 
-# Type alias matching the invoke signature in CompressedTools.invoke_tool
-InvokeFn = Callable[[str, dict[str, Any] | None, bool], Coroutine[Any, Any, Any]]
+# Type alias matching CompressedTools.invoke_tool: ``(tool_name, tool_input,
+# quiet, *, toonify=None)`` — see ``McpServerCommand.execute`` for the call site.
+InvokeFn = Callable[..., Coroutine[Any, Any, Any]]
 
 
 class McpServerCommand:
@@ -45,7 +46,11 @@ class McpServerCommand:
         self._invoke_fn = invoke_fn
 
     async def execute(self, args: list[str], ctx: CommandContext) -> ExecResult:
-        """Dispatch subcommands or return help."""
+        """Dispatch subcommands or return help.
+
+        Output format precedence: explicit ``--toon``/``--json`` flag >
+        ``MCP_TOONIFY`` env var (set by :mod:`.just_bash_transform`) > TOON.
+        """
         if not args or args[0] in ("--help", "-h"):
             help_text = format_top_level_help(self.name, self._server_description, list(self._tools.values()))
             return ExecResult(stdout=help_text, stderr="", exit_code=0)
@@ -71,6 +76,20 @@ class McpServerCommand:
                 exit_code=0,
             )
 
+        # Strip universal output-format flags before tool-schema parsing.
+        explicit_toon = "--toon" in rest
+        explicit_json = "--json" in rest
+        rest = [arg for arg in rest if arg not in ("--toon", "--json")]
+
+        from .just_bash_transform import resolve_toonify_from_ctx
+
+        if explicit_toon:
+            toonify: bool = True
+        elif explicit_json:
+            toonify = False
+        else:
+            toonify = bool(resolve_toonify_from_ctx(ctx.env, default=True))
+
         try:
             tool_input = parse_argv_to_tool_input(rest, tool) if rest else {}
         except ValueError as exc:
@@ -81,7 +100,7 @@ class McpServerCommand:
             )
 
         try:
-            result = await self._invoke_fn(tool_name, tool_input, False)
+            result = await self._invoke_fn(tool_name, tool_input, False, toonify=toonify)
             # Extract text from ToolResult content blocks
             from mcp.types import TextContent
 
@@ -114,20 +133,22 @@ def create_bash_command(
     )
 
 
-BASH_TOOL_DESCRIPTION = """\
-Execute bash commands in a sandboxed environment (just-bash). \
-Supports standard Unix utilities (grep, cat, jq, sed, awk, sort, find, and many more) \
-as well as custom commands from connected MCP servers. \
-See the help tools for available server commands and usage."""
+BASH_TOOL_DESCRIPTION_TEMPLATE = """\
+Execute bash commands in a sandboxed environment (just-bash).
+
+Supports standard Unix utilities (grep, cat, jq, sed, awk, sort, find, and many more). \
+In addition, the following custom commands are installed in the bash environment:
+{commands_list}
+
+When possible, these custom commands will return TOON-formatted responses to \
+minimize token usage. However, TOON-formatting will not be applied when output \
+is piped or redirected.\
+"""
 
 
 def build_bash_tool_description(
     server_commands: list[dict[str, Any]],
 ) -> str:
-    """Build the simple tool description for the bash tool.
-
-    This returns a short, fixed description. Per-server help is provided
-    via separate ``<server_name>_help`` tools rather than being embedded
-    in the bash tool description.
-    """
-    return BASH_TOOL_DESCRIPTION
+    """Build the bash tool description with the top-level custom commands listed."""
+    commands_list = "\n".join(f"- `{tool_name_to_subcommand(sc['server_name'])}`" for sc in server_commands)
+    return BASH_TOOL_DESCRIPTION_TEMPLATE.format(commands_list=commands_list)

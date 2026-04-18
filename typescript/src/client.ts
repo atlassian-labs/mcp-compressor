@@ -402,6 +402,14 @@ export class CompressorClient {
       });
       this.bashOwned = true;
     }
+
+    // Auto-inject MCP_TOONIFY hints based on pipe/redirection at the AST level.
+    // Installed in both branches so caller-supplied Bash instances also get it.
+    const { installPipingHintPlugin } = await import("./just_bash_transform.js");
+    installPipingHintPlugin(
+      this.bashInstance,
+      commands.map((c) => c.name),
+    );
   }
 
   // ---------------------------------------------------------------------------
