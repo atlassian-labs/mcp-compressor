@@ -21,7 +21,7 @@ dependencies = [
     "cryptography>=42.0.0",
     "keyring>=25.0.0",
     "py-key-value-aio>=0.3.0",
-    "fastmcp==3.1.1",
+    "fastmcp==3.2.4",
     "loguru>=0.7.3",
     "loguru-logging-intercept>=0.1.5",
     "mcp>=1.25.0",
