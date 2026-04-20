@@ -22,8 +22,7 @@ from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.server.providers.proxy import ProxyTool
 from fastmcp.server.transforms import GetResourceNext, GetToolNext
 from fastmcp.server.transforms.catalog import CatalogTransform
-from fastmcp.tools import Tool
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import Tool, ToolResult
 from loguru import logger
 from mcp.types import CallToolRequestParams, ContentBlock, TextContent
 from pydantic import ValidationError

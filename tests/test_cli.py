@@ -9,8 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from fastmcp.tools import Tool
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import Tool, ToolResult
 from mcp.types import TextContent
 from starlette.testclient import TestClient
 
@@ -401,7 +400,7 @@ def bridge_tools(add_tool: Tool, do_nothing_tool: Tool) -> dict:
 
 @pytest.fixture
 def mock_invoke_fn(add_tool: Tool):
-    from fastmcp.tools.tool import ToolResult
+    from fastmcp.tools import ToolResult
 
     async def invoke(
         tool_name: str,

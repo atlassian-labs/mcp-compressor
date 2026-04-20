@@ -9,8 +9,7 @@ from fastmcp.server import create_proxy
 from fastmcp.server.context import Context
 from fastmcp.server.middleware import MiddlewareContext
 from fastmcp.server.providers.proxy import ProxyTool
-from fastmcp.tools import Tool
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import Tool, ToolResult
 from mcp.types import CallToolRequestParams, TextContent
 
 from mcp_compressor.tools import (
