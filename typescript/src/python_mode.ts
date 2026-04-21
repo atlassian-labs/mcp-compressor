@@ -21,15 +21,13 @@ import {
   generatePythonStubs,
   sanitizePythonModuleName,
 } from "./python_stubs.js";
-import { DEFAULT_BRIDGE_ENV_VAR, getPythonRuntimeAssets } from "./python_runtime_assets.js";
+import { getPythonRuntimeAssets } from "./python_runtime_assets.js";
 
 export interface PythonModeOptions extends CreateCompressorServerOptions {
   /** Top-level Python package name. Defaults to `tools`. */
   packageName?: string;
   /** Port for the shared loopback bridge. 0 (default) → OS-assigned. */
   bridgePort?: number;
-  /** Env var name the Python runtime reads to discover the bridge URL. Defaults to `MCP_TOOL_BRIDGE_URL`. */
-  bridgeEnvVar?: string;
 }
 
 export interface PythonModeServer {
@@ -51,11 +49,9 @@ export interface PythonModeServer {
 export interface PythonModeSession {
   /** Top-level Python package name (mirrors `PythonModeOptions.packageName`). */
   packageName: string;
-  /** Env var the runtime reads to discover the bridge URL (mirrors `PythonModeOptions.bridgeEnvVar`). */
-  bridgeEnvVar: string;
   /** Single shared bridge that fronts every server in this session. */
   bridge: PythonBridge;
-  /** Convenience accessor for `bridge.url`. */
+  /** Loopback URL the bridge listens on. Already baked into the generated `__init__.py`. */
   bridgeUrl: string;
   servers: PythonModeServer[];
   /**
@@ -74,7 +70,6 @@ export interface PythonModeSession {
 export async function initializePythonMode(options: PythonModeOptions): Promise<PythonModeSession> {
   const { createCompressorRuntime, resolveBackends } = await import("./index.js");
   const packageName = options.packageName ?? DEFAULT_PACKAGE_NAME;
-  const bridgeEnvVar = options.bridgeEnvVar ?? DEFAULT_BRIDGE_ENV_VAR;
   const resolvedBackends = resolveBackends(options.backend, options.serverName);
 
   const runtimes: CompressorRuntime[] = [];
@@ -111,12 +106,11 @@ export async function initializePythonMode(options: PythonModeOptions): Promise<
     const bridgeUrl = bridge.url;
 
     const servers: PythonModeServer[] = partialServers.map((s) => ({ ...s, bridgeUrl }));
-    const allFiles = mergeFileTrees(servers, packageName, bridgeEnvVar);
+    const allFiles = mergeFileTrees(servers, packageName, bridgeUrl);
 
     const heldBridge = bridge;
     return {
       packageName,
-      bridgeEnvVar,
       bridge: heldBridge,
       bridgeUrl,
       servers,
@@ -138,11 +132,11 @@ export async function initializePythonMode(options: PythonModeOptions): Promise<
 function mergeFileTrees(
   servers: ReadonlyArray<PythonModeServer>,
   packageName: string,
-  bridgeEnvVar: string,
+  bridgeUrl: string,
 ): ReadonlyMap<string, string> {
   const merged = new Map<string, string>();
   // Shared infra first so per-server files always win on collision.
-  for (const [path, content] of getPythonRuntimeAssets({ packageName, bridgeEnvVar })) {
+  for (const [path, content] of getPythonRuntimeAssets({ packageName, bridgeUrl })) {
     merged.set(path, content);
   }
   for (const server of servers) {

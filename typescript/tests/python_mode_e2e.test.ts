@@ -9,7 +9,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { PythonBridge } from "../src/python_bridge.js";
 import { CompressorRuntime } from "../src/runtime.js";
 import { generatePythonStubs } from "../src/python_stubs.js";
-import { getPythonRuntimeAssets, PACKAGE_INIT_PY } from "../src/python_runtime_assets.js";
+import { getPythonRuntimeAssets } from "../src/python_runtime_assets.js";
 import type { BackendToolClient } from "../src/types.js";
 
 class FakeBackendClient implements BackendToolClient {
@@ -93,7 +93,7 @@ test("Python interpreter can import generated stubs and call the bridge", async 
     // Materialise the file tree.
     const generated = generatePythonStubs([TOOL], { serverName: "jira" });
     const allFiles = new Map<string, string>();
-    for (const [k, v] of getPythonRuntimeAssets({ packageName: "tools" })) {
+    for (const [k, v] of getPythonRuntimeAssets({ packageName: "tools", bridgeUrl: bridge.url })) {
       allFiles.set(k, v);
     }
     for (const [k, v] of generated.files) {
@@ -105,8 +105,8 @@ test("Python interpreter can import generated stubs and call the bridge", async 
       await fs.writeFile(abs, content, "utf8");
     }
 
-    // Sanity check that the runtime asset constant matches what was written.
-    expect(allFiles.get("tools/__init__.py")).toBe(PACKAGE_INIT_PY);
+    // Sanity check that the runtime asset has the bridge URL baked in.
+    expect(allFiles.get("tools/__init__.py")).toContain(bridge.url);
 
     // Drive the generated stub through Python, asserting:
     //  - import succeeds
@@ -121,7 +121,7 @@ print("RESULT:", json.dumps(result))
 `;
     const env = {
       ...process.env,
-      MCP_TOOL_BRIDGE_URL: bridge.url,
+      // No env var needed — bridge URL is baked into the generated __init__.py.
     };
     const { stdout, stderr, code } = await runPython(bin, root, env, driver);
     expect(stderr).toBe("");

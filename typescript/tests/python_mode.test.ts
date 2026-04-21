@@ -72,7 +72,10 @@ test("a python-mode session exposes a complete file tree merged with shared infr
   const session = await buildSession("jira", [TOOL]);
   try {
     const merged = new Map<string, string>();
-    for (const [k, v] of getPythonRuntimeAssets({ packageName: DEFAULT_PACKAGE_NAME })) {
+    for (const [k, v] of getPythonRuntimeAssets({
+      packageName: DEFAULT_PACKAGE_NAME,
+      bridgeUrl: session.bridge.url,
+    })) {
       merged.set(k, v);
     }
     for (const [k, v] of session.generated.files) {
@@ -85,7 +88,8 @@ test("a python-mode session exposes a complete file tree merged with shared infr
       `${DEFAULT_PACKAGE_NAME}/jira/search_issues.py`,
     ]);
 
-    expect(merged.get(`${DEFAULT_PACKAGE_NAME}/__init__.py`)).toMatch(/MCP_TOOL_BRIDGE_URL/);
+    // URL is baked in — the init file should contain the actual bridge URL literal.
+    expect(merged.get(`${DEFAULT_PACKAGE_NAME}/__init__.py`)).toMatch(/_BRIDGE_URL = /);
     expect(merged.get(`${DEFAULT_PACKAGE_NAME}/__init__.py`)).toMatch(/class ToolCallError/);
   } finally {
     await session.bridge.close();
