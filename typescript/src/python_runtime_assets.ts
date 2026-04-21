@@ -4,11 +4,19 @@
  * wiring up file-asset loading. The agent-visible content is deliberately neutral: it does not
  * mention the host system, the library that produced it, or any internal concerns — from the
  * agent's perspective the package is just "the tool client".
+ *
+ * The runtime asset is emitted **per-server** at `<packageName>/<serverName>/_call.py`. This makes
+ * the top-level `<packageName>/` directory a PEP 420 namespace package (no `__init__.py`), so when
+ * multiple servers are mounted into separate directories on `PYTHONPATH`, Python merges their
+ * `<packageName>/<serverName>/` subtrees automatically — `from <packageName> import <svc>` works
+ * for every mounted service without any cross-server coordination.
  */
 
 export interface RuntimeAssetOptions {
-  /** Top-level Python package name. */
+  /** Top-level Python package name (kept for symmetry with stub generation; not used in path layout). */
   packageName: string;
+  /** Server name — used as the sub-package directory and the `service` field in bridge calls. */
+  serverName: string;
   /**
    * The loopback bridge URL to bake into the generated client. The Python code will POST tool
    * calls directly to this URL — no env var indirection is needed since the URL is known at
@@ -17,12 +25,8 @@ export interface RuntimeAssetOptions {
   bridgeUrl: string;
 }
 
-function renderPackageInit(bridgeUrl: string): string {
-  return `"""Tool client package.
-
-Importable async functions in this package's sub-modules invoke tools running on the host. Each
-sub-module corresponds to one tool service (e.g. \`tools.jira\`, \`tools.github\`).
-"""
+function renderCallModule(bridgeUrl: string): string {
+  return `"""Internal transport for this tool service. Not intended for direct use by callers."""
 
 from __future__ import annotations
 
@@ -99,7 +103,15 @@ __all__ = ["ToolCallError", "_call"]
 `;
 }
 
-/** Get the runtime assets keyed by their relative file paths under \`packageName/\`. */
+/**
+ * Get the per-server runtime assets keyed by their relative file paths under the package root.
+ *
+ * Returns a single file: `<packageName>/<serverName>/_call.py`. The top-level package directory
+ * itself has no `__init__.py` — see the module-level docstring for the rationale (namespace
+ * package semantics let multiple servers coexist on PYTHONPATH).
+ */
 export function getPythonRuntimeAssets(opts: RuntimeAssetOptions): ReadonlyMap<string, string> {
-  return new Map([[`${opts.packageName}/__init__.py`, renderPackageInit(opts.bridgeUrl)]]);
+  return new Map([
+    [`${opts.packageName}/${opts.serverName}/_call.py`, renderCallModule(opts.bridgeUrl)],
+  ]);
 }

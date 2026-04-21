@@ -165,7 +165,7 @@ function renderBody(
   params: ReadonlyArray<ParsedParam>,
 ): string {
   const lines: string[] = [];
-  lines.push("    from .. import _call");
+  lines.push("    from ._call import _call");
   lines.push("");
   lines.push("    payload: dict[str, Any] = {}");
   for (const p of params) {

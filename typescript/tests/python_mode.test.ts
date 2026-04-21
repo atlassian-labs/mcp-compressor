@@ -68,12 +68,13 @@ test("initializePythonMode integration shape: bridge URL is reachable and file t
   expect(typeof initializePythonMode).toBe("function");
 });
 
-test("a python-mode session exposes a complete file tree merged with shared infra", async () => {
+test("a python-mode session exposes a complete file tree with per-server _call.py and no top-level __init__.py", async () => {
   const session = await buildSession("jira", [TOOL]);
   try {
     const merged = new Map<string, string>();
     for (const [k, v] of getPythonRuntimeAssets({
       packageName: DEFAULT_PACKAGE_NAME,
+      serverName: session.serverName,
       bridgeUrl: session.bridge.url,
     })) {
       merged.set(k, v);
@@ -82,15 +83,18 @@ test("a python-mode session exposes a complete file tree merged with shared infr
       merged.set(k, v);
     }
 
+    // No top-level `tools/__init__.py` — the package is a PEP 420 namespace package so multiple
+    // servers can be mounted into separate PYTHONPATH entries without colliding.
     expect([...merged.keys()].sort()).toEqual([
-      `${DEFAULT_PACKAGE_NAME}/__init__.py`,
       `${DEFAULT_PACKAGE_NAME}/jira/__init__.py`,
+      `${DEFAULT_PACKAGE_NAME}/jira/_call.py`,
       `${DEFAULT_PACKAGE_NAME}/jira/search_issues.py`,
     ]);
 
-    // URL is baked in — the init file should contain the actual bridge URL literal.
-    expect(merged.get(`${DEFAULT_PACKAGE_NAME}/__init__.py`)).toMatch(/_BRIDGE_URL = /);
-    expect(merged.get(`${DEFAULT_PACKAGE_NAME}/__init__.py`)).toMatch(/class ToolCallError/);
+    // URL and ToolCallError live in the per-server transport module.
+    const callPy = merged.get(`${DEFAULT_PACKAGE_NAME}/jira/_call.py`);
+    expect(callPy).toMatch(/_BRIDGE_URL = /);
+    expect(callPy).toMatch(/class ToolCallError/);
   } finally {
     await session.bridge.close();
     await session.runtime.disconnect();

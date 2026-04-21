@@ -93,7 +93,11 @@ test("Python interpreter can import generated stubs and call the bridge", async 
     // Materialise the file tree.
     const generated = generatePythonStubs([TOOL], { serverName: "jira" });
     const allFiles = new Map<string, string>();
-    for (const [k, v] of getPythonRuntimeAssets({ packageName: "tools", bridgeUrl: bridge.url })) {
+    for (const [k, v] of getPythonRuntimeAssets({
+      packageName: "tools",
+      serverName: "jira",
+      bridgeUrl: bridge.url,
+    })) {
       allFiles.set(k, v);
     }
     for (const [k, v] of generated.files) {
@@ -106,7 +110,9 @@ test("Python interpreter can import generated stubs and call the bridge", async 
     }
 
     // Sanity check that the runtime asset has the bridge URL baked in.
-    expect(allFiles.get("tools/__init__.py")).toContain(bridge.url);
+    expect(allFiles.get("tools/jira/_call.py")).toContain(bridge.url);
+    // No top-level __init__.py — `tools` is a PEP 420 namespace package.
+    expect(allFiles.has("tools/__init__.py")).toBe(false);
 
     // Drive the generated stub through Python, asserting:
     //  - import succeeds

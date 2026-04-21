@@ -42,7 +42,7 @@ export interface PythonModeServer {
    * `tools.jira`.
    */
   entryModule: string;
-  /** Per-server file map (does not include the shared package `__init__.py`). */
+  /** Per-server file map. Includes the server's own `_call.py` transport module. */
   files: ReadonlyMap<string, string>;
 }
 
@@ -51,7 +51,7 @@ export interface PythonModeSession {
   packageName: string;
   /** Single shared bridge that fronts every server in this session. */
   bridge: PythonBridge;
-  /** Loopback URL the bridge listens on. Already baked into the generated `__init__.py`. */
+  /** Loopback URL the bridge listens on. Already baked into each generated `<svc>/_call.py`. */
   bridgeUrl: string;
   servers: PythonModeServer[];
   /**
@@ -135,11 +135,17 @@ function mergeFileTrees(
   bridgeUrl: string,
 ): ReadonlyMap<string, string> {
   const merged = new Map<string, string>();
-  // Shared infra first so per-server files always win on collision.
-  for (const [path, content] of getPythonRuntimeAssets({ packageName, bridgeUrl })) {
-    merged.set(path, content);
-  }
   for (const server of servers) {
+    // Per-server `_call.py` transport — bridge URL is baked in. No top-level `<packageName>/__init__.py`
+    // is emitted, making the package a PEP 420 namespace package so multiple servers can be mounted
+    // into separate PYTHONPATH directories without colliding.
+    for (const [path, content] of getPythonRuntimeAssets({
+      packageName,
+      serverName: server.serverName,
+      bridgeUrl,
+    })) {
+      merged.set(path, content);
+    }
     for (const [path, content] of server.files) {
       merged.set(path, content);
     }
