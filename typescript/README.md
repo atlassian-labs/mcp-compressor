@@ -283,3 +283,23 @@ Published as `@atlassian/mcp-compressor` via Atlassian Artifactory → npmJS.
 ```bash
 npm install @atlassian/mcp-compressor
 ```
+
+### Sub-path exports
+
+`@atlassian/mcp-compressor` ships a small set of sub-path exports for consumers that only need the lightweight pieces. Importing from these sub-paths avoids loading `fastmcp`, the MCP SDK, and the rest of the runtime, which can add hundreds of ms of cold-import cost.
+
+| Sub-path | Contents | When to use |
+|---|---|---|
+| `@atlassian/mcp-compressor` | Full runtime (`CompressorRuntime`, `CompressorServer`, `BackendClient`, `FastMCP`, ...) | Building / hosting a compressor proxy. |
+| `@atlassian/mcp-compressor/bash` | The just-bash transform helpers | Bash-tool transformation. |
+| `@atlassian/mcp-compressor/config` | `interpolateString`, `interpolateRecord`, `parseServerConfigJson` | Pure config parsing / `${ENV}` interpolation in tooling. |
+| `@atlassian/mcp-compressor/errors` | `InvalidConfigurationError` and friends | Error type checks without the runtime. |
+| `@atlassian/mcp-compressor/types` | `BackendConfig`, `CompressionLevel`, `CommonProxyOptions`, ... | Type-only consumers. |
+
+```ts
+// heavy: pulls fastmcp + MCP SDK
+import { CompressorRuntime } from "@atlassian/mcp-compressor";
+
+// light: ~zero runtime deps
+import { interpolateString } from "@atlassian/mcp-compressor/config";
+```
