@@ -26,6 +26,18 @@
     "./bash": {
       "import": "./dist/bash_commands.js",
       "types": "./dist/bash_commands.d.ts"
+    },
+    "./config": {
+      "import": "./dist/config.js",
+      "types": "./dist/config.d.ts"
+    },
+    "./errors": {
+      "import": "./dist/errors.js",
+      "types": "./dist/errors.d.ts"
+    },
+    "./types": {
+      "import": "./dist/types.js",
+      "types": "./dist/types.d.ts"
     }
   },
   "bin": {
