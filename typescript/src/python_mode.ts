@@ -44,6 +44,8 @@ export interface PythonModeServer {
   entryModule: string;
   /** Per-server file map. Includes the server's own `_call.py` transport module. */
   files: ReadonlyMap<string, string>;
+  /** Markdown summary of the generated package and where to read detailed docs. */
+  toolInventory: string;
 }
 
 export interface PythonModeSession {
@@ -54,6 +56,8 @@ export interface PythonModeSession {
   /** Loopback URL the bridge listens on. Already baked into each generated `<svc>/_call.py`. */
   bridgeUrl: string;
   servers: PythonModeServer[];
+  /** Markdown summary of all generated packages and where to read detailed docs. */
+  toolInventory: string;
   /**
    * Combined file tree across all servers, including the shared package `__init__.py`. Use this
    * when mounting a single tree into an execution environment.
@@ -98,6 +102,7 @@ export async function initializePythonMode(options: PythonModeOptions): Promise<
         runtime,
         entryModule: generated.entryModule,
         files: generated.files,
+        toolInventory: generated.toolInventory,
       });
     }
 
@@ -107,6 +112,7 @@ export async function initializePythonMode(options: PythonModeOptions): Promise<
 
     const servers: PythonModeServer[] = partialServers.map((s) => ({ ...s, bridgeUrl }));
     const allFiles = mergeFileTrees(servers, packageName, bridgeUrl);
+    const toolInventory = renderToolInventory(servers);
 
     const heldBridge = bridge;
     return {
@@ -114,6 +120,7 @@ export async function initializePythonMode(options: PythonModeOptions): Promise<
       bridge: heldBridge,
       bridgeUrl,
       servers,
+      toolInventory,
       allFiles,
       async close(): Promise<void> {
         await heldBridge.close();
@@ -127,6 +134,10 @@ export async function initializePythonMode(options: PythonModeOptions): Promise<
     await Promise.allSettled(runtimes.map((r) => r.disconnect()));
     throw error;
   }
+}
+
+function renderToolInventory(servers: ReadonlyArray<PythonModeServer>): string {
+  return servers.map((server) => server.toolInventory).join("\n");
 }
 
 function mergeFileTrees(

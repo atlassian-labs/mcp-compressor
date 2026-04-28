@@ -35,6 +35,8 @@ export interface GeneratedPythonStubs {
   files: ReadonlyMap<string, string>;
   /** The Python module path the LLM should import to access this server's tools. */
   entryModule: string;
+  /** Markdown summary of the generated package and where to read detailed docs. */
+  toolInventory: string;
 }
 
 interface ParsedParam {
@@ -79,10 +81,15 @@ export function generatePythonStubs(
     `${packageName}/${serverName}/__init__.py`,
     renderBundleInit(serverName, exportedFunctionNames),
   );
+  files.set(
+    `${packageName}/${serverName}/SKILL.md`,
+    renderSkillDoc(serverName, packageName, tools, exportedFunctionNames),
+  );
 
   return {
     files,
     entryModule: `${packageName}.${serverName}`,
+    toolInventory: renderToolInventory(serverName, packageName, tools),
   };
 }
 
@@ -200,6 +207,60 @@ function renderBundleInit(serverName: string, functionNames: ReadonlyArray<strin
   lines.push("]");
   lines.push("");
   return lines.join("\n");
+}
+
+function renderSkillDoc(
+  serverName: string,
+  packageName: string,
+  tools: ReadonlyArray<Tool>,
+  functionNames: ReadonlyArray<string>,
+): string {
+  const lines = [
+    `# ${serverName}`,
+    "",
+    `Use this namespace for tools exposed by the \`${serverName}\` service.`,
+    "",
+    "## Import",
+    "",
+    "```python",
+    functionNames.length > 0
+      ? `from ${packageName}.${serverName} import ${functionNames.join(", ")}`
+      : `import ${packageName}.${serverName}`,
+    "```",
+    "",
+    "## Available functions",
+  ];
+
+  tools.forEach((tool, index) => {
+    const pyName = functionNames[index] ?? sanitizePythonIdentifier(tool.name);
+    const params = parseToolParameters(tool);
+    lines.push("", `### \`${pyName}(${renderSignature(params)}) -> Any\``);
+    if (tool.description !== undefined && tool.description.trim().length > 0) {
+      lines.push("", tool.description.trim());
+    }
+    if (params.length > 0) {
+      lines.push("", "Parameters:");
+      params.forEach((param) => {
+        lines.push(`- \`${param.pyName}\` — ${param.description ?? param.pyType}`);
+      });
+    }
+  });
+
+  return `${lines.join("\n")}\n`;
+}
+
+function renderToolInventory(
+  serverName: string,
+  packageName: string,
+  tools: ReadonlyArray<Tool>,
+): string {
+  const description =
+    tools.find((tool) => tool.description !== undefined)?.description ?? `${serverName} tools`;
+  return [
+    "| Package | Import | Docs | When to use |",
+    "|---|---|---|---|",
+    `| \`${serverName}\` | \`${packageName}.${serverName}\` | \`${packageName}/${serverName}/SKILL.md\` | ${description} |`,
+  ].join("\n");
 }
 
 // ============================================================================

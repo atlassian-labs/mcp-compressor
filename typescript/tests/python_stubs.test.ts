@@ -70,10 +70,24 @@ test("generatePythonStubs produces the expected file tree", () => {
   expect(result.entryModule).toBe(`${DEFAULT_PACKAGE_NAME}.jira`);
   const paths = [...result.files.keys()].sort();
   expect(paths).toEqual([
+    `${DEFAULT_PACKAGE_NAME}/jira/SKILL.md`,
     `${DEFAULT_PACKAGE_NAME}/jira/__init__.py`,
     `${DEFAULT_PACKAGE_NAME}/jira/search_issues.py`,
     `${DEFAULT_PACKAGE_NAME}/jira/set_status.py`,
   ]);
+});
+
+test("generatePythonStubs creates a service SKILL.md", () => {
+  const result = generatePythonStubs([SEARCH_TOOL, ENUM_TOOL], { serverName: "jira" });
+  const skill = result.files.get(`${DEFAULT_PACKAGE_NAME}/jira/SKILL.md`)!;
+
+  expect(skill).toContain("# jira");
+  expect(skill).toContain("Use this namespace for tools exposed by the `jira` service.");
+  expect(skill).toContain("from tools.jira import search_issues, set_status");
+  expect(skill).toContain("## Available functions");
+  expect(skill).toContain("### `search_issues(jql: str");
+  expect(skill).toContain("Search Jira issues using JQL.");
+  expect(skill).toContain("- `jql` — The JQL query.");
 });
 
 test("generated stub renders typed signature, optionals last, and required-only payload", () => {
@@ -127,9 +141,12 @@ test("server name is sanitized for use as a python module", () => {
   expect(result.entryModule).toBe(`${DEFAULT_PACKAGE_NAME}.atlassian_jira`);
 });
 
-test("empty tool list still produces a __init__.py", () => {
+test("empty tool list still produces package docs and a __init__.py", () => {
   const result = generatePythonStubs([], { serverName: "empty" });
-  expect([...result.files.keys()]).toEqual([`${DEFAULT_PACKAGE_NAME}/empty/__init__.py`]);
+  expect([...result.files.keys()].sort()).toEqual([
+    `${DEFAULT_PACKAGE_NAME}/empty/SKILL.md`,
+    `${DEFAULT_PACKAGE_NAME}/empty/__init__.py`,
+  ]);
 });
 
 test("python keyword as parameter name is suffixed with underscore", () => {

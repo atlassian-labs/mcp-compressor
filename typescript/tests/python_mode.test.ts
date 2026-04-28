@@ -86,6 +86,7 @@ test("a python-mode session exposes a complete file tree with per-server _call.p
     // No top-level `tools/__init__.py` — the package is a PEP 420 namespace package so multiple
     // servers can be mounted into separate PYTHONPATH entries without colliding.
     expect([...merged.keys()].sort()).toEqual([
+      `${DEFAULT_PACKAGE_NAME}/jira/SKILL.md`,
       `${DEFAULT_PACKAGE_NAME}/jira/__init__.py`,
       `${DEFAULT_PACKAGE_NAME}/jira/_call.py`,
       `${DEFAULT_PACKAGE_NAME}/jira/search_issues.py`,
@@ -95,6 +96,19 @@ test("a python-mode session exposes a complete file tree with per-server _call.p
     const callPy = merged.get(`${DEFAULT_PACKAGE_NAME}/jira/_call.py`);
     expect(callPy).toMatch(/_BRIDGE_URL = /);
     expect(callPy).toMatch(/class ToolCallError/);
+  } finally {
+    await session.bridge.close();
+    await session.runtime.disconnect();
+  }
+});
+
+test("python-mode generated stubs expose a formatted tool inventory", async () => {
+  const session = await buildSession("jira", [TOOL]);
+  try {
+    expect(session.generated.toolInventory).toContain("| Package | Import | Docs | When to use |");
+    expect(session.generated.toolInventory).toContain("`tools.jira`");
+    expect(session.generated.toolInventory).toContain("`tools/jira/SKILL.md`");
+    expect(session.generated.toolInventory).toContain("Search Jira issues using JQL.");
   } finally {
     await session.bridge.close();
     await session.runtime.disconnect();
