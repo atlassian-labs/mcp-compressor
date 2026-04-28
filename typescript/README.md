@@ -278,6 +278,14 @@ bun cli               # run the CLI directly from source
 
 ## Publishing
 
+To publish from source, ensure you have active credentials for Artifactory, then run:
+
+```bash
+bun run build
+npm version <PUBLISH_VERSION> --no-git-tag-version
+npm publish
+```
+
 Published as `@atlassian/mcp-compressor` via Atlassian Artifactory → npmJS.
 
 ```bash
