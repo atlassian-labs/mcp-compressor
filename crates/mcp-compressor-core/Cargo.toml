@@ -9,7 +9,7 @@ serde_json = { version = "1", features = ["preserve_order"] }
 thiserror  = "1"
 rand       = "0.8"
 tokio      = { version = "1", features = ["sync", "rt-multi-thread"] }
-rmcp       = { version = "1.6.0", features = ["client", "server", "transport-child-process", "transport-io", "transport-streamable-http-server", "transport-streamable-http-client-reqwest"] }
+rmcp       = { version = "1.6.0", features = ["client", "server", "transport-child-process", "transport-io", "transport-streamable-http-server", "transport-streamable-http-client-reqwest", "reqwest-native-tls"] }
 axum       = "0.8"
 
 [dev-dependencies]
