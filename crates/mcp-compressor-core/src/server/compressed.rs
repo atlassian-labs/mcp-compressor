@@ -10,7 +10,8 @@ use std::net::SocketAddr;
 use std::process::Stdio;
 
 use rmcp::model::{
-    CallToolRequestParams, Content, RawContent, ReadResourceRequestParams, ResourceContents,
+    CallToolRequestParams, Content, GetPromptRequestParams, GetPromptResult, Prompt, RawContent,
+    ReadResourceRequestParams, ResourceContents,
 };
 use rmcp::service::RunningService;
 use rmcp::transport::{ConfigureCommandExt, TokioChildProcess};
@@ -131,7 +132,7 @@ struct ConnectedBackend {
     client: RunningService<RoleClient, ()>,
     tools: Vec<Tool>,
     resources: Vec<String>,
-    prompts: Vec<String>,
+    prompts: Vec<Prompt>,
 }
 
 impl CompressedServer {
@@ -305,8 +306,30 @@ impl CompressedServer {
         Ok(self
             .backends
             .iter()
-            .flat_map(|backend| backend.prompts.clone())
+            .flat_map(|backend| backend.prompts.iter().map(|prompt| prompt.name.clone()))
             .collect())
+    }
+
+    /// Fetch a prompt from the backend that owns it.
+    pub async fn get_prompt(
+        &self,
+        name: &str,
+        arguments: Option<serde_json::Map<String, Value>>,
+    ) -> Result<GetPromptResult, Error> {
+        let backend = self
+            .backends
+            .iter()
+            .find(|backend| backend.prompts.iter().any(|prompt| prompt.name == name))
+            .ok_or_else(|| Error::ToolNotFound(name.to_string()))?;
+        let mut request = GetPromptRequestParams::new(name);
+        if let Some(arguments) = arguments {
+            request = request.with_arguments(arguments);
+        }
+        backend
+            .client
+            .get_prompt(request)
+            .await
+            .map_err(|error| Error::Config(error.to_string()))
     }
 
     /// Return backend tools when the runtime has exactly one backend.
@@ -412,11 +435,7 @@ async fn connect_backend(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let prompts = client
-        .list_all_prompts()
-        .await
-        .map(|prompts| prompts.into_iter().map(|prompt| prompt.name).collect::<Vec<_>>())
-        .unwrap_or_default();
+    let prompts = client.list_all_prompts().await.unwrap_or_default();
 
     Ok(ConnectedBackend {
         public_name,
