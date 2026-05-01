@@ -148,7 +148,7 @@ Replace the existing implementations once the Rust-backed packages are productio
 - **Operational complexity from native artifacts**
   Publish prebuilt wheels and Node binaries for major targets; keep a pure-language fallback path temporarily during migration.
 - **Future V8 isolate / WASM portability**
-  Use `napi-rs` for the initial TypeScript binding, but keep the public TS APIs and generated TS clients free of avoidable Node-native assumptions so a later `wasm32`/V8-isolate target remains feasible.
+  `napi-rs` v3 provides an official WebAssembly path, but current support is centered on `wasm32-wasip1-threads` and still depends on host capabilities such as WASI, threads/Atomics, networking, and process adapters. Use `napi-rs` for the initial TypeScript binding, but keep public TS APIs and generated TS clients free of avoidable Node-native assumptions so a later WASM/V8-isolate target remains feasible.
 
 ## Open Questions
 
@@ -562,7 +562,7 @@ An accompanying `<cli_name>.d.ts` declaration file is generated for projects tha
 
 #### Future V8 isolate / WASM compatibility guidance
 
-The initial TypeScript package can use `napi-rs` and ship as a native Node.js module. However, a future deployment target may need to run the TypeScript library inside a V8 isolate or another environment where native Node addons are unavailable. We do not need to implement the WASM path initially, but the design should avoid choices that make it unnecessarily hard later.
+The initial TypeScript package can use `napi-rs` and ship as a native Node.js module. Current `napi-rs` v3 releases also provide an official WebAssembly path, with the practical default centered on `wasm32-wasip1-threads`. That is encouraging for future browser/StackBlitz/Node-WASM fallback scenarios, but it does not automatically guarantee compatibility with every V8-isolate host. Isolate viability will still depend on the host's support for WASI, threads/Atomics, networking/fetch, timers, and any process-spawning or local-listener capabilities we require. We do not need to implement the WASM path initially, but the design should avoid choices that make it unnecessarily hard later.
 
 Guidance for TypeScript-facing APIs and generated TypeScript artifacts:
 
@@ -573,11 +573,11 @@ Guidance for TypeScript-facing APIs and generated TypeScript artifacts:
 - Keep data crossing the Rust/TS boundary JSON-serializable: strings, numbers, booleans, arrays, objects, and byte data represented explicitly rather than as `Buffer`.
 - Avoid global mutable Node process state in generated clients. Multi-session bridge selection should be representable as explicit configuration, not only as `process.env` or process-global registries.
 - Separate runtime capability detection from core behavior. The Node package may provide adapters for spawning MCP servers and starting loopback proxies; a future isolate/WASM package may require callers to inject transport/proxy capabilities instead.
-- Keep Rust core logic that is pure or protocol-level separate from OS-bound code. That makes it easier to compile compression, schema, CLI mapping, and generated-client logic to `wasm32` later while leaving stdio/process/local-network transports as host-provided adapters.
+- Keep Rust core logic that is pure or protocol-level separate from OS-bound code. That makes it easier to compile compression, schema, CLI mapping, and generated-client logic to a WASM target later while leaving stdio/process/local-network transports as host-provided adapters.
 
 Non-goals for the initial `napi-rs` implementation:
 
-- shipping a WASM package
+- shipping a WASM package or selecting a final WASM target/trampoline strategy
 - supporting MCP stdio child-process spawning inside isolates
 - supporting local TCP proxy startup inside isolates
 
