@@ -49,6 +49,27 @@ jobs:
       - name: Check typing
         run: uv run ty check
 
+  rust-core-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up the Python environment
+        uses: ./.github/actions/setup-python-env
+
+      - name: Check Rust core library
+        run: cargo check -p mcp-compressor-core
+
+      - name: Compile Rust core unit-test targets without running intentional TODO tests
+        run: cargo test -p mcp-compressor-core --lib --no-run
+
+      - name: Compile Rust core integration contracts without running intentional TODO tests
+        run: cargo test -p mcp-compressor-core --tests --no-run
+
   check-docs:
     runs-on: ubuntu-latest
     steps:
