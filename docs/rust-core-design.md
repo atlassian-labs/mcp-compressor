@@ -199,18 +199,20 @@ The key insight: **the frontend MCP server does not know it is a proxy.** It is 
 
 ### CompressedServer
 
-The top-level object is `CompressedServer` (Rust struct / Python class). It owns:
+The top-level object is `CompressedServer`. In Rust it is a native struct; in Python it starts as a pure-Python class and becomes a PyO3/maturin binding to the Rust struct once the migration phase ships (Phase 6 in the delivery plan). The public API shape is identical in both cases — only the backing implementation changes.
 
-- `backend_client` — a connected MCP client for the upstream server
-- `tool_cache` — lazily populated on first request, refresh-on-demand
-- `engine` — `CompressionEngine`, a pure stateless struct
+`CompressedServer` owns:
+
+- `backend` — a connected MCP client for the upstream server (using the official Rust MCP SDK)
+- `cache` — `ToolCache`, lazily populated on first request, refresh-on-demand
+- `engine` — `CompressionEngine`, a pure stateless value
 
 ```rust
 pub struct CompressedServer {
-    backend: Arc<McpClient>,
+    backend: Arc<McpClient>,      // official modelcontextprotocol/rust-sdk client
     cache:   Arc<RwLock<ToolCache>>,
     engine:  CompressionEngine,
-    config:  CompressionConfig,      // level, include/exclude filters
+    config:  CompressionConfig,   // level, include/exclude filters
 }
 
 impl CompressedServer {
@@ -227,7 +229,7 @@ impl CompressedServer {
 }
 ```
 
-**Python equivalent:**
+**Python API (pure-Python initially; PyO3 binding later — same shape either way):**
 
 ```python
 class CompressedServer:
@@ -305,15 +307,40 @@ Yes, with the following notes:
 - In-process `invoke` enables zero-overhead library usage.
 
 **What is intentionally different from the current Python implementation:**
-- Resources and prompts from the backend are **not** automatically forwarded to the frontend server. The frontend server exposes only the compression tools. This is the right tradeoff for the Rust core: if a caller needs resource/prompt passthrough it can do so by connecting the backend client directly. The compression layer's job is tool compression, not general proxying.
+- Resources and prompts from the backend **are** forwarded to the frontend server as-is. Only tools get the compression treatment: the full upstream tool list is hidden and replaced with the 2–3 compressed wrapper tools. Resources and prompts pass through transparently, preserving the full MCP surface for callers that need them.
 - The tool schema cache is explicit (`RwLock<ToolCache>`) rather than implicit in the middleware call chain. This makes cache invalidation and refresh observable.
 
 **Concurrency:**
-- Concurrent tool calls on the streamable HTTP server are handled by the async runtime — each request gets its own task. The backend client must support concurrent calls (most MCP SDKs do via multiplexed sessions).
-- The `RwLock<ToolCache>` means concurrent readers (schema lookups) do not block one another; only a cache refresh acquires a write lock.
+Concurrency is handled entirely by the official [Rust MCP SDK](https://github.com/modelcontextprotocol/rust-sdk). `CompressedServer` delegates all transport-level concurrency to the SDK's server and client implementations; no custom concurrency primitives are required beyond the `RwLock<ToolCache>` that guards the tool schema cache.
 
-**One genuine challenge:**
-Streamable HTTP adds a per-request TCP round-trip overhead versus an in-process call. For LLM agent loops where many tool calls happen in rapid succession, this adds latency. Mitigation: the in-process `invoke` API is always available for callers that are in the same process; streamable HTTP is primarily for cross-language or cross-process consumers.
+**Language-native function imports (preferred library usage pattern):**
+
+Rather than routing through the streamable HTTP server, the compression tools can be exposed as ordinary importable functions in each language binding. This is the preferred pattern for same-process library use: no network round-trip, no MCP client protocol overhead, and no spawned subprocess.
+
+The key question is: *how does the backend client get passed around?* The answer is a `CompressedSession` context manager that holds the connected backend client as shared state. The language-specific binding functions capture a reference to it:
+
+```python
+# Python — language-native import pattern
+async with CompressedSession.connect("uvx mcp-server-fetch") as session:
+    # Each compression tool is a plain async function bound to this session.
+    # The backend client is held inside `session`; callers never touch it directly.
+    schema = await session.get_tool_schema("fetch")
+    result = await session.invoke_tool("fetch", {"url": "https://example.com"})
+    tools  = await session.list_tools()          # max compression level only
+```
+
+The TypeScript binding follows the same pattern:
+
+```typescript
+// TypeScript — language-native import pattern
+await using session = await CompressedSession.connect("uvx mcp-server-fetch");
+const schema = await session.getToolSchema("fetch");
+const result = await session.invokeTool("fetch", { url: "https://example.com" });
+```
+
+In the PyO3 binding phase, `CompressedSession` is a thin Python object that holds a reference to the Rust `CompressedServer`. The individual functions (`get_tool_schema`, `invoke_tool`, `list_tools`) are `#[pymethods]` that dispatch into the Rust async runtime via `pyo3-asyncio`. The backend client lives entirely on the Rust side — Python callers never need to manage it.
+
+Streamable HTTP remains useful for cross-language and cross-process consumers, but for same-language library use the session-bound function API is simpler and faster.
 
 ### Code Organization for Compression Mode
 
