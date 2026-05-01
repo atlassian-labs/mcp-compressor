@@ -1,7 +1,9 @@
 //! CLI entrypoint for the standalone Rust mcp-compressor core binary.
 
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use mcp_compressor_core::client_gen::cli::CliGenerator;
 use mcp_compressor_core::client_gen::{ClientGenerator, GeneratorConfig};
@@ -13,7 +15,7 @@ use mcp_compressor_core::server::{
     ProxyTransformMode,
 };
 
-const HELP: &str = "mcp-compressor-core\n\nUSAGE:\n    mcp-compressor-core [OPTIONS] [-- <COMMAND>...]\n\nOPTIONS:\n    --help                      Print help\n    --compression <LEVEL>       low | medium | high | max\n    --config <PATH>             MCP config JSON file\n    --server-name <NAME>        Frontend server name/prefix\n    --transport <TYPE>          stdio | streamable-http\n    --transform-mode <MODE>     compressed-tools | cli | just-bash\n    --cli-mode                  Alias for --transform-mode cli\n    --just-bash                 Alias for --transform-mode just-bash\n";
+const HELP: &str = "mcp-compressor-core\n\nUSAGE:\n    mcp-compressor-core [OPTIONS] [-- <COMMAND>...]\n\nOPTIONS:\n    --help                      Print help\n    --compression <LEVEL>       low | medium | high | max\n    --config <PATH>             MCP config JSON file\n    --server-name <NAME>        Frontend server name/prefix\n    --transport <TYPE>          stdio | streamable-http\n    --port <PORT>               Port for streamable-http frontend (0 chooses one)\n    --transform-mode <MODE>     compressed-tools | cli | just-bash\n    --cli-mode                  Alias for --transform-mode cli\n    --just-bash                 Alias for --transform-mode just-bash\n";
 
 fn main() -> ExitCode {
     match run() {
@@ -50,7 +52,7 @@ async fn run_async(cli: CliOptions) -> Result<(), CliError> {
 
     match cli.transform_mode {
         ProxyTransformMode::Cli => run_cli_mode(cli, server).await,
-        ProxyTransformMode::CompressedTools => run_compressed_listing(server).await,
+        ProxyTransformMode::CompressedTools => run_compressed_server(&cli, server).await,
         ProxyTransformMode::JustBash => Err(CliError::Runtime(
             "--just-bash runtime is not implemented yet".to_string(),
         )),
@@ -104,11 +106,49 @@ async fn build_server(cli: &CliOptions) -> Result<CompressedServer, CliError> {
     }
 }
 
-async fn run_compressed_listing(server: CompressedServer) -> Result<(), CliError> {
+async fn run_compressed_server(cli: &CliOptions, server: CompressedServer) -> Result<(), CliError> {
+    match cli.transport {
+        FrontendTransport::Stdio => run_compressed_stdio(server).await,
+        FrontendTransport::StreamableHttp => run_compressed_streamable_http(cli, server).await,
+    }
+}
+
+async fn run_compressed_stdio(server: CompressedServer) -> Result<(), CliError> {
     rmcp::serve_server(FrontendServer::new(server), rmcp::transport::stdio())
         .await
         .map_err(|error| CliError::Runtime(error.to_string()))?
         .waiting()
+        .await
+        .map_err(|error| CliError::Runtime(error.to_string()))?;
+    Ok(())
+}
+
+async fn run_compressed_streamable_http(
+    cli: &CliOptions,
+    server: CompressedServer,
+) -> Result<(), CliError> {
+    use rmcp::transport::streamable_http_server::{
+        session::local::LocalSessionManager, tower::StreamableHttpService,
+        StreamableHttpServerConfig,
+    };
+
+    let service = StreamableHttpService::new(
+        {
+            let server = Arc::new(server);
+            move || Ok(FrontendServer::from_arc(server.clone()))
+        },
+        Arc::new(LocalSessionManager::default()),
+        StreamableHttpServerConfig::default().with_sse_keep_alive(None),
+    );
+    let router = axum::Router::new().nest_service("/mcp", service);
+    let listener = tokio::net::TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, cli.port)))
+        .await
+        .map_err(|error| CliError::Runtime(error.to_string()))?;
+    let addr = listener
+        .local_addr()
+        .map_err(|error| CliError::Runtime(error.to_string()))?;
+    eprintln!("Streamable HTTP MCP server listening on http://{addr}/mcp");
+    axum::serve(listener, router)
         .await
         .map_err(|error| CliError::Runtime(error.to_string()))?;
     Ok(())
@@ -219,6 +259,8 @@ struct CliOptions {
     transform_mode: ProxyTransformMode,
     command: Vec<String>,
     multi_servers: Vec<BackendServerConfig>,
+    transport: FrontendTransport,
+    port: u16,
 }
 
 impl CliOptions {
@@ -230,6 +272,8 @@ impl CliOptions {
             transform_mode: ProxyTransformMode::CompressedTools,
             command: Vec::new(),
             multi_servers: Vec::new(),
+            transport: FrontendTransport::Stdio,
+            port: 8000,
         };
         let mut index = 0;
         while index < args.len() {
@@ -260,11 +304,14 @@ impl CliOptions {
                 }
                 "--transport" => {
                     let value = required_value(args, index, "--transport")?;
-                    if value != "stdio" {
-                        return Err(CliError::Usage(format!(
-                            "unsupported transport for CLI runtime: {value}"
-                        )));
-                    }
+                    options.transport = parse_frontend_transport(&value)?;
+                    index += 2;
+                }
+                "--port" => {
+                    let value = required_value(args, index, "--port")?;
+                    options.port = value
+                        .parse()
+                        .map_err(|_| CliError::Usage(format!("invalid port: {value}")))?;
                     index += 2;
                 }
                 "--transform-mode" => {
@@ -327,6 +374,20 @@ fn required_value(args: &[String], index: usize, flag: &str) -> Result<String, C
         .filter(|value| !value.starts_with('-'))
         .cloned()
         .ok_or_else(|| CliError::Usage(format!("{flag} requires a value")))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FrontendTransport {
+    Stdio,
+    StreamableHttp,
+}
+
+fn parse_frontend_transport(value: &str) -> Result<FrontendTransport, CliError> {
+    match value {
+        "stdio" => Ok(FrontendTransport::Stdio),
+        "streamable-http" => Ok(FrontendTransport::StreamableHttp),
+        _ => Err(CliError::Usage(format!("unsupported transport: {value}"))),
+    }
 }
 
 fn parse_transform_mode(value: &str) -> Result<ProxyTransformMode, CliError> {
