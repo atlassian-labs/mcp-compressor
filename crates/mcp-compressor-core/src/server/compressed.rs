@@ -17,6 +17,7 @@ use rmcp::transport::{ConfigureCommandExt, TokioChildProcess};
 use rmcp::{RoleClient, ServiceExt};
 use serde_json::Value;
 
+use crate::config::topology::MCPConfig;
 use crate::compression::engine::{CompressionEngine, Tool};
 use crate::compression::CompressionLevel;
 use crate::Error;
@@ -121,7 +122,12 @@ impl RunningCompressedServer {
 #[derive(Debug)]
 pub struct CompressedServer {
     config: CompressedServerConfig,
-    backend_name: String,
+    backends: Vec<ConnectedBackend>,
+}
+
+#[derive(Debug)]
+struct ConnectedBackend {
+    public_name: String,
     client: RunningService<RoleClient, ()>,
     tools: Vec<Tool>,
     resources: Vec<String>,
@@ -134,69 +140,65 @@ impl CompressedServer {
         config: CompressedServerConfig,
         backend: BackendServerConfig,
     ) -> Result<Self, Error> {
-        let mut command = tokio::process::Command::new(&backend.command);
-        command
-            .args(&backend.args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped());
-        command.stderr(Stdio::inherit());
-        for (key, value) in &backend.env {
-            command.env(key, value);
-        }
-
-        let transport = TokioChildProcess::new(command.configure(|_| {}))
-            .map_err(|error| Error::Io(error))?;
-        let client = ()
-            .serve(transport)
-            .await
-            .map_err(|error| Error::Config(error.to_string()))?;
-
-        let rmcp_tools = client
-            .list_all_tools()
-            .await
-            .map_err(|error| Error::Config(error.to_string()))?;
-        let tools = rmcp_tools.into_iter().map(convert_tool).collect::<Vec<_>>();
-
-        let resources = client
-            .list_all_resources()
-            .await
-            .map(|resources| {
-                resources
-                    .into_iter()
-                    .map(|resource| resource.raw.uri)
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let prompts = client
-            .list_all_prompts()
-            .await
-            .map(|prompts| prompts.into_iter().map(|prompt| prompt.name).collect::<Vec<_>>())
-            .unwrap_or_default();
-
+        let public_name = config
+            .server_name
+            .clone()
+            .unwrap_or_else(|| backend.name.clone());
+        let backend = connect_backend(backend, public_name).await?;
         Ok(Self {
             config,
-            backend_name: backend.name,
-            client,
-            tools,
-            resources,
-            prompts,
+            backends: vec![backend],
         })
     }
 
     /// Connect to multiple upstream stdio MCP servers.
     pub async fn connect_multi_stdio(
-        _config: CompressedServerConfig,
-        _backends: Vec<BackendServerConfig>,
+        config: CompressedServerConfig,
+        backends: Vec<BackendServerConfig>,
     ) -> Result<Self, Error> {
-        todo!()
+        let suite_prefix = config.server_name.clone();
+        let mut connected = Vec::with_capacity(backends.len());
+        for backend in backends {
+            let public_name = match &suite_prefix {
+                Some(prefix) => format!("{prefix}_{}", backend.name),
+                None => backend.name.clone(),
+            };
+            connected.push(connect_backend(backend, public_name).await?);
+        }
+        Ok(Self {
+            config,
+            backends: connected,
+        })
     }
 
     /// Connect using a JSON MCP config document containing one or more `mcpServers` entries.
     pub async fn connect_mcp_config_json(
-        _config: CompressedServerConfig,
-        _mcp_config_json: &str,
+        config: CompressedServerConfig,
+        mcp_config_json: &str,
     ) -> Result<Self, Error> {
-        todo!()
+        let mcp_config = MCPConfig::from_json(mcp_config_json)?;
+        let mut backends = Vec::new();
+        for name in mcp_config.server_names() {
+            let server = mcp_config
+                .server(&name)
+                .ok_or_else(|| Error::Config(format!("server not found: {name}")))?;
+            backends.push(
+                BackendServerConfig::new(name, server.command.clone(), server.args.clone())
+                    .with_env(server.env.clone()),
+            );
+        }
+
+        if backends.len() == 1 {
+            let backend = backends.into_iter().next().expect("one backend exists");
+            let public_name = config.server_name.clone().unwrap_or_default();
+            let backend = connect_backend(backend, public_name).await?;
+            Ok(Self {
+                config,
+                backends: vec![backend],
+            })
+        } else {
+            Self::connect_multi_stdio(config, backends).await
+        }
     }
 
     /// Start the frontend MCP server over streamable HTTP.
@@ -206,19 +208,23 @@ impl CompressedServer {
 
     /// Return the frontend MCP tools exposed to callers.
     pub async fn list_frontend_tools(&self) -> Result<Vec<Tool>, Error> {
-        let prefix = self.wrapper_prefix();
-        let mut tools = vec![
-            wrapper_tool(
+        let mut tools = Vec::new();
+        for backend in &self.backends {
+            let prefix = self.wrapper_prefix(backend);
+            tools.push(wrapper_tool(
                 format!("{prefix}get_tool_schema"),
                 "Return the full schema for a backend tool.",
-            ),
-            wrapper_tool(format!("{prefix}invoke_tool"), "Invoke a backend tool by name."),
-        ];
-        if self.config.level == CompressionLevel::Max {
-            tools.push(wrapper_tool(
-                format!("{prefix}list_tools"),
-                "List compressed backend tools.",
             ));
+            tools.push(wrapper_tool(
+                format!("{prefix}invoke_tool"),
+                "Invoke a backend tool by name.",
+            ));
+            if self.config.level == CompressionLevel::Max {
+                tools.push(wrapper_tool(
+                    format!("{prefix}list_tools"),
+                    "List compressed backend tools.",
+                ));
+            }
         }
         Ok(tools)
     }
@@ -229,7 +235,8 @@ impl CompressedServer {
         _wrapper_tool_name: &str,
         backend_tool_name: &str,
     ) -> Result<String, Error> {
-        let tool = self
+        let backend = self.backend_for_wrapper(_wrapper_tool_name)?;
+        let tool = backend
             .tools
             .iter()
             .find(|tool| tool.name == backend_tool_name)
@@ -238,10 +245,11 @@ impl CompressedServer {
     }
 
     /// List backend tools via the max-compression `list_tools` wrapper.
-    pub async fn list_backend_tools(&self, _wrapper_tool_name: &str) -> Result<String, Error> {
+    pub async fn list_backend_tools(&self, wrapper_tool_name: &str) -> Result<String, Error> {
+        let backend = self.backend_for_wrapper(wrapper_tool_name)?;
         let engine = CompressionEngine::new(CompressionLevel::High);
         Ok(engine
-            .format_listing(&self.tools)
+            .format_listing(&backend.tools)
             .lines()
             .collect::<Vec<_>>()
             .join("\n"))
@@ -254,6 +262,7 @@ impl CompressedServer {
         backend_tool_name: &str,
         tool_input: Value,
     ) -> Result<String, Error> {
+        let backend = self.backend_for_wrapper(_wrapper_tool_name)?;
         let arguments = match tool_input {
             Value::Object(map) => Some(map),
             _ => None,
@@ -262,7 +271,7 @@ impl CompressedServer {
         if let Some(arguments) = arguments {
             params = params.with_arguments(arguments);
         }
-        let result = self
+        let result = backend
             .client
             .call_tool(params)
             .await
@@ -273,20 +282,30 @@ impl CompressedServer {
     /// List frontend resources, including pass-through backend resources and
     /// compressor-owned uncompressed-tool-list resources.
     pub async fn list_resources(&self) -> Result<Vec<String>, Error> {
-        let mut resources = self.resources.clone();
-        resources.push(format!(
-            "compressor://{}/uncompressed-tools",
-            self.public_server_name()
-        ));
+        let mut resources = Vec::new();
+        for backend in &self.backends {
+            resources.extend(backend.resources.clone());
+            resources.push(format!(
+                "compressor://{}/uncompressed-tools",
+                backend.public_name
+            ));
+        }
         Ok(resources)
     }
 
     /// Read a frontend resource by URI.
     pub async fn read_resource(&self, uri: &str) -> Result<String, Error> {
-        if uri == format!("compressor://{}/uncompressed-tools", self.public_server_name()) {
-            return serde_json::to_string_pretty(&self.tools).map_err(Error::from);
+        for backend in &self.backends {
+            if uri == format!("compressor://{}/uncompressed-tools", backend.public_name) {
+                return serde_json::to_string_pretty(&backend.tools).map_err(Error::from);
+            }
         }
-        let result = self
+        let backend = self
+            .backends
+            .iter()
+            .find(|backend| backend.resources.iter().any(|resource| resource == uri))
+            .ok_or_else(|| Error::ToolNotFound(uri.to_string()))?;
+        let result = backend
             .client
             .read_resource(ReadResourceRequestParams::new(uri))
             .await
@@ -296,16 +315,81 @@ impl CompressedServer {
 
     /// List frontend prompts passed through from backend servers.
     pub async fn list_prompts(&self) -> Result<Vec<String>, Error> {
-        Ok(self.prompts.clone())
+        Ok(self
+            .backends
+            .iter()
+            .flat_map(|backend| backend.prompts.clone())
+            .collect())
     }
 
-    fn public_server_name(&self) -> &str {
-        self.config.server_name.as_deref().unwrap_or(&self.backend_name)
+    fn wrapper_prefix(&self, backend: &ConnectedBackend) -> String {
+        if backend.public_name.is_empty() {
+            String::new()
+        } else {
+            format!("{}_", backend.public_name)
+        }
     }
 
-    fn wrapper_prefix(&self) -> String {
-        format!("{}_", self.public_server_name())
+    fn backend_for_wrapper(&self, wrapper_tool_name: &str) -> Result<&ConnectedBackend, Error> {
+        if self.backends.len() == 1 && self.backends[0].public_name.is_empty() {
+            return Ok(&self.backends[0]);
+        }
+        self.backends
+            .iter()
+            .find(|backend| wrapper_tool_name.starts_with(&self.wrapper_prefix(backend)))
+            .ok_or_else(|| Error::ToolNotFound(wrapper_tool_name.to_string()))
     }
+}
+
+async fn connect_backend(
+    backend: BackendServerConfig,
+    public_name: String,
+) -> Result<ConnectedBackend, Error> {
+    let mut command = tokio::process::Command::new(&backend.command);
+    command
+        .args(&backend.args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped());
+    command.stderr(Stdio::inherit());
+    for (key, value) in &backend.env {
+        command.env(key, value);
+    }
+
+    let transport = TokioChildProcess::new(command.configure(|_| {})).map_err(Error::Io)?;
+    let client = ()
+        .serve(transport)
+        .await
+        .map_err(|error| Error::Config(error.to_string()))?;
+
+    let rmcp_tools = client
+        .list_all_tools()
+        .await
+        .map_err(|error| Error::Config(error.to_string()))?;
+    let tools = rmcp_tools.into_iter().map(convert_tool).collect::<Vec<_>>();
+
+    let resources = client
+        .list_all_resources()
+        .await
+        .map(|resources| {
+            resources
+                .into_iter()
+                .map(|resource| resource.raw.uri)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let prompts = client
+        .list_all_prompts()
+        .await
+        .map(|prompts| prompts.into_iter().map(|prompt| prompt.name).collect::<Vec<_>>())
+        .unwrap_or_default();
+
+    Ok(ConnectedBackend {
+        public_name,
+        client,
+        tools,
+        resources,
+        prompts,
+    })
 }
 
 fn convert_tool(tool: rmcp::model::Tool) -> Tool {
