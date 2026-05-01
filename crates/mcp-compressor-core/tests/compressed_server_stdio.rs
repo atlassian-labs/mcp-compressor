@@ -49,7 +49,7 @@ async fn single_stdio_backend_schema_listing_invocation_resources_and_prompts_wo
     let listed = server.list_backend_tools("alpha_list_tools").await.unwrap();
     assert!(listed.contains("echo"));
     assert!(listed.contains("add"));
-    assert!(listed.contains("object"));
+    assert!(listed.contains("structured_data"));
 
     let echo = server
         .invoke_tool("alpha_invoke_tool", "echo", json!({ "message": "hello" }))

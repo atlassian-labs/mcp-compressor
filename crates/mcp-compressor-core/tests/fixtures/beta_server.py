@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+from typing import Any
 
 from fastmcp import FastMCP
 
@@ -20,7 +21,7 @@ def multiply(a: int, b: int) -> int:
 
 
 @mcp.tool
-def object() -> dict[str, object]:  # noqa: A001
+def structured_data() -> dict[str, Any]:
     """Return structured beta data."""
     return {"server": "beta", "values": [3, 4], "nested": {"ok": True}}
 
