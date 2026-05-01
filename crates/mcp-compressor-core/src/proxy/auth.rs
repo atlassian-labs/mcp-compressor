@@ -17,7 +17,7 @@
 //! request.  The `verify` method accepts the raw header value (everything
 //! after the colon-space).
 
-use rand::Rng;
+use rand::{rngs::OsRng, RngCore};
 
 /// A session-scoped bearer token.
 ///
@@ -35,12 +35,21 @@ impl SessionToken {
     /// Internally draws 32 random bytes from the OS RNG and hex-encodes them,
     /// yielding a string that is unique with overwhelming probability.
     pub fn generate() -> Self {
-        todo!()
+        let mut bytes = [0_u8; 32];
+        OsRng.fill_bytes(&mut bytes);
+
+        let mut token = String::with_capacity(64);
+        for byte in bytes {
+            token.push(hex_digit(byte >> 4));
+            token.push(hex_digit(byte & 0x0f));
+        }
+
+        Self(token)
     }
 
     /// Return the raw hex token string (without the `Bearer` prefix).
     pub fn value(&self) -> &str {
-        todo!()
+        &self.0
     }
 
     /// Verify an `Authorization` header value in constant time.
@@ -51,8 +60,30 @@ impl SessionToken {
     ///
     /// Uses XOR-fold over bytes to avoid early-exit timing leaks.
     pub fn verify(&self, header: &str) -> bool {
-        todo!()
+        let expected = format!("Bearer {}", self.0);
+        constant_time_eq(header.as_bytes(), expected.as_bytes())
     }
+}
+
+fn hex_digit(nibble: u8) -> char {
+    match nibble {
+        0..=9 => (b'0' + nibble) as char,
+        10..=15 => (b'a' + (nibble - 10)) as char,
+        _ => unreachable!("nibble must be in 0..=15"),
+    }
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    let mut diff = left.len() ^ right.len();
+    let max_len = left.len().max(right.len());
+
+    for index in 0..max_len {
+        let left_byte = left.get(index).copied().unwrap_or(0);
+        let right_byte = right.get(index).copied().unwrap_or(0);
+        diff |= usize::from(left_byte ^ right_byte);
+    }
+
+    diff == 0
 }
 
 // ---------------------------------------------------------------------------

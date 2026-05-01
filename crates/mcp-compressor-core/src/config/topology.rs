@@ -17,6 +17,7 @@
 
 use std::collections::HashMap;
 
+use crate::cli::mapping::sanitize_cli_name;
 use crate::Error;
 
 /// Configuration for a single MCP backend server.
@@ -44,24 +45,33 @@ impl MCPConfig {
     /// Returns an error when the JSON is malformed or when the `mcpServers`
     /// key is absent.
     pub fn from_json(json: &str) -> Result<Self, Error> {
-        todo!()
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct RawConfig {
+            mcp_servers: HashMap<String, ServerConfig>,
+        }
+
+        let raw: RawConfig = serde_json::from_str(json)?;
+        Ok(Self { servers: raw.mcp_servers })
     }
 
     /// Return server names in ascending lexicographic order.
     pub fn server_names(&self) -> Vec<String> {
-        todo!()
+        let mut names = self.servers.keys().cloned().collect::<Vec<_>>();
+        names.sort();
+        names
     }
 
     /// Look up a server configuration by name.
     pub fn server(&self, name: &str) -> Option<&ServerConfig> {
-        todo!()
+        self.servers.get(name)
     }
 
     /// Return the CLI prefix (sanitized server name) for a given server.
     ///
     /// Used to namespace subcommands in multi-server CLI mode.
     pub fn cli_prefix(&self, server_name: &str) -> String {
-        todo!()
+        sanitize_cli_name(server_name)
     }
 }
 

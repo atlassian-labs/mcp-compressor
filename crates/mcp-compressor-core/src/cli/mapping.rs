@@ -22,12 +22,31 @@
 /// | `fetch` | `fetch` |
 /// | `getjiraissue` | `getjiraissue` |
 pub fn tool_name_to_subcommand(tool_name: &str) -> String {
-    todo!()
+    let mut out = String::new();
+    let mut previous_was_lower_or_digit = false;
+
+    for ch in tool_name.chars() {
+        if ch == '_' {
+            out.push('-');
+            previous_was_lower_or_digit = false;
+        } else if ch.is_ascii_uppercase() {
+            if previous_was_lower_or_digit {
+                out.push('-');
+            }
+            out.push(ch.to_ascii_lowercase());
+            previous_was_lower_or_digit = false;
+        } else {
+            out.push(ch.to_ascii_lowercase());
+            previous_was_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
+        }
+    }
+
+    out
 }
 
 /// Convert a kebab-case CLI subcommand back to a `snake_case` MCP tool name.
 pub fn subcommand_to_tool_name(subcommand: &str) -> String {
-    todo!()
+    subcommand.replace('-', "_")
 }
 
 /// Sanitize an arbitrary string into a safe CLI command / script name.
@@ -52,7 +71,38 @@ pub fn subcommand_to_tool_name(subcommand: &str) -> String {
 /// | `"123abc"` | `"mcp-123abc"` |
 /// | `"multi  spaces"` | `"multi-spaces"` |
 pub fn sanitize_cli_name(name: &str) -> String {
-    todo!()
+    let mut out = String::new();
+    let mut pending_separator: Option<char> = None;
+
+    for ch in name.to_ascii_lowercase().chars() {
+        if ch.is_ascii_alphanumeric() {
+            if let Some(separator) = pending_separator.take() {
+                if !out.is_empty() {
+                    out.push(separator);
+                }
+            }
+            out.push(ch);
+        } else if ch == '_' || ch == '-' {
+            pending_separator = Some(match pending_separator {
+                Some(_) => '-',
+                None => ch,
+            });
+        } else {
+            pending_separator = Some(match pending_separator {
+                Some(_) => '-',
+                None => '-',
+            });
+        }
+    }
+
+    let mut sanitized = out.trim_matches(['-', '_']).to_string();
+    if sanitized.is_empty() {
+        sanitized = "mcp".to_string();
+    }
+    if sanitized.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
+        sanitized = format!("mcp-{sanitized}");
+    }
+    sanitized
 }
 
 // ---------------------------------------------------------------------------
