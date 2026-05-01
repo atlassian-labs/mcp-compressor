@@ -4,8 +4,10 @@ use std::sync::Arc;
 
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Content, ErrorCode, InitializeResult, ListToolsResult,
-    PaginatedRequestParams, ServerCapabilities, Tool,
+    Annotated, CallToolRequestParams, CallToolResult, Content, ErrorCode, InitializeResult,
+    ListPromptsResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams, Prompt,
+    RawResource, ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents,
+    ServerCapabilities, Tool,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer};
@@ -28,8 +30,14 @@ impl FrontendServer {
 
 impl ServerHandler for FrontendServer {
     fn get_info(&self) -> InitializeResult {
-        InitializeResult::new(ServerCapabilities::builder().enable_tools().build())
-            .with_instructions("Compressed MCP frontend server")
+        InitializeResult::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .enable_prompts()
+                .build(),
+        )
+        .with_instructions("Compressed MCP frontend server")
     }
 
     async fn list_tools(
@@ -79,6 +87,53 @@ impl ServerHandler for FrontendServer {
         Ok(CallToolResult::success(vec![Content::text(output)]))
     }
 
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, McpError> {
+        let resources = self
+            .compressed
+            .list_resources()
+            .await
+            .map_err(mcp_error)?
+            .into_iter()
+            .map(convert_resource)
+            .collect();
+        Ok(ListResourcesResult::with_all_items(resources))
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResult, McpError> {
+        let text = self
+            .compressed
+            .read_resource(&request.uri)
+            .await
+            .map_err(mcp_error)?;
+        Ok(ReadResourceResult::new(vec![
+            ResourceContents::text(text, request.uri),
+        ]))
+    }
+
+    async fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, McpError> {
+        let prompts = self
+            .compressed
+            .list_prompts()
+            .await
+            .map_err(mcp_error)?
+            .into_iter()
+            .map(|name| Prompt::new(name, Option::<String>::None, None))
+            .collect();
+        Ok(ListPromptsResult::with_all_items(prompts))
+    }
+
     fn get_tool(&self, _name: &str) -> Option<Tool> {
         None
     }
@@ -94,6 +149,19 @@ fn convert_tool(tool: crate::compression::engine::Tool) -> Tool {
         tool.description.unwrap_or_default(),
         Arc::new(input_schema),
     )
+}
+
+fn convert_resource(uri: String) -> Resource {
+    Annotated::new(RawResource {
+        name: uri.clone(),
+        uri,
+        title: None,
+        description: None,
+        mime_type: None,
+        icons: None,
+        size: None,
+        meta: None,
+    }, None)
 }
 
 fn required_string(arguments: &Map<String, Value>, name: &str) -> Result<String, McpError> {
