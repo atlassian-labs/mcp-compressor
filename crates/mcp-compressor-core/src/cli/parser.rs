@@ -21,6 +21,8 @@
 //! Unknown flags and positional arguments are errors.
 //! Missing required arguments are errors.
 
+use serde_json::{Map, Number, Value};
+
 use crate::compression::engine::Tool;
 use crate::Error;
 
@@ -30,7 +32,170 @@ use crate::Error;
 /// The `tool`'s `input_schema` drives type coercion and required-argument
 /// checking.
 pub fn parse_argv(argv: &[String], tool: &Tool) -> Result<serde_json::Value, Error> {
-    todo!()
+    if argv.first().is_some_and(|arg| arg == "--json") {
+        let json = argv
+            .get(1)
+            .ok_or_else(|| Error::Parse("--json requires a value".to_string()))?;
+        if argv.len() > 2 {
+            return Err(Error::Parse("--json cannot be combined with other arguments".to_string()));
+        }
+        return Ok(serde_json::from_str(json)?);
+    }
+
+    let properties = schema_properties(tool);
+    let required = required_properties(tool);
+    let mut output = Map::new();
+    let mut index = 0;
+
+    while index < argv.len() {
+        let arg = &argv[index];
+        if !arg.starts_with("--") || arg == "--" {
+            return Err(Error::Parse(format!("unexpected positional argument: {arg}")));
+        }
+
+        let (property_name, forced_bool) = parse_flag_name(arg);
+        let schema = properties
+            .get(&property_name)
+            .ok_or_else(|| Error::Parse(format!("unknown flag: {arg}")))?;
+        let schema_type = schema_type(schema);
+
+        let (raw_value, consumed) = if forced_bool == Some(false) {
+            if schema_type != Some("boolean") {
+                return Err(Error::Parse(format!("{arg} can only be used with boolean properties")));
+            }
+            (None, 1)
+        } else if schema_type == Some("boolean") {
+            match argv.get(index + 1) {
+                Some(next) if !next.starts_with("--") => (Some(next.as_str()), 2),
+                _ => (None, 1),
+            }
+        } else {
+            let value = argv
+                .get(index + 1)
+                .filter(|next| !next.starts_with("--"))
+                .ok_or_else(|| Error::Parse(format!("{arg} requires a value")))?;
+            (Some(value.as_str()), 2)
+        };
+
+        let value = coerce_value(&property_name, schema, raw_value, forced_bool)?;
+        insert_value(&mut output, &property_name, schema, value);
+        index += consumed;
+    }
+
+    for property in required {
+        if !output.contains_key(&property) {
+            return Err(Error::Validation(format!("missing required argument: {property}")));
+        }
+    }
+
+    Ok(Value::Object(output))
+}
+
+fn schema_properties(tool: &Tool) -> Map<String, Value> {
+    tool.input_schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn required_properties(tool: &Tool) -> Vec<String> {
+    tool.input_schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|required| {
+            required
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToString::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn parse_flag_name(flag: &str) -> (String, Option<bool>) {
+    let name = flag.trim_start_matches("--");
+    if let Some(name) = name.strip_prefix("no-") {
+        (flag_to_property_name(name), Some(false))
+    } else {
+        (flag_to_property_name(name), None)
+    }
+}
+
+fn flag_to_property_name(flag: &str) -> String {
+    flag.replace('-', "_")
+}
+
+fn schema_type(schema: &Value) -> Option<&str> {
+    schema.get("type").and_then(Value::as_str)
+}
+
+fn array_item_schema(schema: &Value) -> Option<&Value> {
+    schema.get("items")
+}
+
+fn coerce_value(
+    property_name: &str,
+    schema: &Value,
+    raw_value: Option<&str>,
+    forced_bool: Option<bool>,
+) -> Result<Value, Error> {
+    if let Some(value) = forced_bool {
+        return Ok(Value::Bool(value));
+    }
+
+    match schema_type(schema) {
+        Some("boolean") => coerce_bool(property_name, raw_value),
+        Some("integer") => coerce_integer(property_name, raw_value),
+        Some("number") => coerce_number(property_name, raw_value),
+        Some("array") => {
+            let item_schema = array_item_schema(schema).unwrap_or(&Value::Null);
+            coerce_value(property_name, item_schema, raw_value, None)
+        }
+        _ => Ok(Value::String(raw_value.unwrap_or_default().to_string())),
+    }
+}
+
+fn coerce_bool(property_name: &str, raw_value: Option<&str>) -> Result<Value, Error> {
+    match raw_value {
+        None => Ok(Value::Bool(true)),
+        Some("true") => Ok(Value::Bool(true)),
+        Some("false") => Ok(Value::Bool(false)),
+        Some(value) => Err(Error::Parse(format!(
+            "invalid boolean value for {property_name}: {value}"
+        ))),
+    }
+}
+
+fn coerce_integer(property_name: &str, raw_value: Option<&str>) -> Result<Value, Error> {
+    let value = raw_value.ok_or_else(|| Error::Parse(format!("{property_name} requires a value")))?;
+    let parsed = value
+        .parse::<i64>()
+        .map_err(|_| Error::Parse(format!("invalid integer value for {property_name}: {value}")))?;
+    Ok(Value::Number(Number::from(parsed)))
+}
+
+fn coerce_number(property_name: &str, raw_value: Option<&str>) -> Result<Value, Error> {
+    let value = raw_value.ok_or_else(|| Error::Parse(format!("{property_name} requires a value")))?;
+    let parsed = value
+        .parse::<f64>()
+        .map_err(|_| Error::Parse(format!("invalid number value for {property_name}: {value}")))?;
+    let number = Number::from_f64(parsed)
+        .ok_or_else(|| Error::Parse(format!("invalid number value for {property_name}: {value}")))?;
+    Ok(Value::Number(number))
+}
+
+fn insert_value(output: &mut Map<String, Value>, property_name: &str, schema: &Value, value: Value) {
+    if schema_type(schema) == Some("array") {
+        output
+            .entry(property_name.to_string())
+            .or_insert_with(|| Value::Array(Vec::new()))
+            .as_array_mut()
+            .expect("array property should be stored as array")
+            .push(value);
+    } else {
+        output.insert(property_name.to_string(), value);
+    }
 }
 
 // ---------------------------------------------------------------------------
