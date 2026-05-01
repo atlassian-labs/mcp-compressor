@@ -7,10 +7,17 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::process::Stdio;
 
+use rmcp::model::{
+    CallToolRequestParams, Content, RawContent, ReadResourceRequestParams, ResourceContents,
+};
+use rmcp::service::RunningService;
+use rmcp::transport::{ConfigureCommandExt, TokioChildProcess};
+use rmcp::{RoleClient, ServiceExt};
 use serde_json::Value;
 
-use crate::compression::engine::Tool;
+use crate::compression::engine::{CompressionEngine, Tool};
 use crate::compression::CompressionLevel;
 use crate::Error;
 
@@ -112,15 +119,68 @@ impl RunningCompressedServer {
 
 /// Connected compressor runtime.
 #[derive(Debug)]
-pub struct CompressedServer;
+pub struct CompressedServer {
+    config: CompressedServerConfig,
+    backend_name: String,
+    client: RunningService<RoleClient, ()>,
+    tools: Vec<Tool>,
+    resources: Vec<String>,
+    prompts: Vec<String>,
+}
 
 impl CompressedServer {
     /// Connect to one upstream stdio MCP server.
     pub async fn connect_stdio(
-        _config: CompressedServerConfig,
-        _backend: BackendServerConfig,
+        config: CompressedServerConfig,
+        backend: BackendServerConfig,
     ) -> Result<Self, Error> {
-        todo!()
+        let mut command = tokio::process::Command::new(&backend.command);
+        command
+            .args(&backend.args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped());
+        command.stderr(Stdio::inherit());
+        for (key, value) in &backend.env {
+            command.env(key, value);
+        }
+
+        let transport = TokioChildProcess::new(command.configure(|_| {}))
+            .map_err(|error| Error::Io(error))?;
+        let client = ()
+            .serve(transport)
+            .await
+            .map_err(|error| Error::Config(error.to_string()))?;
+
+        let rmcp_tools = client
+            .list_all_tools()
+            .await
+            .map_err(|error| Error::Config(error.to_string()))?;
+        let tools = rmcp_tools.into_iter().map(convert_tool).collect::<Vec<_>>();
+
+        let resources = client
+            .list_all_resources()
+            .await
+            .map(|resources| {
+                resources
+                    .into_iter()
+                    .map(|resource| resource.raw.uri)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let prompts = client
+            .list_all_prompts()
+            .await
+            .map(|prompts| prompts.into_iter().map(|prompt| prompt.name).collect::<Vec<_>>())
+            .unwrap_or_default();
+
+        Ok(Self {
+            config,
+            backend_name: backend.name,
+            client,
+            tools,
+            resources,
+            prompts,
+        })
     }
 
     /// Connect to multiple upstream stdio MCP servers.
@@ -146,46 +206,167 @@ impl CompressedServer {
 
     /// Return the frontend MCP tools exposed to callers.
     pub async fn list_frontend_tools(&self) -> Result<Vec<Tool>, Error> {
-        todo!()
+        let prefix = self.wrapper_prefix();
+        let mut tools = vec![
+            wrapper_tool(
+                format!("{prefix}get_tool_schema"),
+                "Return the full schema for a backend tool.",
+            ),
+            wrapper_tool(format!("{prefix}invoke_tool"), "Invoke a backend tool by name."),
+        ];
+        if self.config.level == CompressionLevel::Max {
+            tools.push(wrapper_tool(
+                format!("{prefix}list_tools"),
+                "List compressed backend tools.",
+            ));
+        }
+        Ok(tools)
     }
 
     /// Return the full backend schema for a tool via the compressed wrapper API.
     pub async fn get_tool_schema(
         &self,
         _wrapper_tool_name: &str,
-        _backend_tool_name: &str,
+        backend_tool_name: &str,
     ) -> Result<String, Error> {
-        todo!()
+        let tool = self
+            .tools
+            .iter()
+            .find(|tool| tool.name == backend_tool_name)
+            .ok_or_else(|| Error::ToolNotFound(backend_tool_name.to_string()))?;
+        Ok(CompressionEngine::format_schema_response(tool))
     }
 
     /// List backend tools via the max-compression `list_tools` wrapper.
     pub async fn list_backend_tools(&self, _wrapper_tool_name: &str) -> Result<String, Error> {
-        todo!()
+        let engine = CompressionEngine::new(CompressionLevel::High);
+        Ok(engine
+            .format_listing(&self.tools)
+            .lines()
+            .collect::<Vec<_>>()
+            .join("\n"))
     }
 
     /// Invoke a backend tool via the compressed wrapper API.
     pub async fn invoke_tool(
         &self,
         _wrapper_tool_name: &str,
-        _backend_tool_name: &str,
-        _tool_input: Value,
+        backend_tool_name: &str,
+        tool_input: Value,
     ) -> Result<String, Error> {
-        todo!()
+        let arguments = match tool_input {
+            Value::Object(map) => Some(map),
+            _ => None,
+        };
+        let mut params = CallToolRequestParams::new(backend_tool_name.to_string());
+        if let Some(arguments) = arguments {
+            params = params.with_arguments(arguments);
+        }
+        let result = self
+            .client
+            .call_tool(params)
+            .await
+            .map_err(|error| Error::Config(error.to_string()))?;
+        Ok(call_tool_result_to_string(result))
     }
 
     /// List frontend resources, including pass-through backend resources and
     /// compressor-owned uncompressed-tool-list resources.
     pub async fn list_resources(&self) -> Result<Vec<String>, Error> {
-        todo!()
+        let mut resources = self.resources.clone();
+        resources.push(format!(
+            "compressor://{}/uncompressed-tools",
+            self.public_server_name()
+        ));
+        Ok(resources)
     }
 
     /// Read a frontend resource by URI.
-    pub async fn read_resource(&self, _uri: &str) -> Result<String, Error> {
-        todo!()
+    pub async fn read_resource(&self, uri: &str) -> Result<String, Error> {
+        if uri == format!("compressor://{}/uncompressed-tools", self.public_server_name()) {
+            return serde_json::to_string_pretty(&self.tools).map_err(Error::from);
+        }
+        let result = self
+            .client
+            .read_resource(ReadResourceRequestParams::new(uri))
+            .await
+            .map_err(|error| Error::Config(error.to_string()))?;
+        Ok(resource_contents_to_string(result.contents))
     }
 
     /// List frontend prompts passed through from backend servers.
     pub async fn list_prompts(&self) -> Result<Vec<String>, Error> {
-        todo!()
+        Ok(self.prompts.clone())
+    }
+
+    fn public_server_name(&self) -> &str {
+        self.config.server_name.as_deref().unwrap_or(&self.backend_name)
+    }
+
+    fn wrapper_prefix(&self) -> String {
+        format!("{}_", self.public_server_name())
+    }
+}
+
+fn convert_tool(tool: rmcp::model::Tool) -> Tool {
+    Tool::new(
+        tool.name.to_string(),
+        tool.description.map(|description| description.to_string()),
+        Value::Object((*tool.input_schema).clone()),
+    )
+}
+
+fn wrapper_tool(name: String, description: &str) -> Tool {
+    Tool::new(
+        name,
+        Some(description.to_string()),
+        serde_json::json!({
+            "type": "object",
+            "properties": {}
+        }),
+    )
+}
+
+fn call_tool_result_to_string(result: rmcp::model::CallToolResult) -> String {
+    if let Some(structured) = result.structured_content {
+        return value_to_string(&structured);
+    }
+
+    result
+        .content
+        .into_iter()
+        .map(content_to_string)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn content_to_string(content: Content) -> String {
+    match content.raw {
+        RawContent::Text(text) => text.text,
+        RawContent::Image(image) => image.data,
+        RawContent::Resource(resource) => resource_contents_to_string(vec![resource.resource]),
+        RawContent::Audio(audio) => audio.data,
+        RawContent::ResourceLink(resource) => resource.uri,
+    }
+}
+
+fn resource_contents_to_string(contents: Vec<ResourceContents>) -> String {
+    contents
+        .into_iter()
+        .map(|content| match content {
+            ResourceContents::TextResourceContents { text, .. } => text,
+            ResourceContents::BlobResourceContents { blob, .. } => blob,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn value_to_string(value: &Value) -> String {
+    match value {
+        Value::String(value) => value.clone(),
+        Value::Object(map) if map.len() == 1 && map.contains_key("result") => {
+            value_to_string(&map["result"])
+        }
+        _ => value.to_string(),
     }
 }
