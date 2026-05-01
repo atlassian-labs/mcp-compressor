@@ -151,11 +151,84 @@ Replace the existing implementations once the Rust-backed packages are productio
 - **Future V8 isolate / WASM portability**
   `napi-rs` v3 provides an official WebAssembly path, but current support is centered on `wasm32-wasip1-threads` and still depends on host capabilities such as WASI, threads/Atomics, networking, and process adapters. Use `napi-rs` for the initial TypeScript binding, but keep public TS APIs and generated TS clients free of avoidable Node-native assumptions so a later WASM/V8-isolate target remains feasible.
 
+## Implementation Progress
+
+Status as of 2026-05-01:
+
+### Landed
+
+- Rust workspace/crate scaffold exists at `crates/mcp-compressor-core`.
+- Compile-only Rust CI is enabled:
+  - `cargo check -p mcp-compressor-core`
+  - `cargo test -p mcp-compressor-core --lib --no-run`
+  - `cargo test -p mcp-compressor-core --tests --no-run`
+- Real MCP fixture servers exist for integration contracts:
+  - `tests/fixtures/alpha_server.py`
+  - `tests/fixtures/beta_server.py`
+- Rust integration-contract tests compile for:
+  - single-server stdio compression
+  - multi-server routing
+  - all compression levels
+  - all proxy transform modes (`compressed-tools`, `cli`, `just-bash`)
+  - direct command config and JSON MCP config
+  - generic HTTP proxy auth/dispatch
+  - generated shell/Python/TypeScript clients
+  - direct Rust CLI executable behavior
+- Pure compression primitives are implemented:
+  - `CompressionLevel`
+  - `CompressionEngine`
+  - ordered parameter extraction
+  - schema lookup and schema response formatting
+- Config/auth primitives are implemented:
+  - MCP config JSON parsing
+  - server lookup and sorted server names
+  - CLI prefix sanitization
+  - tool/subcommand name mapping
+  - session bearer-token generation and constant-time verification
+- A standalone Rust CLI binary placeholder exists with help/argument-validation plumbing and runtime TODO boundaries.
+- The official Rust MCP SDK dependency (`rmcp`) is present for upcoming runtime work.
+
+### Still TODO
+
+- JSON-schema-driven CLI argument parser (`cli/parser.rs`).
+- Client artifact generators:
+  - shell CLI script
+  - Python module
+  - TypeScript ESM module and declarations
+- `ToolCache` lazy fetch/refresh/filter behavior.
+- `CompressedServer` runtime:
+  - stdio backend connection through `rmcp`
+  - multi-server backend registry
+  - frontend MCP tool registration
+  - resource/prompt passthrough
+  - streamable HTTP frontend transport
+- Generic HTTP proxy runtime:
+  - `/health`
+  - authenticated `/exec`
+  - dispatch into compressed server runtime
+- Direct Rust CLI runtime execution for normal, CLI, and Just Bash modes.
+- FFI / binding surfaces for Python and TypeScript.
+- OAuth token persistence strategy and implementation.
+
+### Current implementation order
+
+The recommended near-term sequence is:
+
+1. Implement `cli/parser.rs` while the work is still pure and testable.
+2. Implement `client_gen/*`, keeping generated TypeScript ESM/fetch-based and portable for future WASM/V8-isolate usage.
+3. Implement `server/tool_cache.rs` against mock backends.
+4. Implement `CompressedServer` single-server stdio runtime with `rmcp` and make the first real MCP fixture contract pass.
+5. Extend `CompressedServer` to multi-server JSON config, resource/prompt passthrough, and all transform modes.
+6. Implement the generic HTTP proxy runtime and generated-client e2e execution.
+7. Implement the direct Rust CLI runtime on top of the same server/proxy primitives.
+8. Add Python and TypeScript bindings after the Rust runtime is green.
+
 ## Open Questions
 
 - Should OAuth token persistence remain language-side initially, or move to Rust once parity is proven?
 - Do we need a strict semver contract for the Rust FFI layer, or can wrappers pin exact core versions early on?
 - Should Just Bash integrations be optional package extras/features in the first release?
+- Which final WASM target/trampoline strategy, if any, should the TypeScript package support beyond initial `napi-rs` native builds?
 
 ---
 
