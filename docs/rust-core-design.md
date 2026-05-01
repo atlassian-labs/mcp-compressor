@@ -157,6 +157,198 @@ This keeps command parsing and server-routing consistent across Python and TypeS
 
 ---
 
+## Normal Compression Mode: Simplified Core Architecture
+
+### Problem with the Current Approach
+
+The existing Python library implements compression as a FastMCP *middleware* layer (`CompressedTools`), which intercepts the underlying `list_tools`, `call_tool`, and related MCP protocol messages. While this works, it is hard to reason about: middleware sits between two protocol layers, has implicit ordering dependencies, and requires understanding FastMCP internals to extend or debug.
+
+### Proposed Approach: Client → Compression Tools → Server
+
+For the Rust core (and its language wrappers) the architecture is simpler and more explicit. There are exactly three layers with clear interfaces between them:
+
+```
+┌──────────────────────────────────┐
+│   Backend MCP Server (upstream)  │
+└──────────────┬───────────────────┘
+               │ MCP protocol (stdio / http / sse)
+┌──────────────▼───────────────────┐
+│          Backend Client          │  ← one persistent MCP client connection
+│   tool schema cache (RwLock)     │
+└──────────────┬───────────────────┘
+               │ in-process function calls
+┌──────────────▼───────────────────┐
+│       Compression Engine         │  ← pure functions, no I/O
+│  format_listing(level, tools)    │
+│  get_schema(name) → schema       │
+│  invoke(name, input) → output    │
+└──────────────┬───────────────────┘
+               │ registered as 2–3 standard MCP tools
+┌──────────────▼───────────────────┐
+│       Frontend MCP Server        │  ← standard MCP server, no custom protocol
+│   get_tool_schema / invoke_tool  │
+│   list_tools  (max level only)   │
+└──────────────┬───────────────────┘
+               │ transport (caller's choice)
+    ┌──────────┴──────────┐
+    │ stdio (default)     │  streamable HTTP (127.0.0.1:<port>)
+    └─────────────────────┘
+```
+
+The key insight: **the frontend MCP server does not know it is a proxy.** It is a plain MCP server with 2–3 registered tools. The tools happen to hold a reference to a backend client, but that is an implementation detail invisible to the protocol layer.
+
+### CompressedServer
+
+The top-level object is `CompressedServer` (Rust struct / Python class). It owns:
+
+- `backend_client` — a connected MCP client for the upstream server
+- `tool_cache` — lazily populated on first request, refresh-on-demand
+- `engine` — `CompressionEngine`, a pure stateless struct
+
+```rust
+pub struct CompressedServer {
+    backend: Arc<McpClient>,
+    cache:   Arc<RwLock<ToolCache>>,
+    engine:  CompressionEngine,
+    config:  CompressionConfig,      // level, include/exclude filters
+}
+
+impl CompressedServer {
+    pub async fn connect(transport: impl IntoTransport) -> Result<Self>;
+
+    /// Register compression tools on a new MCP server and run over stdio.
+    pub async fn run_stdio(self) -> Result<()>;
+
+    /// Register compression tools on a new MCP server and serve streamable HTTP.
+    pub async fn run_http(self, addr: SocketAddr) -> Result<()>;
+
+    /// In-process: call a backend tool directly, bypassing the MCP server layer entirely.
+    pub async fn invoke(&self, tool: &str, input: Value) -> Result<ToolResult>;
+}
+```
+
+**Python equivalent:**
+
+```python
+class CompressedServer:
+    @classmethod
+    async def connect(cls, command_or_url: str, **options) -> "CompressedServer": ...
+    async def run_stdio(self) -> None: ...
+    async def run_http(self, host: str = "127.0.0.1", port: int = 0) -> None: ...
+    async def invoke(self, tool: str, input: dict) -> ToolResult: ...
+```
+
+### Tool Registration (No Middleware)
+
+The 2–3 compression tools are registered on the frontend server as ordinary tool handlers that close over `backend` and `engine`:
+
+```rust
+fn register_compression_tools(server: &mut McpServer, state: Arc<CompressedServer>) {
+    server.register_tool("get_tool_schema", {
+        let s = state.clone();
+        move |params| async move { s.get_schema(params.tool_name).await }
+    });
+
+    server.register_tool("invoke_tool", {
+        let s = state.clone();
+        move |params| async move { s.invoke(params.tool_name, params.input).await }
+    });
+
+    if state.config.level == CompressionLevel::Max {
+        server.register_tool("list_tools", {
+            let s = state.clone();
+            move |_| async move { s.list_tools().await }
+        });
+    }
+}
+```
+
+There is no middleware. The server's own tool list is exactly and only these 2–3 tools — the backend tool list is never surfaced to the protocol layer directly.
+
+### Streamable HTTP Transport
+
+Exposing the frontend server over streamable HTTP is a first-class transport option. This solves a real problem: **consuming mcp-compressor as a library without spawning a subprocess**.
+
+With stdio, any caller that wants to embed mcp-compressor must either:
+- spawn a subprocess and communicate over stdin/stdout, or
+- use FastMCP-specific internals to embed the server in-process
+
+With streamable HTTP, any caller that speaks MCP can connect over a local TCP socket:
+
+```python
+# Caller code — no subprocess, no FastMCP internals needed
+async with CompressedServer.connect("uvx mcp-server-fetch") as cs:
+    await cs.run_http(port=0)          # binds a free port, blocks until cancelled
+
+# Elsewhere (same process or different):
+async with McpClient(f"http://127.0.0.1:{cs.port}") as client:
+    tools = await client.list_tools()
+    result = await client.call_tool("invoke_tool", {...})
+```
+
+Or, if the caller just wants to drive the backend directly without any MCP client layer:
+
+```python
+async with CompressedServer.connect("uvx mcp-server-fetch") as cs:
+    result = await cs.invoke("fetch", {"url": "https://example.com"})
+```
+
+The in-process `invoke` path bypasses the MCP server entirely — there is no network round-trip.
+
+### Is This Architecture Sound?
+
+Yes, with the following notes:
+
+**What is simpler:**
+- No middleware — just a client, a stateless engine, and a server. Each layer is independently testable.
+- Transport choice (stdio vs HTTP) is a single parameter, not a structural change.
+- In-process `invoke` enables zero-overhead library usage.
+
+**What is intentionally different from the current Python implementation:**
+- Resources and prompts from the backend are **not** automatically forwarded to the frontend server. The frontend server exposes only the compression tools. This is the right tradeoff for the Rust core: if a caller needs resource/prompt passthrough it can do so by connecting the backend client directly. The compression layer's job is tool compression, not general proxying.
+- The tool schema cache is explicit (`RwLock<ToolCache>`) rather than implicit in the middleware call chain. This makes cache invalidation and refresh observable.
+
+**Concurrency:**
+- Concurrent tool calls on the streamable HTTP server are handled by the async runtime — each request gets its own task. The backend client must support concurrent calls (most MCP SDKs do via multiplexed sessions).
+- The `RwLock<ToolCache>` means concurrent readers (schema lookups) do not block one another; only a cache refresh acquires a write lock.
+
+**One genuine challenge:**
+Streamable HTTP adds a per-request TCP round-trip overhead versus an in-process call. For LLM agent loops where many tool calls happen in rapid succession, this adds latency. Mitigation: the in-process `invoke` API is always available for callers that are in the same process; streamable HTTP is primarily for cross-language or cross-process consumers.
+
+### Code Organization for Compression Mode
+
+The compression-mode modules in the Rust crate:
+
+```
+crates/mcp-compressor-core/src/
+├── server/
+│   ├── mod.rs
+│   ├── compressed.rs        # CompressedServer: connect, run_stdio, run_http, invoke
+│   ├── tool_cache.rs        # ToolCache: fetch-once, refresh, include/exclude filter
+│   └── registration.rs      # register_compression_tools(server, state)
+├── compression/
+│   ├── mod.rs
+│   ├── engine.rs            # CompressionEngine: format_listing, get_schema (pure)
+│   └── levels.rs            # CompressionLevel enum and per-level formatters
+└── transport/
+    ├── mod.rs
+    └── factory.rs           # infer transport type from command/URL; build client transport
+```
+
+And in the Python package (the current `tools.py` middleware is replaced by a thin wrapper around `CompressedServer`):
+
+```
+mcp_compressor/
+├── server.py                # CompressedServer (Python wrapper or PyO3 binding)
+│                            #   connect(), run_stdio(), run_http(port), invoke()
+├── engine.py                # CompressionEngine (pure functions, or binding)
+└── tool_cache.py            # ToolCache (fetch, refresh, filter)
+```
+
+`tools.py` (the current `CompressedTools` middleware) is superseded by `server.py`. The public CLI flags and compression semantics are unchanged.
+
+---
+
 ## Extended Design: Generic Tool Proxy and Multi-Target Client Generation
 
 ### Motivation
