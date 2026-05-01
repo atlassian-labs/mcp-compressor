@@ -20,11 +20,17 @@ use crate::server::CompressedServer;
 /// delegates their calls to [`CompressedServer`].
 #[derive(Debug)]
 pub struct FrontendServer {
-    compressed: CompressedServer,
+    compressed: Arc<CompressedServer>,
 }
 
 impl FrontendServer {
     pub fn new(compressed: CompressedServer) -> Self {
+        Self {
+            compressed: Arc::new(compressed),
+        }
+    }
+
+    pub fn from_arc(compressed: Arc<CompressedServer>) -> Self {
         Self { compressed }
     }
 }

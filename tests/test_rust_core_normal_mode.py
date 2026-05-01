@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import time
 from pathlib import Path
 
 from fastmcp import Client
-from fastmcp.client.transports import StdioTransport
+from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
 
 
 def rust_core_command(*args: str) -> list[str]:
@@ -128,6 +130,57 @@ async def test_rust_core_normal_stdio_mode_with_multi_server_direct_config() -> 
         prompts = {prompt.name for prompt in await client.list_prompts()}
         assert "alpha_prompt" in prompts
         assert "beta_prompt" in prompts
+
+
+async def test_rust_core_normal_streamable_http_mode_with_fixture_server() -> None:
+    root = Path(__file__).parents[1]
+    alpha = root / "crates" / "mcp-compressor-core" / "tests" / "fixtures" / "alpha_server.py"
+    command = rust_core_command(
+        "--compression",
+        "max",
+        "--server-name",
+        "alpha",
+        "--transport",
+        "streamable-http",
+        "--port",
+        "0",
+        "--",
+        "python3",
+        str(alpha),
+    )
+    process = subprocess.Popen(  # noqa: S603
+        command,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert process.stderr is not None
+        deadline = time.monotonic() + 30
+        url = None
+        while time.monotonic() < deadline:
+            line = process.stderr.readline()
+            if "Streamable HTTP MCP server listening on " in line:
+                url = line.rsplit(" ", 1)[1].strip()
+                break
+            if process.poll() is not None:
+                raise AssertionError(f"rust HTTP server exited early with {process.returncode}")
+        assert url is not None
+
+        async with Client(StreamableHttpTransport(url)) as client:
+            tools = {tool.name for tool in await client.list_tools()}
+            assert tools == {
+                "alpha_get_tool_schema",
+                "alpha_invoke_tool",
+                "alpha_list_tools",
+            }
+            result = await client.call_tool(
+                "alpha_invoke_tool",
+                {"tool_name": "echo", "tool_input": {"message": "http"}},
+            )
+            assert result.content[0].text == "alpha:http"
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
 
 
 async def test_rust_core_normal_stdio_mode_with_json_config(tmp_path: Path) -> None:
