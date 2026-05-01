@@ -57,7 +57,7 @@ fn send_raw_http(method: &str, url: &str, auth: Option<&str>, body: Option<&str>
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn proxy_health_is_public_and_exec_requires_bearer_token() {
     let compressed = CompressedServer::connect_stdio(
         common::max_config(Some("alpha")),
@@ -82,7 +82,7 @@ async fn proxy_health_is_public_and_exec_requires_bearer_token() {
     assert_eq!(wrong_auth.status, 401);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn proxy_exec_dispatches_to_real_backend_with_session_token() {
     let compressed = CompressedServer::connect_stdio(
         common::max_config(Some("alpha")),
