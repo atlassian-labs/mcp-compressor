@@ -49,7 +49,7 @@ jobs:
       - name: Check typing
         run: uv run ty check
 
-  rust-core-compile:
+  rust-core-tests:
     runs-on: ubuntu-latest
     steps:
       - name: Check out

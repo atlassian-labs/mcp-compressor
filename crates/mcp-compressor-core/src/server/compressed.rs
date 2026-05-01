@@ -14,7 +14,7 @@ use rmcp::model::{
     ReadResourceRequestParams, ResourceContents,
 };
 use rmcp::service::RunningService;
-use rmcp::transport::{ConfigureCommandExt, TokioChildProcess};
+use rmcp::transport::{ConfigureCommandExt, StreamableHttpClientTransport, TokioChildProcess};
 use rmcp::{RoleClient, ServiceExt};
 use serde_json::Value;
 
@@ -23,13 +23,23 @@ use crate::compression::engine::{CompressionEngine, Tool};
 use crate::compression::CompressionLevel;
 use crate::Error;
 
-/// Configuration for one upstream MCP server process reached over stdio.
+/// Transport type used to reach an upstream MCP server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackendTransport {
+    /// Spawn a local command and speak MCP over stdio.
+    Stdio,
+    /// Connect to a remote streamable HTTP MCP endpoint.
+    StreamableHttp,
+}
+
+/// Configuration for one upstream MCP server.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackendServerConfig {
     pub name: String,
     pub command: String,
     pub args: Vec<String>,
     pub env: HashMap<String, String>,
+    pub transport: BackendTransport,
 }
 
 impl BackendServerConfig {
@@ -38,11 +48,18 @@ impl BackendServerConfig {
         command: impl Into<String>,
         args: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
+        let command = command.into();
+        let transport = if is_http_url(&command) {
+            BackendTransport::StreamableHttp
+        } else {
+            BackendTransport::Stdio
+        };
         Self {
             name: name.into(),
-            command: command.into(),
+            command,
             args: args.into_iter().map(Into::into).collect(),
             env: HashMap::new(),
+            transport,
         }
     }
 
@@ -403,21 +420,10 @@ async fn connect_backend(
     backend: BackendServerConfig,
     public_name: String,
 ) -> Result<ConnectedBackend, Error> {
-    let mut command = tokio::process::Command::new(&backend.command);
-    command
-        .args(&backend.args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped());
-    command.stderr(Stdio::inherit());
-    for (key, value) in &backend.env {
-        command.env(key, value);
-    }
-
-    let transport = TokioChildProcess::new(command.configure(|_| {})).map_err(Error::Io)?;
-    let client = ()
-        .serve(transport)
-        .await
-        .map_err(|error| Error::Config(error.to_string()))?;
+    let client = match backend.transport {
+        BackendTransport::Stdio => connect_stdio_backend(&backend).await?,
+        BackendTransport::StreamableHttp => connect_streamable_http_backend(&backend).await?,
+    };
 
     let rmcp_tools = client
         .list_all_tools()
@@ -444,6 +450,43 @@ async fn connect_backend(
         resources,
         prompts,
     })
+}
+
+async fn connect_stdio_backend(
+    backend: &BackendServerConfig,
+) -> Result<RunningService<RoleClient, ()>, Error> {
+    let mut command = tokio::process::Command::new(&backend.command);
+    command
+        .args(&backend.args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped());
+    command.stderr(Stdio::inherit());
+    for (key, value) in &backend.env {
+        command.env(key, value);
+    }
+
+    let transport = TokioChildProcess::new(command.configure(|_| {})).map_err(Error::Io)?;
+    ().serve(transport)
+        .await
+        .map_err(|error| Error::Config(error.to_string()))
+}
+
+async fn connect_streamable_http_backend(
+    backend: &BackendServerConfig,
+) -> Result<RunningService<RoleClient, ()>, Error> {
+    if !backend.args.is_empty() {
+        return Err(Error::Config(
+            "streamable HTTP backend URLs do not accept command arguments".to_string(),
+        ));
+    }
+    let transport = StreamableHttpClientTransport::from_uri(backend.command.clone());
+    ().serve(transport)
+        .await
+        .map_err(|error| Error::Config(error.to_string()))
+}
+
+fn is_http_url(value: &str) -> bool {
+    value.starts_with("http://") || value.starts_with("https://")
 }
 
 fn convert_tool(tool: rmcp::model::Tool) -> Tool {
