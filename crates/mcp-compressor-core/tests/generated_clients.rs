@@ -36,7 +36,7 @@ async fn running_proxy_config(output_dir: &std::path::Path) -> GeneratorConfig {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn generated_cli_script_invokes_real_proxy_and_backend() {
     let tempdir = tempfile::tempdir().unwrap();
     let config = running_proxy_config(tempdir.path()).await;
@@ -62,7 +62,7 @@ async fn generated_cli_script_invokes_real_proxy_and_backend() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn generated_python_module_invokes_real_proxy_and_backend() {
     let tempdir = tempfile::tempdir().unwrap();
     let config = running_proxy_config(tempdir.path()).await;
@@ -86,7 +86,7 @@ async fn generated_python_module_invokes_real_proxy_and_backend() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn generated_typescript_module_invokes_real_proxy_and_backend() {
     let tempdir = tempfile::tempdir().unwrap();
     let config = running_proxy_config(tempdir.path()).await;

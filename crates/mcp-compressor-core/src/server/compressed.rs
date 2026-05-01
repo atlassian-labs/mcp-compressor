@@ -263,20 +263,7 @@ impl CompressedServer {
         tool_input: Value,
     ) -> Result<String, Error> {
         let backend = self.backend_for_wrapper(_wrapper_tool_name)?;
-        let arguments = match tool_input {
-            Value::Object(map) => Some(map),
-            _ => None,
-        };
-        let mut params = CallToolRequestParams::new(backend_tool_name.to_string());
-        if let Some(arguments) = arguments {
-            params = params.with_arguments(arguments);
-        }
-        let result = backend
-            .client
-            .call_tool(params)
-            .await
-            .map_err(|error| Error::Config(error.to_string()))?;
-        Ok(call_tool_result_to_string(result))
+        self.invoke_backend(backend, backend_tool_name, tool_input).await
     }
 
     /// List frontend resources, including pass-through backend resources and
@@ -320,6 +307,45 @@ impl CompressedServer {
             .iter()
             .flat_map(|backend| backend.prompts.clone())
             .collect())
+    }
+
+    /// Invoke a backend tool directly when the runtime has exactly one backend.
+    ///
+    /// This is used by generated proxy clients, which call `/exec` with the
+    /// backend tool name directly rather than the MCP wrapper tool name.
+    pub async fn invoke_single_backend_tool(
+        &self,
+        backend_tool_name: &str,
+        tool_input: Value,
+    ) -> Result<String, Error> {
+        let backend = self
+            .backends
+            .first()
+            .filter(|_| self.backends.len() == 1)
+            .ok_or_else(|| Error::ToolNotFound(backend_tool_name.to_string()))?;
+        self.invoke_backend(backend, backend_tool_name, tool_input).await
+    }
+
+    async fn invoke_backend(
+        &self,
+        backend: &ConnectedBackend,
+        backend_tool_name: &str,
+        tool_input: Value,
+    ) -> Result<String, Error> {
+        let arguments = match tool_input {
+            Value::Object(map) => Some(map),
+            _ => None,
+        };
+        let mut params = CallToolRequestParams::new(backend_tool_name.to_string());
+        if let Some(arguments) = arguments {
+            params = params.with_arguments(arguments);
+        }
+        let result = backend
+            .client
+            .call_tool(params)
+            .await
+            .map_err(|error| Error::Config(error.to_string()))?;
+        Ok(call_tool_result_to_string(result))
     }
 
     fn wrapper_prefix(&self, backend: &ConnectedBackend) -> String {
