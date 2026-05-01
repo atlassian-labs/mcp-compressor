@@ -38,12 +38,20 @@ impl Tool {
         description: impl Into<Option<String>>,
         input_schema: serde_json::Value,
     ) -> Self {
-        Self { name: name.into(), description: description.into(), input_schema }
+        Self {
+            name: name.into(),
+            description: description.into(),
+            input_schema,
+        }
     }
 
     /// Return the ordered list of parameter names from `input_schema.properties`.
     pub fn param_names(&self) -> Vec<String> {
-        todo!()
+        self.input_schema
+            .get("properties")
+            .and_then(serde_json::Value::as_object)
+            .map(|properties| properties.keys().cloned().collect())
+            .unwrap_or_default()
     }
 }
 
@@ -58,7 +66,7 @@ pub struct CompressionEngine {
 
 impl CompressionEngine {
     pub fn new(level: CompressionLevel) -> Self {
-        todo!()
+        Self { level }
     }
 
     /// Format the listing of *all* tools at the engine's compression level.
@@ -67,21 +75,29 @@ impl CompressionEngine {
     /// a `list_tools` MCP tool instead.
     /// Otherwise joins individual [`format_tool`] results with `"\n"`.
     pub fn format_listing(&self, tools: &[Tool]) -> String {
-        todo!()
+        if self.level == CompressionLevel::Max {
+            return String::new();
+        }
+
+        tools
+            .iter()
+            .map(|tool| self.format_tool(tool))
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// Format a *single* tool at the engine's compression level.
     ///
     /// See module-level doc for the format rules.
     pub fn format_tool(&self, tool: &Tool) -> String {
-        todo!()
+        format_tool_at_level(tool, &self.level)
     }
 
     /// Look up a tool by name in the provided slice.
     ///
     /// Returns `None` when the name is not found.
     pub fn get_schema<'a>(&self, tools: &'a [Tool], name: &str) -> Option<&'a Tool> {
-        todo!()
+        tools.iter().find(|tool| tool.name == name)
     }
 
     /// Build the full schema response string for a tool.
@@ -100,8 +116,38 @@ impl CompressionEngine {
     /// }
     /// ```
     pub fn format_schema_response(tool: &Tool) -> String {
-        todo!()
+        let tool_description = format_tool_at_level(tool, &CompressionLevel::Low);
+        let schema = serde_json::to_string_pretty(&tool.input_schema)
+            .unwrap_or_else(|_| tool.input_schema.to_string());
+        format!("{tool_description}\n\n{schema}")
     }
+}
+
+fn format_tool_at_level(tool: &Tool, level: &CompressionLevel) -> String {
+    match level {
+        CompressionLevel::Max => format!("<tool>{}</tool>", tool.name),
+        CompressionLevel::High => format!("<tool>{}({})</tool>", tool.name, format_args(tool)),
+        CompressionLevel::Medium => format_with_description(tool, first_sentence_description(tool)),
+        CompressionLevel::Low => format_with_description(tool, tool.description.as_deref()),
+    }
+}
+
+fn format_with_description(tool: &Tool, description: Option<&str>) -> String {
+    let signature = format!("{}({})", tool.name, format_args(tool));
+    match description.map(str::trim).filter(|description| !description.is_empty()) {
+        Some(description) => format!("<tool>{signature}: {description}</tool>"),
+        None => format!("<tool>{signature}</tool>"),
+    }
+}
+
+fn format_args(tool: &Tool) -> String {
+    tool.param_names().join(", ")
+}
+
+fn first_sentence_description(tool: &Tool) -> Option<&str> {
+    let description = tool.description.as_deref()?;
+    let first_line = description.lines().next().unwrap_or_default();
+    Some(first_line.split('.').next().unwrap_or_default().trim())
 }
 
 // ---------------------------------------------------------------------------
