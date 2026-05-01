@@ -46,6 +46,28 @@ impl BackendServerConfig {
     }
 }
 
+/// Frontend tool-surface mode exposed by the proxy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProxyTransformMode {
+    /// Normal compressed MCP mode: get_tool_schema/invoke_tool/(list_tools at max).
+    CompressedTools,
+    /// CLI mode: expose one help tool per configured server and route generated clients through /exec.
+    Cli,
+    /// Just Bash mode: expose one bash tool plus per-server help tools.
+    JustBash,
+}
+
+/// How upstream backend servers are supplied to the runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackendConfigSource {
+    /// Direct command/argv input, e.g. `python alpha_server.py`.
+    Command,
+    /// JSON MCP config input with one `mcpServers` entry.
+    SingleServerJsonConfig,
+    /// JSON MCP config input with multiple `mcpServers` entries.
+    MultiServerJsonConfig,
+}
+
 /// Compression/runtime options shared by single-server and multi-server modes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompressedServerConfig {
@@ -54,6 +76,8 @@ pub struct CompressedServerConfig {
     pub include_tools: Vec<String>,
     pub exclude_tools: Vec<String>,
     pub toonify: bool,
+    pub transform_mode: ProxyTransformMode,
+    pub config_source: BackendConfigSource,
 }
 
 impl Default for CompressedServerConfig {
@@ -64,6 +88,8 @@ impl Default for CompressedServerConfig {
             include_tools: Vec::new(),
             exclude_tools: Vec::new(),
             toonify: false,
+            transform_mode: ProxyTransformMode::CompressedTools,
+            config_source: BackendConfigSource::Command,
         }
     }
 }
@@ -101,6 +127,14 @@ impl CompressedServer {
     pub async fn connect_multi_stdio(
         _config: CompressedServerConfig,
         _backends: Vec<BackendServerConfig>,
+    ) -> Result<Self, Error> {
+        todo!()
+    }
+
+    /// Connect using a JSON MCP config document containing one or more `mcpServers` entries.
+    pub async fn connect_mcp_config_json(
+        _config: CompressedServerConfig,
+        _mcp_config_json: &str,
     ) -> Result<Self, Error> {
         todo!()
     }
