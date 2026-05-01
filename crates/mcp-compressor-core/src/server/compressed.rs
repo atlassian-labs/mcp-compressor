@@ -309,6 +309,15 @@ impl CompressedServer {
             .collect())
     }
 
+    /// Return backend tools when the runtime has exactly one backend.
+    pub fn single_backend_tools(&self) -> Result<Vec<Tool>, Error> {
+        self.backends
+            .first()
+            .filter(|_| self.backends.len() == 1)
+            .map(|backend| backend.tools.clone())
+            .ok_or_else(|| Error::Config("expected exactly one backend".to_string()))
+    }
+
     /// Invoke a backend tool directly when the runtime has exactly one backend.
     ///
     /// This is used by generated proxy clients, which call `/exec` with the
