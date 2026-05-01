@@ -52,3 +52,17 @@ async def test_rust_core_normal_stdio_mode_with_fixture_server() -> None:
         listed = await client.call_tool("alpha_list_tools", {})
         assert "echo" in listed.content[0].text
         assert "add" in listed.content[0].text
+
+        resources = {str(resource.uri) for resource in await client.list_resources()}
+        assert "fixture://alpha-resource" in resources
+        assert "compressor://alpha/uncompressed-tools" in resources
+
+        alpha_resource = await client.read_resource("fixture://alpha-resource")
+        assert alpha_resource[0].text == "alpha resource"
+
+        compressor_resource = await client.read_resource("compressor://alpha/uncompressed-tools")
+        assert "echo" in compressor_resource[0].text
+        assert "add" in compressor_resource[0].text
+
+        prompts = {prompt.name for prompt in await client.list_prompts()}
+        assert "alpha_prompt" in prompts
