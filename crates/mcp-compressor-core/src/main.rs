@@ -65,17 +65,25 @@ async fn build_server(cli: &CliOptions) -> Result<CompressedServer, CliError> {
         exclude_tools: Vec::new(),
         toonify: false,
         transform_mode: cli.transform_mode,
-        config_source: if cli.config_path.is_some() {
-            BackendConfigSource::SingleServerJsonConfig
-        } else {
-            BackendConfigSource::Command
-        },
+        config_source: BackendConfigSource::Command,
     };
 
     if let Some(config_path) = &cli.config_path {
         let json = std::fs::read_to_string(config_path)
             .map_err(|error| CliError::Runtime(error.to_string()))?;
+        let mut config = config;
+        let parsed = mcp_compressor_core::config::topology::MCPConfig::from_json(&json)
+            .map_err(|error| CliError::Runtime(error.to_string()))?;
+        config.config_source = if parsed.server_names().len() == 1 {
+            BackendConfigSource::SingleServerJsonConfig
+        } else {
+            BackendConfigSource::MultiServerJsonConfig
+        };
         CompressedServer::connect_mcp_config_json(config, &json)
+            .await
+            .map_err(|error| CliError::Runtime(error.to_string()))
+    } else if !cli.multi_servers.is_empty() {
+        CompressedServer::connect_multi_stdio(config, cli.multi_servers.clone())
             .await
             .map_err(|error| CliError::Runtime(error.to_string()))
     } else {
@@ -210,6 +218,7 @@ struct CliOptions {
     server_name: Option<String>,
     transform_mode: ProxyTransformMode,
     command: Vec<String>,
+    multi_servers: Vec<BackendServerConfig>,
 }
 
 impl CliOptions {
@@ -220,6 +229,7 @@ impl CliOptions {
             server_name: None,
             transform_mode: ProxyTransformMode::CompressedTools,
             command: Vec::new(),
+            multi_servers: Vec::new(),
         };
         let mut index = 0;
         while index < args.len() {
@@ -242,6 +252,11 @@ impl CliOptions {
                 "--server-name" => {
                     options.server_name = Some(required_value(args, index, "--server-name")?);
                     index += 2;
+                }
+                "--multi-server" => {
+                    let (backend, next_index) = parse_multi_server(args, index)?;
+                    options.multi_servers.push(backend);
+                    index = next_index;
                 }
                 "--transport" => {
                     let value = required_value(args, index, "--transport")?;
@@ -279,6 +294,32 @@ impl CliOptions {
         }
         Ok(options)
     }
+}
+
+fn parse_multi_server(
+    args: &[String],
+    index: usize,
+) -> Result<(BackendServerConfig, usize), CliError> {
+    let spec = required_value(args, index, "--multi-server")?;
+    let (name, command) = spec
+        .split_once('=')
+        .filter(|(name, command)| !name.is_empty() && !command.is_empty())
+        .ok_or_else(|| {
+            CliError::Usage("--multi-server requires <name=command> followed by args".to_string())
+        })?;
+    let mut next_index = index + 2;
+    let mut backend_args = Vec::new();
+    while next_index < args.len() {
+        if args[next_index] == "--multi-server" {
+            break;
+        }
+        backend_args.push(args[next_index].clone());
+        next_index += 1;
+    }
+    Ok((
+        BackendServerConfig::new(name.to_string(), command.to_string(), backend_args),
+        next_index,
+    ))
 }
 
 fn required_value(args: &[String], index: usize, flag: &str) -> Result<String, CliError> {
