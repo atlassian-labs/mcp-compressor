@@ -112,33 +112,32 @@ This keeps command parsing and server-routing consistent across Python and TypeS
 
 ## Phased Delivery Plan
 
-### Phase 0 — Contract and parity tests
+The Rust core and its language bindings are built **in parallel** with the existing Python implementation. There is no incremental migration or integration with legacy code during development — the new implementation is self-contained until it is ready to cut over. This prevents legacy patterns from influencing the Rust design.
 
-- define canonical behavioral contract (compression outputs, schema retrieval, invocation, config parsing)
-- add cross-language parity fixtures consumed by Python and TS tests
+### Phase 1 — Rust core (independent build)
 
-### Phase 1 — Rust core extraction
+Build the full Rust implementation as a standalone crate with no dependency on the existing Python package:
 
-- implement compression/config/routing modules in Rust
-- expose C-ABI-safe surface and high-level binding-friendly APIs
+- `CompressedServer` — MCP client connection, `ToolCache`, `CompressionEngine`, stdio and streamable HTTP transports
+- `ToolProxyServer` — generic HTTP proxy with bearer token auth and `POST /exec` dispatch
+- All client generators: `CliGenerator`, `PythonGenerator`, `TypeScriptGenerator`
+- Self-contained Rust test suite covering compression, proxy, and auth behaviour
 
-### Phase 2 — TypeScript migration
+### Phase 2 — Language bindings (independent build)
 
-- replace TS core logic with Rust-backed bindings
-- keep existing public API/CLI behavior stable
-- add Just Bash single-tool integration
+Build standalone language packages backed by the Rust core. No dependency on or modification of the existing Python package:
 
-### Phase 3 — Python migration
+- **Python** — PyO3/maturin binding exposing `CompressedSession` and compression tools as native async Python; distributed as a separate wheel
+- **TypeScript** — napi-rs binding exposing the same surface as a native Node.js module; distributed as a separate npm package
 
-- replace Python core logic with Rust-backed bindings
-- keep existing public API/CLI behavior stable
-- add `just-bash-py` single-tool integration
+### Phase 3 — Cutover and hardening
 
-### Phase 4 — Hardening + rollout
+Replace the existing implementations once the Rust-backed packages are production-ready:
 
-- benchmark latency/token outputs versus current implementations
-- complete docs/migration notes
-- release behind optional feature flag first, then make default
+- swap the Python `mcp-compressor` package to use the Rust-backed implementation
+- swap the TypeScript package similarly
+- benchmark latency and token output against the previous Python baseline
+- complete docs and migration notes; release
 
 ## Risks and Mitigations
 
@@ -199,7 +198,7 @@ The key insight: **the frontend MCP server does not know it is a proxy.** It is 
 
 ### CompressedServer
 
-The top-level object is `CompressedServer`. In Rust it is a native struct; in Python it starts as a pure-Python class and becomes a PyO3/maturin binding to the Rust struct once the migration phase ships (Phase 6 in the delivery plan). The public API shape is identical in both cases — only the backing implementation changes.
+The top-level object is `CompressedServer`. In Rust it is a native struct; in Python it starts as a pure-Python class and becomes a PyO3/maturin binding to the Rust struct once the Phase 2 language bindings ship. The public API shape is identical in both cases — only the backing implementation changes.
 
 `CompressedServer` owns:
 
@@ -664,52 +663,3 @@ typescript/
 │       └── typescriptLib.ts     # TypeScriptGenerator
 └── README.md
 ```
-
----
-
-### Updated Phased Delivery Plan
-
-#### Phase 0 — Contract and parity tests *(unchanged)*
-
-- define canonical behavioral contract
-- add cross-language parity fixtures
-
-#### Phase 1 — Rust core extraction *(unchanged)*
-
-- compression/config/routing modules in Rust
-- stable C-ABI surface
-
-#### Phase 2 — Generic proxy + token auth (new)
-
-- implement `SessionToken` in Rust (`proxy/auth.rs`) and Python (`proxy/auth.py`)
-- refactor `CliBridge` → `ToolProxyServer` with token validation middleware
-- update CLI generator to embed token in BRIDGES entries
-- add `POST /exec` token check returning `HTTP 401` on mismatch
-
-#### Phase 3 — Python library generator (new)
-
-- implement `PythonGenerator` in `client_gen/python_lib.py`
-- expose via `--generate-python-lib <output_dir>` CLI flag
-- add `httpx` as an optional dependency (`pip install mcp-compressor[python-lib]`)
-
-#### Phase 4 — TypeScript module generator (new)
-
-- implement `TypeScriptGenerator` in `client_gen/typescript_lib.ts`
-- expose via `--generate-ts-lib <output_dir>` CLI flag
-- emit `.ts` + `.d.ts`; no runtime deps beyond built-in `fetch`
-
-#### Phase 5 — TypeScript migration *(was Phase 2)*
-
-- replace TS core logic with Rust-backed bindings
-- add Vercel Just Bash single-tool integration
-
-#### Phase 6 — Python migration *(was Phase 3)*
-
-- replace Python core logic with Rust-backed bindings
-- add `just-bash-py` single-tool integration
-
-#### Phase 7 — Hardening + rollout *(was Phase 4)*
-
-- benchmark latency/token outputs
-- complete docs and migration notes
-- release behind optional feature flag
