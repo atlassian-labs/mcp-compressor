@@ -85,7 +85,14 @@ async fn build_server(cli: &CliOptions) -> Result<CompressedServer, CliError> {
             .await
             .map_err(|error| CliError::Runtime(error.to_string()))
     } else if !cli.multi_servers.is_empty() {
-        CompressedServer::connect_multi_stdio(config, cli.multi_servers.clone())
+        CompressedServer::connect_multi_stdio(
+            config,
+            cli.multi_servers
+                .clone()
+                .into_iter()
+                .map(apply_backend_auth)
+                .collect(),
+        )
             .await
             .map_err(|error| CliError::Runtime(error.to_string()))
     } else {
@@ -99,7 +106,11 @@ async fn build_server(cli: &CliOptions) -> Result<CompressedServer, CliError> {
             .unwrap_or_else(|| "server".to_string());
         CompressedServer::connect_stdio(
             config,
-            BackendServerConfig::new(backend_name, command.clone(), args.to_vec()),
+            apply_backend_auth(BackendServerConfig::new(
+                backend_name,
+                command.clone(),
+                args.to_vec(),
+            )),
         )
         .await
         .map_err(|error| CliError::Runtime(error.to_string()))
@@ -341,6 +352,19 @@ impl CliOptions {
         }
         Ok(options)
     }
+}
+
+fn apply_backend_auth(mut backend: BackendServerConfig) -> BackendServerConfig {
+    if let Ok(headers) = std::env::var("MCP_COMPRESSOR_BACKEND_HEADER") {
+        backend = backend.with_headers(
+            headers
+                .split('\n')
+                .filter_map(|header| header.split_once(':'))
+                .map(|(name, value)| (name.trim().to_string(), value.trim().to_string()))
+                .filter(|(name, value)| !name.is_empty() && !value.is_empty()),
+        );
+    }
+    backend
 }
 
 fn parse_multi_server(

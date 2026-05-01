@@ -8,12 +8,15 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::process::Stdio;
+use std::str::FromStr;
 
+use axum::http::{HeaderName, HeaderValue};
 use rmcp::model::{
     CallToolRequestParams, Content, GetPromptRequestParams, GetPromptResult, Prompt, RawContent,
     ReadResourceRequestParams, ResourceContents,
 };
 use rmcp::service::RunningService;
+use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::transport::{ConfigureCommandExt, StreamableHttpClientTransport, TokioChildProcess};
 use rmcp::{RoleClient, ServiceExt};
 use serde_json::Value;
@@ -40,6 +43,7 @@ pub struct BackendServerConfig {
     pub args: Vec<String>,
     pub env: HashMap<String, String>,
     pub transport: BackendTransport,
+    pub headers: HashMap<String, String>,
 }
 
 impl BackendServerConfig {
@@ -54,12 +58,19 @@ impl BackendServerConfig {
         } else {
             BackendTransport::Stdio
         };
+        let raw_args = args.into_iter().map(Into::into).collect::<Vec<_>>();
+        let (args, headers) = if transport == BackendTransport::StreamableHttp {
+            parse_http_backend_args(raw_args)
+        } else {
+            (raw_args, HashMap::new())
+        };
         Self {
             name: name.into(),
             command,
-            args: args.into_iter().map(Into::into).collect(),
+            args,
             env: HashMap::new(),
             transport,
+            headers,
         }
     }
 
@@ -68,6 +79,16 @@ impl BackendServerConfig {
         env: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
     ) -> Self {
         self.env = env.into_iter().map(|(k, v)| (k.into(), v.into())).collect();
+        self
+    }
+    pub fn with_headers(
+        mut self,
+        headers: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+    ) -> Self {
+        self.headers = headers
+            .into_iter()
+            .map(|(name, value)| (name.into(), value.into()))
+            .collect();
         self
     }
 }
@@ -479,10 +500,116 @@ async fn connect_streamable_http_backend(
             "streamable HTTP backend URLs do not accept command arguments".to_string(),
         ));
     }
-    let transport = StreamableHttpClientTransport::from_uri(backend.command.clone());
+    let mut config = StreamableHttpClientTransportConfig::with_uri(backend.command.clone());
+    let headers = backend_http_headers(backend)?;
+    if !headers.is_empty() {
+        config = config.custom_headers(headers);
+    }
+    let transport = StreamableHttpClientTransport::from_config(config);
     ().serve(transport)
         .await
-        .map_err(|error| Error::Config(error.to_string()))
+        .map_err(|error| remote_backend_error(&backend.command, error.to_string()))
+}
+
+fn parse_http_backend_args(args: Vec<String>) -> (Vec<String>, HashMap<String, String>) {
+    let mut remaining = Vec::new();
+    let mut headers = HashMap::new();
+    let mut index = 0;
+    while index < args.len() {
+        let arg = &args[index];
+        if arg == "-H" || arg == "--header" {
+            if let Some(header) = args.get(index + 1) {
+                if let Some((name, value)) = parse_header_arg(header) {
+                    headers.insert(name, value);
+                } else {
+                    remaining.push(arg.clone());
+                    remaining.push(header.clone());
+                }
+                index += 2;
+            } else {
+                remaining.push(arg.clone());
+                index += 1;
+            }
+        } else if let Some(header) = arg.strip_prefix("-H=").or_else(|| arg.strip_prefix("--header=")) {
+            if let Some((name, value)) = parse_header_arg(header) {
+                headers.insert(name, value);
+            } else {
+                remaining.push(arg.clone());
+            }
+            index += 1;
+        } else {
+            remaining.push(arg.clone());
+            index += 1;
+        }
+    }
+    (remaining, headers)
+}
+
+fn parse_header_arg(header: &str) -> Option<(String, String)> {
+    let (name, value) = header
+        .split_once('=')
+        .or_else(|| header.split_once(':'))?;
+    let name = name.trim();
+    let value = value.trim();
+    if name.is_empty() || value.is_empty() {
+        return None;
+    }
+    Some((name.to_string(), interpolate_env(value)))
+}
+
+fn interpolate_env(value: &str) -> String {
+    let mut output = String::new();
+    let chars = value.chars().collect::<Vec<_>>();
+    let mut index = 0;
+    while index < chars.len() {
+        if chars[index] == '$' && chars.get(index + 1) == Some(&'{') {
+            if let Some(end) = chars[index + 2..].iter().position(|ch| *ch == '}') {
+                let name = chars[index + 2..index + 2 + end].iter().collect::<String>();
+                output.push_str(&std::env::var(&name).unwrap_or_else(|_| format!("${{{name}}}")));
+                index += end + 3;
+                continue;
+            }
+        }
+        output.push(chars[index]);
+        index += 1;
+    }
+    output
+}
+
+fn backend_http_headers(
+    backend: &BackendServerConfig,
+) -> Result<HashMap<HeaderName, HeaderValue>, Error> {
+    backend
+        .headers
+        .iter()
+        .map(|(name, value)| {
+            let name = HeaderName::from_str(name).map_err(|error| {
+                Error::Config(format!("invalid HTTP header name {name:?}: {error}"))
+            })?;
+            let value = HeaderValue::from_str(value).map_err(|error| {
+                Error::Config(format!("invalid HTTP header value for {name:?}: {error}"))
+            })?;
+            Ok((name, value))
+        })
+        .collect()
+}
+
+fn remote_backend_error(uri: &str, error: String) -> Error {
+    let auth_hint = if error.contains("401")
+        || error.contains("403")
+        || error.contains("WWW-Authenticate")
+        || error.to_ascii_lowercase().contains("unauthorized")
+    {
+        "\n\nThis remote MCP server appears to require authentication. \
+Pass explicit backend headers after the URL, for example: \
+`-- <url> -H \"Authorization=Bearer <token>\"`. Native OAuth support is not implemented yet."
+    } else {
+        "\n\nIf this remote MCP server requires authentication, pass explicit backend headers after the URL, \
+for example: `-- <url> -H \"Authorization=Bearer <token>\"`. Native OAuth support is not implemented yet."
+    };
+    Error::Config(format!(
+        "failed to initialize remote streamable HTTP backend {uri}: {error}{auth_hint}"
+    ))
 }
 
 fn is_http_url(value: &str) -> bool {
@@ -549,5 +676,63 @@ fn value_to_string(value: &Value) -> String {
             value_to_string(&map["result"])
         }
         _ => value.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn http_backend_url_parses_curl_style_headers_after_separator() {
+        let backend = BackendServerConfig::new(
+            "remote",
+            "https://example.test/mcp",
+            ["-H", "Authorization=Basic token", "--header", "X-Test=yes"],
+        );
+
+        assert_eq!(backend.transport, BackendTransport::StreamableHttp);
+        assert!(backend.args.is_empty());
+        assert_eq!(backend.headers["Authorization"], "Basic token");
+        assert_eq!(backend.headers["X-Test"], "yes");
+    }
+
+    #[test]
+    fn http_backend_url_parses_equals_header_forms() {
+        let backend = BackendServerConfig::new(
+            "remote",
+            "https://example.test/mcp",
+            ["-H=Authorization=Bearer token", "--header=X-Test=yes"],
+        );
+
+        assert!(backend.args.is_empty());
+        assert_eq!(backend.headers["Authorization"], "Bearer token");
+        assert_eq!(backend.headers["X-Test"], "yes");
+    }
+
+    #[test]
+    fn http_backend_header_values_preserve_missing_environment_variables() {
+        let backend = BackendServerConfig::new(
+            "remote",
+            "https://example.test/mcp",
+            ["-H", "Authorization=Bearer ${MCP_COMPRESSOR_MISSING_TEST_TOKEN}"],
+        );
+
+        assert_eq!(
+            backend.headers["Authorization"],
+            "Bearer ${MCP_COMPRESSOR_MISSING_TEST_TOKEN}"
+        );
+    }
+
+    #[test]
+    fn http_backend_url_preserves_unrecognized_args_for_validation() {
+        let backend = BackendServerConfig::new(
+            "remote",
+            "https://example.test/mcp",
+            ["--timeout", "30", "-H"],
+        );
+
+        assert_eq!(backend.args, ["--timeout", "30", "-H"]);
+        assert!(backend.headers.is_empty());
     }
 }
