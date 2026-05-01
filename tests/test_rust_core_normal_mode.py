@@ -183,6 +183,68 @@ async def test_rust_core_normal_streamable_http_mode_with_fixture_server() -> No
         process.wait(timeout=10)
 
 
+async def test_rust_core_normal_stdio_mode_with_remote_streamable_http_backend() -> None:
+    root = Path(__file__).parents[1]
+    alpha = root / "crates" / "mcp-compressor-core" / "tests" / "fixtures" / "alpha_server.py"
+    upstream = rust_core_command(
+        "--compression",
+        "max",
+        "--server-name",
+        "upstream",
+        "--transport",
+        "streamable-http",
+        "--port",
+        "0",
+        "--",
+        "python3",
+        str(alpha),
+    )
+    process = subprocess.Popen(  # noqa: S603
+        upstream,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert process.stderr is not None
+        deadline = time.monotonic() + 30
+        url = None
+        while time.monotonic() < deadline:
+            line = process.stderr.readline()
+            if "Streamable HTTP MCP server listening on " in line:
+                url = line.rsplit(" ", 1)[1].strip()
+                break
+            if process.poll() is not None:
+                raise AssertionError(f"upstream Rust server exited early with {process.returncode}")
+        assert url is not None
+
+        command = rust_core_command(
+            "--compression",
+            "max",
+            "--server-name",
+            "remote",
+            "--",
+            url,
+        )
+        async with Client(StdioTransport(command=command[0], args=command[1:])) as client:
+            tools = {tool.name for tool in await client.list_tools()}
+            assert tools == {
+                "remote_get_tool_schema",
+                "remote_invoke_tool",
+                "remote_list_tools",
+            }
+            result = await client.call_tool(
+                "remote_invoke_tool",
+                {
+                    "tool_name": "upstream_invoke_tool",
+                    "tool_input": {"tool_name": "echo", "tool_input": {"message": "remote"}},
+                },
+            )
+            assert result.content[0].text == "alpha:remote"
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
+
+
 async def test_rust_core_normal_stdio_mode_with_json_config(tmp_path: Path) -> None:
     root = Path(__file__).parents[1]
     fixture_dir = root / "crates" / "mcp-compressor-core" / "tests" / "fixtures"
