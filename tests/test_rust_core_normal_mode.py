@@ -66,3 +66,6 @@ async def test_rust_core_normal_stdio_mode_with_fixture_server() -> None:
 
         prompts = {prompt.name for prompt in await client.list_prompts()}
         assert "alpha_prompt" in prompts
+
+        prompt = await client.get_prompt("alpha_prompt")
+        assert prompt.messages[0].content.text == "alpha prompt"

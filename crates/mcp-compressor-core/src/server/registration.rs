@@ -4,8 +4,9 @@ use std::sync::Arc;
 
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
-    Annotated, CallToolRequestParams, CallToolResult, Content, ErrorCode, InitializeResult,
-    ListPromptsResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams, Prompt,
+    Annotated, CallToolRequestParams, CallToolResult, Content, ErrorCode, GetPromptRequestParams,
+    GetPromptResult, InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
+    PaginatedRequestParams, Prompt,
     RawResource, ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents,
     ServerCapabilities, Tool,
 };
@@ -132,6 +133,17 @@ impl ServerHandler for FrontendServer {
             .map(|name| Prompt::new(name, Option::<String>::None, None))
             .collect();
         Ok(ListPromptsResult::with_all_items(prompts))
+    }
+
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResult, McpError> {
+        self.compressed
+            .get_prompt(&request.name, request.arguments)
+            .await
+            .map_err(mcp_error)
     }
 
     fn get_tool(&self, _name: &str) -> Option<Tool> {
