@@ -29,7 +29,13 @@ pub enum CompressionLevel {
 
 impl fmt::Display for CompressionLevel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        let value = match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Max => "max",
+        };
+        f.write_str(value)
     }
 }
 
@@ -37,7 +43,13 @@ impl FromStr for CompressionLevel {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        todo!()
+        match s.trim().to_ascii_lowercase().as_str() {
+            "low" => Ok(Self::Low),
+            "medium" => Ok(Self::Medium),
+            "high" => Ok(Self::High),
+            "max" => Ok(Self::Max),
+            _ => Err(Error::UnknownCompressionLevel(s.to_string())),
+        }
     }
 }
 
