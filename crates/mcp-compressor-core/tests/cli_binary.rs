@@ -35,6 +35,7 @@ fn rust_cli_invalid_compression_level_exits_nonzero() {
 }
 
 #[test]
+#[ignore = "normal mode is now a long-running stdio MCP server; covered by Python e2e"]
 fn rust_cli_contract_single_server_direct_command_all_compression_levels() {
     for level in ["low", "medium", "high", "max"] {
         let mut cmd = core_cmd();
@@ -55,6 +56,7 @@ fn rust_cli_contract_single_server_direct_command_all_compression_levels() {
 }
 
 #[test]
+#[ignore = "normal mode is now a long-running stdio MCP server; covered by Python e2e"]
 fn rust_cli_contract_single_server_json_config() {
     let tempdir = tempfile::tempdir().unwrap();
     let config_path = tempdir.path().join("mcp.json");
@@ -79,6 +81,7 @@ fn rust_cli_contract_single_server_json_config() {
 }
 
 #[test]
+#[ignore = "normal mode is now a long-running stdio MCP server; covered by Python e2e"]
 fn rust_cli_contract_multi_server_json_config() {
     let tempdir = tempfile::tempdir().unwrap();
     let config_path = tempdir.path().join("mcp.json");

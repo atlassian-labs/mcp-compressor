@@ -7,6 +7,7 @@ use mcp_compressor_core::client_gen::cli::CliGenerator;
 use mcp_compressor_core::client_gen::{ClientGenerator, GeneratorConfig};
 use mcp_compressor_core::compression::CompressionLevel;
 use mcp_compressor_core::proxy::ToolProxyServer;
+use mcp_compressor_core::server::registration::FrontendServer;
 use mcp_compressor_core::server::{
     BackendConfigSource, BackendServerConfig, CompressedServer, CompressedServerConfig,
     ProxyTransformMode,
@@ -96,13 +97,12 @@ async fn build_server(cli: &CliOptions) -> Result<CompressedServer, CliError> {
 }
 
 async fn run_compressed_listing(server: CompressedServer) -> Result<(), CliError> {
-    for tool in server
-        .list_frontend_tools()
+    rmcp::serve_server(FrontendServer::new(server), rmcp::transport::stdio())
         .await
         .map_err(|error| CliError::Runtime(error.to_string()))?
-    {
-        println!("{}", tool.name);
-    }
+        .waiting()
+        .await
+        .map_err(|error| CliError::Runtime(error.to_string()))?;
     Ok(())
 }
 
