@@ -1,4 +1,109 @@
-//! Tool registration helpers: attaches the 2–3 compression wrapper tools to
-//! the frontend MCP server.
+//! Frontend MCP server registration for compressed wrapper tools.
 
-// Stub — full implementation added in Phase 1 build.
+use std::sync::Arc;
+
+use rmcp::handler::server::ServerHandler;
+use rmcp::model::{
+    CallToolRequestParams, CallToolResult, Content, ErrorCode, InitializeResult, ListToolsResult,
+    PaginatedRequestParams, ServerCapabilities, Tool,
+};
+use rmcp::service::RequestContext;
+use rmcp::{ErrorData as McpError, RoleServer};
+use serde_json::{Map, Value};
+
+use crate::server::CompressedServer;
+
+/// Dynamic frontend MCP service that exposes compressed wrapper tools and
+/// delegates their calls to [`CompressedServer`].
+#[derive(Debug)]
+pub struct FrontendServer {
+    compressed: CompressedServer,
+}
+
+impl FrontendServer {
+    pub fn new(compressed: CompressedServer) -> Self {
+        Self { compressed }
+    }
+}
+
+impl ServerHandler for FrontendServer {
+    fn get_info(&self) -> InitializeResult {
+        InitializeResult::new(ServerCapabilities::builder().enable_tools().build())
+            .with_instructions("Compressed MCP frontend server")
+    }
+
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, McpError> {
+        let tools = self
+            .compressed
+            .list_frontend_tools()
+            .await
+            .map_err(mcp_error)?
+            .into_iter()
+            .map(convert_tool)
+            .collect();
+        Ok(ListToolsResult::with_all_items(tools))
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        let wrapper_name = request.name.to_string();
+        let arguments = request.arguments.unwrap_or_default();
+        let output = if wrapper_name.ends_with("get_tool_schema") {
+            let tool_name = required_string(&arguments, "tool_name")?;
+            self.compressed
+                .get_tool_schema(&wrapper_name, &tool_name)
+                .await
+        } else if wrapper_name.ends_with("invoke_tool") {
+            let tool_name = required_string(&arguments, "tool_name")?;
+            let tool_input = arguments
+                .get("tool_input")
+                .cloned()
+                .unwrap_or_else(|| Value::Object(Map::new()));
+            self.compressed
+                .invoke_tool(&wrapper_name, &tool_name, tool_input)
+                .await
+        } else if wrapper_name.ends_with("list_tools") {
+            self.compressed.list_backend_tools(&wrapper_name).await
+        } else {
+            Err(crate::Error::ToolNotFound(wrapper_name))
+        }
+        .map_err(mcp_error)?;
+
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    fn get_tool(&self, _name: &str) -> Option<Tool> {
+        None
+    }
+}
+
+fn convert_tool(tool: crate::compression::engine::Tool) -> Tool {
+    let input_schema = match tool.input_schema {
+        Value::Object(map) => map,
+        _ => Map::new(),
+    };
+    Tool::new(
+        tool.name,
+        tool.description.unwrap_or_default(),
+        Arc::new(input_schema),
+    )
+}
+
+fn required_string(arguments: &Map<String, Value>, name: &str) -> Result<String, McpError> {
+    arguments
+        .get(name)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| McpError::new(ErrorCode::INVALID_PARAMS, format!("missing {name}"), None))
+}
+
+fn mcp_error(error: crate::Error) -> McpError {
+    McpError::new(ErrorCode::INTERNAL_ERROR, error.to_string(), None)
+}
