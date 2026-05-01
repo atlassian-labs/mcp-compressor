@@ -162,66 +162,73 @@ Status as of 2026-05-01:
   - `cargo check -p mcp-compressor-core`
   - `cargo test -p mcp-compressor-core --lib --no-run`
   - `cargo test -p mcp-compressor-core --tests --no-run`
-- Real MCP fixture servers exist for integration contracts:
-  - `tests/fixtures/alpha_server.py`
-  - `tests/fixtures/beta_server.py`
-- Rust integration-contract tests compile for:
-  - single-server stdio compression
-  - multi-server routing
-  - all compression levels
-  - all proxy transform modes (`compressed-tools`, `cli`, `just-bash`)
-  - direct command config and JSON MCP config
-  - generic HTTP proxy auth/dispatch
-  - generated shell/Python/TypeScript clients
-  - direct Rust CLI executable behavior
-- Pure compression primitives are implemented:
-  - `CompressionLevel`
-  - `CompressionEngine`
-  - ordered parameter extraction
-  - schema lookup and schema response formatting
-- Config/auth primitives are implemented:
-  - MCP config JSON parsing
-  - server lookup and sorted server names
-  - CLI prefix sanitization
-  - tool/subcommand name mapping
-  - session bearer-token generation and constant-time verification
-- A standalone Rust CLI binary placeholder exists with help/argument-validation plumbing and runtime TODO boundaries.
-- The official Rust MCP SDK dependency (`rmcp`) is present for upcoming runtime work.
+- Real MCP fixture servers exist for Rust runtime/e2e coverage:
+  - `crates/mcp-compressor-core/tests/fixtures/alpha_server.py`
+  - `crates/mcp-compressor-core/tests/fixtures/beta_server.py`
+- Pure primitives are implemented:
+  - compression levels and `CompressionEngine`
+  - ordered JSON-schema parameter extraction
+  - schema lookup/formatting
+  - MCP config JSON parsing and server-name topology
+  - CLI name mapping and JSON-schema-driven argv parsing
+  - bearer session-token generation/verification
+- Client generators are implemented and e2e-tested through the Rust proxy:
+  - shell CLI script with legacy-style top-level/subcommand help
+  - Python module
+  - TypeScript ESM module plus declarations, using `fetch`
+- `ToolCache` lazy fetch/refresh/invalidate/filter behavior is implemented.
+- `CompressedServer` runtime is implemented for local stdio backends:
+  - single-server direct command
+  - multi-server direct command
+  - single/multi-server MCP JSON config
+  - wrapper tool routing for all compression levels
+  - backend resource/prompt passthrough
+- Generic local HTTP proxy runtime is implemented:
+  - `GET /health`
+  - bearer-token-protected `POST /exec`
+  - wrapper-style and generated-client direct dispatch
+- Direct Rust CLI runtime is implemented for local stdio servers:
+  - normal stdio MCP frontend mode
+  - CLI mode with generated shell command installed into a PATH-friendly location
+- Normal stdio MCP frontend mode is implemented through `rmcp::ServerHandler`:
+  - `tools/list` and `tools/call`
+  - `resources/list` and `resources/read`
+  - `prompts/list` and `prompts/get`
+- FastMCP e2e coverage exists for the Rust binary normal mode with a real MCP client:
+  - single-server fixture backend
+  - tool schema lookup/invocation/listing
+  - backend and compressor resources
+  - prompt listing and prompt retrieval
+- In flight: normal-mode FastMCP e2e coverage for multi-server direct config and multi-server JSON config.
 
 ### Still TODO
 
-- JSON-schema-driven CLI argument parser (`cli/parser.rs`).
-- Client artifact generators:
-  - shell CLI script
-  - Python module
-  - TypeScript ESM module and declarations
-- `ToolCache` lazy fetch/refresh/filter behavior.
-- `CompressedServer` runtime:
-  - stdio backend connection through `rmcp`
-  - multi-server backend registry
-  - frontend MCP tool registration
-  - resource/prompt passthrough
-  - streamable HTTP frontend transport
-- Generic HTTP proxy runtime:
-  - `/health`
-  - authenticated `/exec`
-  - dispatch into compressed server runtime
-- Direct Rust CLI runtime execution for normal, CLI, and Just Bash modes.
-- FFI / binding surfaces for Python and TypeScript.
-- OAuth token persistence strategy and implementation.
+- Streamable HTTP frontend mode for normal compressed MCP serving.
+- Remote backend transports:
+  - streamable HTTP backend client
+  - SSE backend client if still required for parity
+- OAuth/token persistence for remote MCP servers.
+- Just Bash runtime transform mode.
+- Richer generated CLI help parity, if desired:
+  - argument descriptions
+  - required/optional labels
+  - type/default rendering
+- Python and TypeScript bindings/cutover:
+  - PyO3/maturin package surface
+  - napi-rs package surface
+  - parity tests against legacy Python/TS behavior
+- WASM/V8-isolate strategy remains future design work, not an initial implementation target.
 
 ### Current implementation order
 
 The recommended near-term sequence is:
 
-1. Implement `cli/parser.rs` while the work is still pure and testable.
-2. Implement `client_gen/*`, keeping generated TypeScript ESM/fetch-based and portable for future WASM/V8-isolate usage.
-3. Implement `server/tool_cache.rs` against mock backends.
-4. Implement `CompressedServer` single-server stdio runtime with `rmcp` and make the first real MCP fixture contract pass.
-5. Extend `CompressedServer` to multi-server JSON config, resource/prompt passthrough, and all transform modes.
-6. Implement the generic HTTP proxy runtime and generated-client e2e execution.
-7. Implement the direct Rust CLI runtime on top of the same server/proxy primitives.
-8. Add Python and TypeScript bindings after the Rust runtime is green.
+1. Finish/merge normal-mode multi-server and JSON-config e2e through a real MCP client.
+2. Implement streamable HTTP frontend mode for the Rust normal MCP server.
+3. Implement remote streamable HTTP backend transport detection and connection.
+4. Add OAuth/token persistence for remote backend servers, initially preserving existing FastMCP/Python behavior as the parity reference.
+5. Implement Just Bash runtime transform mode.
+6. Add Python and TypeScript bindings only after the Rust runtime is green for local and remote transports.
 
 ## Open Questions
 
