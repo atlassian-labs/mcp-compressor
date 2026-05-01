@@ -147,6 +147,8 @@ Replace the existing implementations once the Rust-backed packages are productio
   Maintain parity fixtures and run language-level golden tests against shared scenarios.
 - **Operational complexity from native artifacts**
   Publish prebuilt wheels and Node binaries for major targets; keep a pure-language fallback path temporarily during migration.
+- **Future V8 isolate / WASM portability**
+  Use `napi-rs` for the initial TypeScript binding, but keep the public TS APIs and generated TS clients free of avoidable Node-native assumptions so a later `wasm32`/V8-isolate target remains feasible.
 
 ## Open Questions
 
@@ -557,6 +559,29 @@ export async function getConfluencePage(pageId: string, spaceKey?: string): Prom
 ```
 
 An accompanying `<cli_name>.d.ts` declaration file is generated for projects that consume the module without bundling.
+
+#### Future V8 isolate / WASM compatibility guidance
+
+The initial TypeScript package can use `napi-rs` and ship as a native Node.js module. However, a future deployment target may need to run the TypeScript library inside a V8 isolate or another environment where native Node addons are unavailable. We do not need to implement the WASM path initially, but the design should avoid choices that make it unnecessarily hard later.
+
+Guidance for TypeScript-facing APIs and generated TypeScript artifacts:
+
+- Prefer Web-standard APIs where possible: `fetch`, `Request`, `Response`, `Headers`, `URL`, `TextEncoder`, `TextDecoder`, `AbortSignal`, `ReadableStream`.
+- Avoid exposing Node-native types in public APIs: `Buffer`, `fs` paths, `net.Socket`, `http.ClientRequest`, `stream.Readable`, `EventEmitter`, and Node-specific timer/process handles.
+- Keep filesystem, process spawning, environment-variable access, and local TCP listener startup behind narrow runtime adapters. These are fine for the Node/napi implementation, but should not leak into the stable TS API shape.
+- Keep generated TypeScript client modules dependency-light and ESM-first. They should call the local proxy through `fetch` rather than `node:http`, `axios`, or other Node-only clients.
+- Keep data crossing the Rust/TS boundary JSON-serializable: strings, numbers, booleans, arrays, objects, and byte data represented explicitly rather than as `Buffer`.
+- Avoid global mutable Node process state in generated clients. Multi-session bridge selection should be representable as explicit configuration, not only as `process.env` or process-global registries.
+- Separate runtime capability detection from core behavior. The Node package may provide adapters for spawning MCP servers and starting loopback proxies; a future isolate/WASM package may require callers to inject transport/proxy capabilities instead.
+- Keep Rust core logic that is pure or protocol-level separate from OS-bound code. That makes it easier to compile compression, schema, CLI mapping, and generated-client logic to `wasm32` later while leaving stdio/process/local-network transports as host-provided adapters.
+
+Non-goals for the initial `napi-rs` implementation:
+
+- shipping a WASM package
+- supporting MCP stdio child-process spawning inside isolates
+- supporting local TCP proxy startup inside isolates
+
+The main requirement today is API discipline: Node-native behavior is allowed internally for the Node binding, but public TypeScript surfaces should remain portable enough that a future WASM/V8-isolate implementation can reuse the same high-level API.
 
 ---
 
