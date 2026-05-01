@@ -16,3 +16,6 @@ rmcp       = { version = "1.6.0", features = ["client", "server", "transport-chi
 tokio    = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 # temporary directories for client_gen file-generation tests
 tempfile = "3"
+# binary e2e contract tests
+assert_cmd = "2"
+predicates = "3"

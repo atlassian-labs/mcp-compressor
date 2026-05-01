@@ -6,7 +6,7 @@
 
 ## Goals
 
-Move core behavior into a shared Rust library, while keeping thin, idiomatic wrappers for Python and TypeScript.
+Move core behavior into a shared Rust library and first-class Rust CLI binary, while keeping thin, idiomatic wrappers for Python and TypeScript.
 
 For both language packages, preserve support for:
 
@@ -120,8 +120,9 @@ Build the full Rust implementation as a standalone crate with no dependency on t
 
 - `CompressedServer` — MCP client connection, `ToolCache`, `CompressionEngine`, stdio and streamable HTTP transports
 - `ToolProxyServer` — generic HTTP proxy with bearer token auth and `POST /exec` dispatch
+- First-class Rust CLI binary — directly usable without Python/TypeScript wrappers for normal compression mode, CLI mode, Just Bash mode, config-file input, and direct command input
 - All client generators: `CliGenerator`, `PythonGenerator`, `TypeScriptGenerator`
-- Self-contained Rust test suite covering compression, proxy, and auth behaviour
+- Self-contained Rust test suite covering compression, proxy, auth behaviour, and CLI executable e2e behaviour
 
 ### Phase 2 — Language bindings (independent build)
 
@@ -608,6 +609,7 @@ Because each bridge entry now carries its own token, generated artifacts from di
 crates/mcp-compressor-core/
 └── src/
     ├── lib.rs                   # public re-exports; crate feature flags
+    ├── main.rs                  # Rust CLI binary entrypoint
     ├── compression/
     │   ├── mod.rs
     │   ├── engine.rs            # tool listing compression for low|medium|high|max
@@ -671,6 +673,32 @@ mcp_compressor/
 
 `CliBridge` and `cli_script.py` are superseded by `proxy/server.py` and `client_gen/cli.py` respectively.
 The public CLI flags (`--cli-mode`, `--cli-port`) and all existing behaviour are preserved.
+
+#### Rust CLI binary
+
+The Rust core crate should also ship a directly usable CLI executable. This binary is not just a development harness; it is a supported entrypoint for users who want the Rust implementation without the Python or TypeScript wrappers.
+
+The Rust CLI should support the same high-level modes as the wrappers:
+
+- normal compressed MCP server mode
+- CLI mode / generated-client proxy mode
+- Just Bash mode
+- single-server direct command input, e.g. `mcp-compressor-core -- uvx mcp-server-fetch`
+- single-server and multi-server MCP config JSON input
+- stdio and streamable HTTP frontend transports where applicable
+
+The Rust CLI e2e test suite should invoke the compiled binary with real fixture MCP servers and assert observable behavior, including:
+
+- `--help` and invalid-argument output
+- all compression levels
+- all proxy transform modes
+- single-server direct command config
+- single-server JSON config
+- multi-server JSON config
+- expected wrapper tool names and tool invocation output
+- resources/prompts passthrough once the runtime supports them
+
+These tests are distinct from library-level Rust integration tests. Library tests prove the Rust API works; CLI e2e tests prove the packaged executable, argument parsing, process lifecycle, stdout/stderr behavior, and exit codes work.
 
 #### TypeScript package (`typescript/`)
 
