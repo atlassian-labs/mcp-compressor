@@ -14,6 +14,8 @@
 //! acquires an exclusive lock.  Double-checked locking prevents redundant
 //! backend fetches when multiple tasks race to populate the cache.
 
+use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
@@ -46,9 +48,17 @@ pub trait ToolBackend: Send + Sync {
 /// filter that is applied when the cache is populated.
 pub struct ToolCache<B: ToolBackend> {
     backend: B,
-    cache: Arc<RwLock<Option<Vec<Tool>>>>,
+    cache: Arc<RwLock<Option<CachedTools>>>,
+    populated: Arc<AtomicBool>,
+    generation: Arc<AtomicU64>,
     include: Option<Vec<String>>,
     exclude: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone)]
+struct CachedTools {
+    generation: u64,
+    tools: Vec<Tool>,
 }
 
 impl<B: ToolBackend> ToolCache<B> {
@@ -62,13 +72,20 @@ impl<B: ToolBackend> ToolCache<B> {
         include: Option<Vec<String>>,
         exclude: Option<Vec<String>>,
     ) -> Self {
-        todo!()
+        Self {
+            backend,
+            cache: Arc::new(RwLock::new(None)),
+            populated: Arc::new(AtomicBool::new(false)),
+            generation: Arc::new(AtomicU64::new(0)),
+            include,
+            exclude,
+        }
     }
 
     /// Return `true` if the cache has been populated (either by a previous
     /// `get_all` call or by `refresh`).
     pub fn is_populated(&self) -> bool {
-        todo!()
+        self.populated.load(Ordering::SeqCst)
     }
 
     /// Return all cached tools, fetching from the backend on first call.
@@ -76,25 +93,74 @@ impl<B: ToolBackend> ToolCache<B> {
     /// Subsequent calls return the in-memory cache without touching the
     /// backend (double-checked locking prevents redundant fetches).
     pub async fn get_all(&self) -> Result<Vec<Tool>, Error> {
-        todo!()
+        let current_generation = self.generation.load(Ordering::SeqCst);
+        if let Some(cached) = self.cache.read().await.as_ref() {
+            if cached.generation == current_generation {
+                return Ok(cached.tools.clone());
+            }
+        }
+
+        let mut cache = self.cache.write().await;
+        let current_generation = self.generation.load(Ordering::SeqCst);
+        if let Some(cached) = cache.as_ref() {
+            if cached.generation == current_generation {
+                return Ok(cached.tools.clone());
+            }
+        }
+
+        let tools = self.fetch_filtered().await?;
+        *cache = Some(CachedTools {
+            generation: current_generation,
+            tools: tools.clone(),
+        });
+        self.populated.store(true, Ordering::SeqCst);
+        Ok(tools)
     }
 
     /// Return a single tool by name, or `None` if not found.
     pub async fn get(&self, name: &str) -> Result<Option<Tool>, Error> {
-        todo!()
+        Ok(self.get_all().await?.into_iter().find(|tool| tool.name == name))
     }
 
     /// Force a re-fetch from the backend, discarding the current cache.
     pub async fn refresh(&self) -> Result<(), Error> {
-        todo!()
+        let tools = self.fetch_filtered().await?;
+        let generation = self.generation.load(Ordering::SeqCst);
+        *self.cache.write().await = Some(CachedTools { generation, tools });
+        self.populated.store(true, Ordering::SeqCst);
+        Ok(())
     }
 
     /// Invalidate (clear) the cache without re-fetching.
     ///
     /// The next call to `get_all` or `get` will re-fetch from the backend.
     pub fn invalidate(&self) {
-        todo!()
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        self.populated.store(false, Ordering::SeqCst);
     }
+
+    async fn fetch_filtered(&self) -> Result<Vec<Tool>, Error> {
+        Ok(apply_filters(
+            self.backend.list_tools().await?,
+            self.include.as_deref(),
+            self.exclude.as_deref(),
+        ))
+    }
+}
+
+fn apply_filters(
+    tools: Vec<Tool>,
+    include: Option<&[String]>,
+    exclude: Option<&[String]>,
+) -> Vec<Tool> {
+    let include = include.map(|values| values.iter().collect::<HashSet<_>>());
+    let exclude = exclude.map(|values| values.iter().collect::<HashSet<_>>());
+
+    tools
+        .into_iter()
+        .filter(|tool| include.as_ref().is_none_or(|include| include.contains(&tool.name)))
+        .filter(|tool| exclude.as_ref().is_none_or(|exclude| !exclude.contains(&tool.name)))
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
