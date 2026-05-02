@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::str::FromStr;
 
@@ -16,6 +17,7 @@ use rmcp::model::{
     ReadResourceRequestParams, ResourceContents,
 };
 use rmcp::service::RunningService;
+use rmcp::transport::auth::{AuthClient, AuthorizationManager};
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::transport::{ConfigureCommandExt, StreamableHttpClientTransport, TokioChildProcess};
 use rmcp::{RoleClient, ServiceExt};
@@ -24,6 +26,7 @@ use serde_json::Value;
 use crate::compression::engine::{CompressionEngine, Tool};
 use crate::compression::CompressionLevel;
 use crate::config::topology::MCPConfig;
+use crate::oauth::{FileCredentialStore, FileStateStore, OAuthCallbackListener};
 use crate::Error;
 
 /// Transport type used to reach an upstream MCP server.
@@ -537,10 +540,7 @@ async fn connect_streamable_http_backend(
         ));
     }
     if backend.should_use_oauth() {
-        return Err(Error::Config(format!(
-            "native OAuth for remote streamable HTTP backend {} is not implemented yet; pass an explicit Authorization header with `-H \"Authorization=...\"` to skip OAuth for now",
-            backend.command
-        )));
+        return connect_oauth_streamable_http_backend(backend).await;
     }
     let mut config = StreamableHttpClientTransportConfig::with_uri(backend.command.clone());
     let headers = backend_http_headers(backend)?;
@@ -551,6 +551,93 @@ async fn connect_streamable_http_backend(
     ().serve(transport)
         .await
         .map_err(|error| remote_backend_error(&backend.command, error.to_string()))
+}
+
+async fn connect_oauth_streamable_http_backend(
+    backend: &BackendServerConfig,
+) -> Result<RunningService<RoleClient, ()>, Error> {
+    let mut manager = AuthorizationManager::new(backend.command.as_str())
+        .await
+        .map_err(|error| Error::Config(format!("failed to initialize OAuth manager: {error}")))?;
+    let store_dir = oauth_store_dir(&backend.command, &backend.name)?;
+    let credential_store = FileCredentialStore::new(store_dir.join("credentials.json"));
+    let state_store = FileStateStore::new(store_dir.join("state"));
+    manager.set_credential_store(credential_store.clone());
+    manager.set_state_store(state_store.clone());
+
+    if !manager
+        .initialize_from_store()
+        .await
+        .map_err(|error| Error::Config(format!("failed to load OAuth credentials: {error}")))?
+    {
+        let listener = OAuthCallbackListener::bind().map_err(Error::Io)?;
+        let redirect_uri = listener.redirect_uri().to_string();
+        let mut state = rmcp::transport::auth::OAuthState::new(backend.command.as_str(), None)
+            .await
+            .map_err(|error| Error::Config(format!("failed to initialize OAuth state: {error}")))?;
+        if let rmcp::transport::auth::OAuthState::Unauthorized(ref mut state_manager) = state {
+            state_manager.set_credential_store(credential_store);
+            state_manager.set_state_store(state_store);
+        }
+        state
+            .start_authorization(&[], &redirect_uri, Some("mcp-compressor"))
+            .await
+            .map_err(|error| {
+                Error::Config(format!("failed to start OAuth authorization: {error}"))
+            })?;
+        let auth_url = state.get_authorization_url().await.map_err(|error| {
+            Error::Config(format!("failed to get OAuth authorization URL: {error}"))
+        })?;
+        eprintln!(
+            "Open this URL to authorize {name}:\n{auth_url}",
+            name = backend.name
+        );
+        let callback = listener.wait_for_callback().map_err(Error::Io)?;
+        state
+            .handle_callback(&callback.code, &callback.state)
+            .await
+            .map_err(|error| {
+                Error::Config(format!("failed to complete OAuth authorization: {error}"))
+            })?;
+        manager = state.into_authorization_manager().ok_or_else(|| {
+            Error::Config("OAuth authorization did not produce an authorized manager".to_string())
+        })?;
+    }
+
+    let client = AuthClient::new(reqwest::Client::default(), manager);
+    let transport = StreamableHttpClientTransport::with_client(
+        client,
+        StreamableHttpClientTransportConfig::with_uri(backend.command.clone()),
+    );
+    ().serve(transport)
+        .await
+        .map_err(|error| remote_backend_error(&backend.command, error.to_string()))
+}
+
+fn oauth_store_dir(uri: &str, name: &str) -> Result<PathBuf, Error> {
+    let base = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("mcp-compressor")
+        .join("oauth-tokens-rust");
+    Ok(base.join(sanitize_oauth_store_component(&format!("{name}-{uri}"))))
+}
+
+fn sanitize_oauth_store_component(value: &str) -> String {
+    let sanitized = value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    if sanitized.is_empty() {
+        "server".to_string()
+    } else {
+        sanitized
+    }
 }
 
 fn parse_http_backend_args(

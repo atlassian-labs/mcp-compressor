@@ -18,6 +18,7 @@ pub mod compression;
 pub mod config;
 pub mod error;
 pub mod ffi;
+pub mod oauth;
 pub mod proxy;
 pub mod server;
 
