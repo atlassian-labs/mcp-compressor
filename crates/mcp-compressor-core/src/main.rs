@@ -53,9 +53,7 @@ async fn run_async(cli: CliOptions) -> Result<(), CliError> {
     match cli.transform_mode {
         ProxyTransformMode::Cli => run_cli_mode(cli, server).await,
         ProxyTransformMode::CompressedTools => run_compressed_server(&cli, server).await,
-        ProxyTransformMode::JustBash => Err(CliError::Runtime(
-            "--just-bash runtime is not implemented yet".to_string(),
-        )),
+        ProxyTransformMode::JustBash => run_just_bash_mode(cli, server).await,
     }
 }
 
@@ -154,6 +152,26 @@ async fn run_compressed_streamable_http(
     axum::serve(listener, router)
         .await
         .map_err(|error| CliError::Runtime(error.to_string()))?;
+    Ok(())
+}
+
+async fn run_just_bash_mode(cli: CliOptions, server: CompressedServer) -> Result<(), CliError> {
+    let proxy = ToolProxyServer::start(server)
+        .await
+        .map_err(|error| CliError::Runtime(error.to_string()))?;
+    let cli_name = cli.server_name.clone().unwrap_or_else(|| "bash".to_string());
+
+    println!("Just Bash ready");
+    println!("Bridge URL: {}", proxy.bridge_url());
+    println!("Use backend commands through the generated bridge. Full just-bash AST execution is not implemented in Rust yet.");
+    println!("Session: {cli_name}");
+    println!("Press Ctrl+C to stop.");
+
+    if std::env::var_os("MCP_COMPRESSOR_EXIT_AFTER_READY").is_some() {
+        return Ok(());
+    }
+
+    std::future::pending::<()>().await;
     Ok(())
 }
 
