@@ -268,7 +268,7 @@ The desired split is:
 - `clio-auth` handles the local CLI UX pieces if it can be integrated cleanly: loopback listener, browser opening, callback parsing, user-facing success/error page.
 - `mcp-compressor-core` owns only compressor-specific policy: token-store location, explicit `Authorization` header bypass behavior, clear errors, and parity with Python configuration semantics.
 
-If `clio-auth` cannot be integrated without duplicating or bypassing `rmcp`'s OAuth state machine, prefer staying with `rmcp` and improving the small custom callback layer rather than reimplementing protocol behavior locally.
+A follow-up spike against `clio-auth` 0.8.0 found that its public API is centered on an `oauth2::Client` and performs its own PKCE/state/callback flow; the lower-level callback server and browser-opening helpers are not exposed independently. That makes it a poor direct fit for the current `rmcp` integration, because using it would duplicate or bypass `rmcp`'s MCP-specific OAuth state machine. For now, prefer staying with `rmcp` and improving the small custom callback layer rather than adding `clio-auth` as an unused or conflicting dependency.
 
 ## Open Questions
 
