@@ -177,22 +177,9 @@ impl FfiCompressedSession {
     }
 }
 
-pub async fn start_compressed_session(
-    config: FfiCompressedSessionConfig,
-    backends: Vec<FfiBackendConfig>,
+async fn compressed_session_from_server(
+    server: CompressedServer,
 ) -> Result<FfiCompressedSession, Error> {
-    let server = CompressedServer::connect_multi_stdio(
-        CompressedServerConfig {
-            level: config.compression_level.parse()?,
-            server_name: config.server_name,
-            include_tools: config.include_tools,
-            exclude_tools: config.exclude_tools,
-            toonify: config.toonify,
-            ..CompressedServerConfig::default()
-        },
-        backends.into_iter().map(Into::into).collect(),
-    )
-    .await?;
     let frontend_tools = server
         .list_frontend_tools()
         .await?
@@ -213,6 +200,44 @@ pub async fn start_compressed_session(
             just_bash_providers,
         },
     })
+}
+
+pub async fn start_compressed_session(
+    config: FfiCompressedSessionConfig,
+    backends: Vec<FfiBackendConfig>,
+) -> Result<FfiCompressedSession, Error> {
+    let server = CompressedServer::connect_multi_stdio(
+        CompressedServerConfig {
+            level: config.compression_level.parse()?,
+            server_name: config.server_name,
+            include_tools: config.include_tools,
+            exclude_tools: config.exclude_tools,
+            toonify: config.toonify,
+            ..CompressedServerConfig::default()
+        },
+        backends.into_iter().map(Into::into).collect(),
+    )
+    .await?;
+    compressed_session_from_server(server).await
+}
+
+pub async fn start_compressed_session_from_mcp_config(
+    config: FfiCompressedSessionConfig,
+    mcp_config_json: &str,
+) -> Result<FfiCompressedSession, Error> {
+    let server = CompressedServer::connect_mcp_config_json(
+        CompressedServerConfig {
+            level: config.compression_level.parse()?,
+            server_name: config.server_name,
+            include_tools: config.include_tools,
+            exclude_tools: config.exclude_tools,
+            toonify: config.toonify,
+            ..CompressedServerConfig::default()
+        },
+        mcp_config_json,
+    )
+    .await?;
+    compressed_session_from_server(server).await
 }
 
 pub fn parse_mcp_config(config_json: &str) -> Result<Vec<FfiMcpServer>, Error> {
@@ -431,6 +456,30 @@ mod tests {
             .is_some_and(|name| name.ends_with(".d.ts"))));
     }
 
+    async fn invoke_session(
+        info: &FfiCompressedSessionInfo,
+        tool: &str,
+        tool_name: &str,
+        tool_input: Value,
+    ) -> String {
+        let client = reqwest::Client::new();
+        let response = client
+            .post(format!("{}/exec", info.bridge_url))
+            .bearer_auth(&info.token)
+            .json(&serde_json::json!({
+                "tool": tool,
+                "input": {
+                    "tool_name": tool_name,
+                    "tool_input": tool_input
+                }
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert!(response.status().is_success());
+        response.text().await.unwrap()
+    }
+
     #[tokio::test]
     async fn ffi_starts_compressed_session_and_proxy() {
         let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -463,22 +512,78 @@ mod tests {
             .map(|tool| tool.name.clone())
             .expect("invoke wrapper tool");
 
-        let client = reqwest::Client::new();
-        let response = client
-            .post(format!("{}/exec", info.bridge_url))
-            .bearer_auth(info.token)
-            .json(&serde_json::json!({
-                "tool": invoke_tool_name,
-                "input": {
-                    "tool_name": "echo",
-                    "tool_input": {"message": "ffi"}
+        assert_eq!(
+            invoke_session(
+                &info,
+                &invoke_tool_name,
+                "echo",
+                serde_json::json!({"message": "ffi"})
+            )
+            .await,
+            "alpha:ffi"
+        );
+    }
+
+    #[tokio::test]
+    async fn ffi_starts_compressed_session_from_mcp_config_and_routes_multiple_servers() {
+        let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures");
+        let python = std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_string());
+        let config_json = serde_json::json!({
+            "mcpServers": {
+                "alpha": {
+                    "command": python,
+                    "args": [fixture_dir.join("alpha_server.py").to_string_lossy()]
+                },
+                "beta": {
+                    "command": std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_string()),
+                    "args": [fixture_dir.join("beta_server.py").to_string_lossy()]
                 }
-            }))
-            .send()
-            .await
-            .unwrap();
-        assert!(response.status().is_success());
-        assert_eq!(response.text().await.unwrap(), "alpha:ffi");
+            }
+        })
+        .to_string();
+        let session = start_compressed_session_from_mcp_config(
+            FfiCompressedSessionConfig {
+                compression_level: "max".to_string(),
+                server_name: None,
+                include_tools: Vec::new(),
+                exclude_tools: Vec::new(),
+                toonify: false,
+            },
+            &config_json,
+        )
+        .await
+        .unwrap();
+        let info = session.info();
+        assert!(info
+            .frontend_tools
+            .iter()
+            .any(|tool| tool.name == "alpha_invoke_tool"));
+        assert!(info
+            .frontend_tools
+            .iter()
+            .any(|tool| tool.name == "beta_invoke_tool"));
+        assert_eq!(
+            invoke_session(
+                &info,
+                "alpha_invoke_tool",
+                "add",
+                serde_json::json!({"a": 2, "b": 5})
+            )
+            .await,
+            "7"
+        );
+        assert_eq!(
+            invoke_session(
+                &info,
+                "beta_invoke_tool",
+                "multiply",
+                serde_json::json!({"a": 3, "b": 4})
+            )
+            .await,
+            "12"
+        );
     }
 
     #[test]
