@@ -10,9 +10,20 @@ use std::net::{SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
+
 use rmcp::transport::auth::{
     AuthError, CredentialStore, StateStore, StoredAuthorizationState, StoredCredentials,
 };
+
+const OAUTH_TOKEN_DIR_NAME: &str = "oauth-tokens-rust";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OAuthStoreIndexEntry {
+    pub name: String,
+    pub uri: String,
+    pub store_dir: String,
+}
 
 /// File-backed OAuth credential store.
 #[derive(Debug, Clone)]
@@ -347,6 +358,78 @@ fn hex_value(byte: u8) -> Option<u8> {
     }
 }
 
+pub fn oauth_store_root() -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("mcp-compressor")
+        .join(OAUTH_TOKEN_DIR_NAME)
+}
+
+pub fn oauth_store_dir(uri: &str, name: &str) -> PathBuf {
+    oauth_store_root().join(sanitize_file_component(&format!("{name}-{uri}")))
+}
+
+pub fn remember_oauth_store(uri: &str, name: &str, store_dir: &Path) -> Result<(), std::io::Error> {
+    let root = oauth_store_root();
+    fs::create_dir_all(&root)?;
+    let index_path = root.join("index.json");
+    let mut entries = read_oauth_store_index_from(&index_path)?;
+    let store_dir = store_dir.to_string_lossy().into_owned();
+    entries.retain(|entry| !(entry.name == name && entry.uri == uri));
+    entries.push(OAuthStoreIndexEntry {
+        name: name.to_string(),
+        uri: uri.to_string(),
+        store_dir,
+    });
+    entries.sort_by(|left, right| left.name.cmp(&right.name).then(left.uri.cmp(&right.uri)));
+    fs::write(
+        index_path,
+        serde_json::to_string_pretty(&entries).unwrap_or_default(),
+    )
+}
+
+pub fn clear_oauth_store(target: Option<&str>) -> Result<Vec<PathBuf>, std::io::Error> {
+    let root = oauth_store_root();
+    let index_path = root.join("index.json");
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+    let entries = read_oauth_store_index_from(&index_path)?;
+    let mut removed = Vec::new();
+    if let Some(target) = target {
+        for entry in entries
+            .iter()
+            .filter(|entry| entry.name == target || entry.uri == target)
+        {
+            let path = PathBuf::from(&entry.store_dir);
+            if path.exists() {
+                fs::remove_dir_all(&path)?;
+                removed.push(path);
+            }
+        }
+        let remaining = entries
+            .into_iter()
+            .filter(|entry| entry.name != target && entry.uri != target)
+            .collect::<Vec<_>>();
+        fs::write(
+            index_path,
+            serde_json::to_string_pretty(&remaining).unwrap_or_default(),
+        )?;
+    } else {
+        fs::remove_dir_all(&root)?;
+        removed.push(root);
+    }
+    Ok(removed)
+}
+
+fn read_oauth_store_index_from(path: &Path) -> Result<Vec<OAuthStoreIndexEntry>, std::io::Error> {
+    match fs::read_to_string(path) {
+        Ok(contents) => Ok(serde_json::from_str(&contents).unwrap_or_default()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(error) => Err(error),
+    }
+}
+
 fn sanitize_file_component(value: &str) -> String {
     let sanitized = value
         .chars()
@@ -385,6 +468,29 @@ mod tests {
 
         assert!(store.load("missing-token").await.unwrap().is_none());
         store.delete("missing-token").await.unwrap();
+    }
+
+    #[test]
+    fn remember_and_clear_oauth_store_index_entries() {
+        let root = tempfile::tempdir().unwrap();
+        let index_path = root.path().join("index.json");
+        let store_dir = root.path().join("store");
+        std::fs::create_dir_all(&store_dir).unwrap();
+        std::fs::write(store_dir.join("credentials.json"), "{}").unwrap();
+        let entry = OAuthStoreIndexEntry {
+            name: "alpha".to_string(),
+            uri: "https://example.test/mcp".to_string(),
+            store_dir: store_dir.to_string_lossy().into_owned(),
+        };
+        std::fs::write(
+            &index_path,
+            serde_json::to_string_pretty(&vec![entry]).unwrap(),
+        )
+        .unwrap();
+
+        let entries = read_oauth_store_index_from(&index_path).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "alpha");
     }
 
     #[test]

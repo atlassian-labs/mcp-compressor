@@ -19,9 +19,24 @@ fn rust_cli_help_describes_supported_modes() {
         .success()
         .stdout(predicate::str::contains("--compression <COMPRESSION>"))
         .stdout(predicate::str::contains("--config <CONFIG_PATH>"))
-        .stdout(predicate::str::contains("--transform-mode <TRANSFORM_MODE>"))
+        .stdout(predicate::str::contains(
+            "--transform-mode <TRANSFORM_MODE>",
+        ))
         .stdout(predicate::str::contains("--cli-mode"))
         .stdout(predicate::str::contains("--just-bash"));
+}
+
+#[test]
+fn rust_cli_clear_oauth_without_state_reports_no_credentials() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let mut cmd = core_cmd();
+    cmd.env("XDG_CONFIG_HOME", tempdir.path())
+        .arg("clear-oauth")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "No stored OAuth credentials found.",
+        ));
 }
 
 #[test]
@@ -87,10 +102,7 @@ fn rust_cli_contract_multi_server_json_config() {
     let config_path = tempdir.path().join("mcp.json");
     std::fs::write(
         &config_path,
-        common::mcp_config_json(&[
-            ("alpha", "alpha_server.py"),
-            ("beta", "beta_server.py"),
-        ]),
+        common::mcp_config_json(&[("alpha", "alpha_server.py"), ("beta", "beta_server.py")]),
     )
     .unwrap();
 
@@ -125,7 +137,7 @@ fn rust_cli_contract_cli_transform_mode() {
     .assert()
     .success()
     .stdout(predicate::str::contains("CLI ready"))
-        .stdout(predicate::str::contains("Generated CLI:"));
+    .stdout(predicate::str::contains("Generated CLI:"));
 }
 
 #[test]
@@ -163,7 +175,9 @@ fn rust_cli_mode_installs_generated_script_in_path_candidate_by_default() {
             "Generated CLI: {}",
             expected_script.display()
         )))
-        .stdout(predicate::str::contains("Invoke with: alpha <subcommand> [args...]"));
+        .stdout(predicate::str::contains(
+            "Invoke with: alpha <subcommand> [args...]",
+        ));
 
     assert!(bin.join("alpha").exists());
 }
@@ -191,7 +205,10 @@ fn rust_cli_mode_manual_flow_generates_script_that_invokes_backend() {
     let mut reader = BufReader::new(stdout);
     let script_path = wait_for_generated_cli_path(&mut reader);
 
-    let help = StdCommand::new(&script_path).arg("--help").output().unwrap();
+    let help = StdCommand::new(&script_path)
+        .arg("--help")
+        .output()
+        .unwrap();
     assert!(help.status.success());
     let help = String::from_utf8_lossy(&help.stdout);
     assert!(help.contains("alpha - the alpha toolset"));
@@ -217,7 +234,10 @@ fn rust_cli_mode_manual_flow_generates_script_that_invokes_backend() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "alpha:hello");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "alpha:hello"
+    );
 
     let _ = child.kill();
     let _ = child.wait();
@@ -246,23 +266,16 @@ fn rust_cli_contract_just_bash_transform_mode_multi_server() {
     let config_path = tempdir.path().join("mcp.json");
     std::fs::write(
         &config_path,
-        common::mcp_config_json(&[
-            ("alpha", "alpha_server.py"),
-            ("beta", "beta_server.py"),
-        ]),
+        common::mcp_config_json(&[("alpha", "alpha_server.py"), ("beta", "beta_server.py")]),
     )
     .unwrap();
 
     let mut cmd = core_cmd();
     cmd.env("MCP_COMPRESSOR_EXIT_AFTER_READY", "1");
-    cmd.args([
-        "--just-bash",
-        "--config",
-        config_path.to_str().unwrap(),
-    ])
-    .assert()
-    .success()
-    .stdout(predicate::str::contains("Just Bash ready"))
-    .stdout(predicate::str::contains("Bridge URL:"))
-    .stdout(predicate::str::contains("Session: bash"));
+    cmd.args(["--just-bash", "--config", config_path.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Just Bash ready"))
+        .stdout(predicate::str::contains("Bridge URL:"))
+        .stdout(predicate::str::contains("Session: bash"));
 }

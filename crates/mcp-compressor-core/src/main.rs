@@ -6,10 +6,11 @@ use std::process::ExitCode;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use clap::{ArgAction, Parser, ValueEnum};
+use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use mcp_compressor_core::client_gen::cli::CliGenerator;
 use mcp_compressor_core::client_gen::{ClientGenerator, GeneratorConfig};
 use mcp_compressor_core::compression::CompressionLevel;
+use mcp_compressor_core::oauth::clear_oauth_store;
 use mcp_compressor_core::proxy::ToolProxyServer;
 use mcp_compressor_core::server::registration::FrontendServer;
 use mcp_compressor_core::server::{
@@ -41,6 +42,9 @@ fn run() -> Result<(), CliError> {
 }
 
 async fn run_async(cli: CliOptions) -> Result<(), CliError> {
+    if let Some(command) = &cli.command_kind {
+        return run_command(command);
+    }
     let server = build_server(&cli).await?;
 
     match cli.transform_mode() {
@@ -283,6 +287,9 @@ fn path_dirs() -> Vec<PathBuf> {
     disable_help_subcommand = true
 )]
 struct CliOptions {
+    #[command(subcommand)]
+    command_kind: Option<CliCommand>,
+
     /// Compression level: low, medium, high, or max.
     #[arg(long, value_enum, default_value = "medium")]
     compression: CompressionLevelArg,
@@ -322,6 +329,34 @@ struct CliOptions {
     /// Backend command, URL, and arguments. All backend server arguments belong after `--`.
     #[arg(value_name = "COMMAND", allow_hyphen_values = true, last = true)]
     command: Vec<String>,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+enum CliCommand {
+    /// Clear stored OAuth credentials.
+    ClearOauth {
+        /// Backend server name or URL to clear. If omitted, all Rust OAuth state is removed.
+        target: Option<String>,
+    },
+}
+
+fn run_command(command: &CliCommand) -> Result<(), CliError> {
+    match command {
+        CliCommand::ClearOauth { target } => {
+            let removed = clear_oauth_store(target.as_deref())
+                .map_err(|error| CliError::Runtime(error.to_string()))?;
+            if removed.is_empty() {
+                println!("No stored OAuth credentials found.");
+            } else {
+                println!(
+                    "Removed {} OAuth store entr{}.",
+                    removed.len(),
+                    if removed.len() == 1 { "y" } else { "ies" }
+                );
+            }
+            Ok(())
+        }
+    }
 }
 
 impl CliOptions {
