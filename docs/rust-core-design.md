@@ -153,15 +153,17 @@ Replace the existing implementations once the Rust-backed packages are productio
 
 ## Implementation Progress
 
-Status as of 2026-05-01:
+Status as of 2026-05-01, after the first Rust runtime implementation pass:
 
 ### Landed
 
 - Rust workspace/crate scaffold exists at `crates/mcp-compressor-core`.
-- Compile-only Rust CI is enabled:
+- Rust CI now runs the implemented Rust suite, not just compile checks:
   - `cargo check -p mcp-compressor-core`
-  - `cargo test -p mcp-compressor-core --lib --no-run`
-  - `cargo test -p mcp-compressor-core --tests --no-run`
+  - Rust library tests
+  - Rust integration tests for implemented runtime paths
+  - FastMCP e2e tests for the Rust binary normal mode
+  - compile-only coverage for all Rust integration targets
 - Real MCP fixture servers exist for Rust runtime/e2e coverage:
   - `crates/mcp-compressor-core/tests/fixtures/alpha_server.py`
   - `crates/mcp-compressor-core/tests/fixtures/beta_server.py`
@@ -170,7 +172,7 @@ Status as of 2026-05-01:
   - ordered JSON-schema parameter extraction
   - schema lookup/formatting
   - MCP config JSON parsing and server-name topology
-  - CLI name mapping and JSON-schema-driven argv parsing
+  - CLI name mapping and JSON-schema-driven generated-command argv parsing
   - bearer session-token generation/verification
 - Client generators are implemented and e2e-tested through the Rust proxy:
   - shell CLI script with legacy-style top-level/subcommand help
@@ -183,52 +185,90 @@ Status as of 2026-05-01:
   - single/multi-server MCP JSON config
   - wrapper tool routing for all compression levels
   - backend resource/prompt passthrough
+- `CompressedServer` runtime is implemented for remote streamable HTTP backends:
+  - automatic URL transport detection for `http://` and `https://`
+  - explicit backend headers after `--`, using Python-compatible `Header=Value` syntax
+  - `${VAR}` interpolation in backend header values
+  - explicit auth-mode modelling: `auto`, `explicit-headers`, and `oauth`
+  - native TLS enabled for HTTPS streamable HTTP backends
+- Native OAuth groundwork is implemented:
+  - file-backed `rmcp` credential/state stores
+  - loopback callback listener
+  - `rmcp::AuthorizationManager` / `AuthClient` wiring
+  - persistent credential reuse when available
+  - authorization URL startup path for interactive login
 - Generic local HTTP proxy runtime is implemented:
   - `GET /health`
   - bearer-token-protected `POST /exec`
   - wrapper-style and generated-client direct dispatch
-- Direct Rust CLI runtime is implemented for local stdio servers:
+- Direct Rust CLI runtime is implemented:
   - normal stdio MCP frontend mode
+  - normal streamable HTTP MCP frontend mode
   - CLI mode with generated shell command installed into a PATH-friendly location
-- Normal stdio MCP frontend mode is implemented through `rmcp::ServerHandler`:
+  - Just Bash scaffold mode that starts the bridge and exposes the Just Bash tool surface
+- Normal MCP frontend mode is implemented through `rmcp::ServerHandler`:
   - `tools/list` and `tools/call`
   - `resources/list` and `resources/read`
   - `prompts/list` and `prompts/get`
 - FastMCP e2e coverage exists for the Rust binary normal mode with a real MCP client:
   - single-server fixture backend
+  - multi-server direct and JSON config backends
+  - streamable HTTP frontend
+  - remote streamable HTTP backend fixture
   - tool schema lookup/invocation/listing
   - backend and compressor resources
   - prompt listing and prompt retrieval
-- In flight: normal-mode FastMCP e2e coverage for multi-server direct config and multi-server JSON config.
 
-### Still TODO
+### Known gaps and cleanup candidates
 
-- Streamable HTTP frontend mode for normal compressed MCP serving.
-- Remote backend transports:
-  - streamable HTTP backend client
-  - SSE backend client if still required for parity
-- Native OAuth/token persistence for remote MCP servers. Rust remote backends now model the Python parity rule that explicit `Authorization` headers skip OAuth, but the browser callback/token-store flow is not implemented yet.
-- Just Bash runtime transform mode.
-- Richer generated CLI help parity, if desired:
-  - argument descriptions
-  - required/optional labels
-  - type/default rendering
-- Python and TypeScript bindings/cutover:
+- **Top-level Rust CLI parsing is hand-rolled.** This is now complex enough that it should move to `clap` before more flags/modes are added. Keep the generated command argv parser (`cli/parser.rs`) separate because it is schema-driven and parses backend tool arguments, not the Rust binary's own options.
+- **Native OAuth works as a first pass but should be simplified/hardened.** The current Rust code uses `rmcp` OAuth support plus local compressor callback/storage helpers. The next iteration should investigate replacing most custom callback/browser plumbing with `clio-auth`, while continuing to let `rmcp` own MCP OAuth protocol state and authorized HTTP transport.
+- **Just Bash mode is a scaffold.** It starts the proxy and exposes `bash_tool` plus per-server help tools, but full Rust-native Just Bash AST execution remains TODO.
+- **Legacy SSE backend support is not implemented.** `rmcp` 1.6.0 exposes SSE primitives for streamable HTTP, but no standalone legacy SSE client transport was identified. Revisit only if parity requires direct SSE backends or `rmcp` adds a public client transport.
+- **Richer generated CLI help parity remains optional.** Current help is close to Python's top-level/subcommand shape, but argument descriptions, required/optional labels, type/default rendering, and edge-case formatting can still improve.
+- **Python and TypeScript bindings/cutover remain TODO:**
   - PyO3/maturin package surface
   - napi-rs package surface
   - parity tests against legacy Python/TS behavior
-- WASM/V8-isolate strategy remains future design work, not an initial implementation target.
+- **WASM/V8-isolate strategy remains future design work, not an initial implementation target.**
 
-### Current implementation order
+### Recommended next implementation order
 
-The recommended near-term sequence is:
+1. Refactor the Rust binary's top-level CLI parsing to `clap`.
+2. Rework native OAuth around the cleanest combination of `rmcp` OAuth state/transport plus `clio-auth` for the local browser/callback UX.
+3. Complete full Just Bash execution semantics or explicitly narrow/split the Just Bash MVP.
+4. Add richer generated CLI help parity if manual testing shows meaningful gaps.
+5. Begin Python and TypeScript bindings only after CLI/OAuth/Just Bash behavior is stable enough to avoid binding churn.
 
-1. Finish/merge normal-mode multi-server and JSON-config e2e through a real MCP client.
-2. Implement streamable HTTP frontend mode for the Rust normal MCP server.
-3. Implement remote streamable HTTP backend transport detection and connection.
-4. Add OAuth/token persistence for remote backend servers, initially preserving existing FastMCP/Python behavior as the parity reference.
-5. Implement Just Bash runtime transform mode.
-6. Add Python and TypeScript bindings only after the Rust runtime is green for local and remote transports.
+### Technical direction updates
+
+#### Top-level Rust CLI: use `clap`
+
+The Rust binary's top-level argument parsing is currently hand-rolled in `src/main.rs`. That was acceptable while the binary was only a scaffold, but it now supports normal mode, CLI mode, Just Bash mode, stdio/streamable HTTP frontend transports, direct command input, JSON config input, multi-server arguments, remote backend URL arguments, auth mode flags, and backend headers after `--`.
+
+Move the Rust binary's own option parsing to `clap` before adding more flags. `clap`'s derive API supports typed parser structs, subcommands, value enums, flattened argument groups, generated help, and validation, which fits the static top-level CLI surface. Keep this separate from `cli/parser.rs`: that module parses generated-command arguments from backend tool JSON schemas and should remain schema-driven rather than `clap`-derived.
+
+Design constraints for the `clap` refactor:
+
+- Preserve the existing UX that all backend server arguments live after `--`.
+- Preserve Python-compatible backend header syntax: `-H "Header=Value"` / `--header "Header=Value"` after the backend URL.
+- Preserve `MCP_COMPRESSOR_EXIT_AFTER_READY=1` as a test escape hatch unless/until tests get a better process lifecycle hook.
+- Use `ValueEnum`-style parsing for stable enums such as compression level, frontend transport, transform mode, backend config source, and backend auth mode.
+- Keep generated shell/Python/TypeScript client argument parsing unchanged.
+
+#### Native OAuth: combine `rmcp` protocol support with `clio-auth` UX plumbing
+
+The current Rust OAuth implementation deliberately delegates MCP/OAuth protocol state to `rmcp`, using `AuthorizationManager`, `AuthClient`, and `rmcp` credential/state traits. However, the local browser/callback plumbing is custom code in `src/oauth.rs`.
+
+Before expanding OAuth further, investigate simplifying that custom layer with `clio-auth`. `clio-auth` is designed for CLI/desktop OAuth Authorization Code with PKCE flows and provides the pieces `oauth2` does not: opening the browser and running a local web server for the authorization callback. That overlaps almost exactly with the custom callback listener and browser/user-prompt code we need for remote MCP servers.
+
+The desired split is:
+
+- `rmcp` remains responsible for MCP-specific OAuth metadata discovery, dynamic client registration, token exchange/refresh semantics, and authorized HTTP transport.
+- `clio-auth` handles the local CLI UX pieces if it can be integrated cleanly: loopback listener, browser opening, callback parsing, user-facing success/error page.
+- `mcp-compressor-core` owns only compressor-specific policy: token-store location, explicit `Authorization` header bypass behavior, clear errors, and parity with Python configuration semantics.
+
+If `clio-auth` cannot be integrated without duplicating or bypassing `rmcp`'s OAuth state machine, prefer staying with `rmcp` and improving the small custom callback layer rather than reimplementing protocol behavior locally.
 
 ## Open Questions
 
