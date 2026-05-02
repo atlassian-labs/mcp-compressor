@@ -132,7 +132,13 @@ fn required_params(tool: &crate::compression::engine::Tool) -> Vec<String> {
     tool.input_schema
         .get("required")
         .and_then(serde_json::Value::as_array)
-        .map(|values| values.iter().filter_map(serde_json::Value::as_str).map(ToString::to_string).collect())
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(ToString::to_string)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -177,7 +183,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = make_config(dir.path());
         let paths = TypeScriptGenerator.generate(&config).unwrap();
-        assert_eq!(paths.len(), 2, "expected exactly two generated files (.ts and .d.ts)");
+        assert_eq!(
+            paths.len(),
+            2,
+            "expected exactly two generated files (.ts and .d.ts)"
+        );
     }
 
     /// A `.ts` source file is produced.
@@ -241,7 +251,10 @@ mod tests {
         let paths = TypeScriptGenerator.generate(&config).unwrap();
         let ts = find_ts(&paths);
         let content = fs::read_to_string(ts).unwrap();
-        assert!(content.contains("do not edit"), "expected 'do not edit' header");
+        assert!(
+            content.contains("do not edit"),
+            "expected 'do not edit' header"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -284,8 +297,14 @@ mod tests {
         let paths = TypeScriptGenerator.generate(&config).unwrap();
         let ts = find_ts(&paths);
         let content = fs::read_to_string(ts).unwrap();
-        assert!(content.contains("export async function fetch("), "'fetch' function not found");
-        assert!(content.contains("export async function search("), "'search' function not found");
+        assert!(
+            content.contains("export async function fetch("),
+            "'fetch' function not found"
+        );
+        assert!(
+            content.contains("export async function search("),
+            "'search' function not found"
+        );
     }
 
     /// Functions return `Promise<string>`.
@@ -296,7 +315,10 @@ mod tests {
         let paths = TypeScriptGenerator.generate(&config).unwrap();
         let ts = find_ts(&paths);
         let content = fs::read_to_string(ts).unwrap();
-        assert!(content.contains("Promise<string>"), "Promise<string> return type not found");
+        assert!(
+            content.contains("Promise<string>"),
+            "Promise<string> return type not found"
+        );
     }
 
     /// A multi-word snake_case tool name is exported as camelCase.
@@ -317,6 +339,36 @@ mod tests {
     // ------------------------------------------------------------------
     // .d.ts content
     // ------------------------------------------------------------------
+
+    /// Generated TypeScript intentionally uses Web-standard APIs only so the
+    /// public client remains portable to future V8-isolate/WASM packaging.
+    #[test]
+    fn ts_uses_fetch_and_avoids_node_native_imports() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = make_config(dir.path());
+        let paths = TypeScriptGenerator.generate(&config).unwrap();
+        let ts = find_ts(&paths);
+        let content = fs::read_to_string(ts).unwrap();
+
+        assert!(content.contains("fetch("));
+        for forbidden in [
+            "from 'node:",
+            "from \"node:",
+            "require(",
+            "Buffer",
+            "process.",
+            "fs.",
+            "net.",
+            "http.",
+            "EventEmitter",
+            "Readable",
+        ] {
+            assert!(
+                !content.contains(forbidden),
+                "generated TypeScript should avoid Node-native API marker {forbidden:?}"
+            );
+        }
+    }
 
     /// The `.d.ts` file contains `export` declarations.
     #[test]
