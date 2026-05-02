@@ -207,7 +207,7 @@ Status as of 2026-05-01:
 - Remote backend transports:
   - streamable HTTP backend client
   - SSE backend client if still required for parity
-- OAuth/token persistence for remote MCP servers.
+- Native OAuth/token persistence for remote MCP servers. Rust remote backends now model the Python parity rule that explicit `Authorization` headers skip OAuth, but the browser callback/token-store flow is not implemented yet.
 - Just Bash runtime transform mode.
 - Richer generated CLI help parity, if desired:
   - argument descriptions
