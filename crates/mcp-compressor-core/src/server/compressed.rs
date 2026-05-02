@@ -7,7 +7,6 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::process::Stdio;
 use std::str::FromStr;
 
@@ -27,8 +26,8 @@ use crate::compression::engine::{CompressionEngine, Tool};
 use crate::compression::CompressionLevel;
 use crate::config::topology::MCPConfig;
 use crate::oauth::{
-    open_authorization_url, BrowserOpenStatus, FileCredentialStore, FileStateStore,
-    OAuthCallbackListener,
+    oauth_store_dir, open_authorization_url, remember_oauth_store, BrowserOpenStatus,
+    FileCredentialStore, FileStateStore, OAuthCallbackListener,
 };
 use crate::Error;
 
@@ -606,7 +605,8 @@ async fn connect_oauth_streamable_http_backend(
     let mut manager = AuthorizationManager::new(backend.command.as_str())
         .await
         .map_err(|error| Error::Config(format!("failed to initialize OAuth manager: {error}")))?;
-    let store_dir = oauth_store_dir(&backend.command, &backend.name)?;
+    let store_dir = oauth_store_dir(&backend.command, &backend.name);
+    remember_oauth_store(&backend.command, &backend.name, &store_dir).map_err(Error::Io)?;
     let credential_store = FileCredentialStore::new(store_dir.join("credentials.json"));
     let state_store = FileStateStore::new(store_dir.join("state"));
     manager.set_credential_store(credential_store.clone());
@@ -673,32 +673,6 @@ async fn connect_oauth_streamable_http_backend(
     ().serve(transport)
         .await
         .map_err(|error| remote_backend_error(&backend.command, error.to_string()))
-}
-
-fn oauth_store_dir(uri: &str, name: &str) -> Result<PathBuf, Error> {
-    let base = dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("mcp-compressor")
-        .join("oauth-tokens-rust");
-    Ok(base.join(sanitize_oauth_store_component(&format!("{name}-{uri}"))))
-}
-
-fn sanitize_oauth_store_component(value: &str) -> String {
-    let sanitized = value
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
-                ch
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>();
-    if sanitized.is_empty() {
-        "server".to_string()
-    } else {
-        sanitized
-    }
 }
 
 fn parse_http_backend_args(
