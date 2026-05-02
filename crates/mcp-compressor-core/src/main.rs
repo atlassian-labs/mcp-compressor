@@ -87,14 +87,10 @@ async fn build_server(cli: &CliOptions) -> Result<CompressedServer, CliError> {
     } else if !cli.multi_servers.is_empty() {
         CompressedServer::connect_multi_stdio(
             config,
-            cli.multi_servers
-                .clone()
-                .into_iter()
-                .map(apply_backend_auth)
-                .collect(),
+            cli.multi_servers.clone().into_iter().collect(),
         )
-            .await
-            .map_err(|error| CliError::Runtime(error.to_string()))
+        .await
+        .map_err(|error| CliError::Runtime(error.to_string()))
     } else {
         let (command, args) = cli
             .command
@@ -106,11 +102,7 @@ async fn build_server(cli: &CliOptions) -> Result<CompressedServer, CliError> {
             .unwrap_or_else(|| "server".to_string());
         CompressedServer::connect_stdio(
             config,
-            apply_backend_auth(BackendServerConfig::new(
-                backend_name,
-                command.clone(),
-                args.to_vec(),
-            )),
+            BackendServerConfig::new(backend_name, command.clone(), args.to_vec()),
         )
         .await
         .map_err(|error| CliError::Runtime(error.to_string()))
@@ -198,7 +190,10 @@ async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(), C
         println!("Invoke with: {} <subcommand> [args...]", script.display());
         println!(
             "Note: {} is not on PATH; add it to PATH to run `{cli_name}` directly.",
-            script.parent().unwrap_or_else(|| std::path::Path::new(".")).display()
+            script
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .display()
         );
     }
     println!("Bridge URL: {}", proxy.bridge_url());
@@ -236,7 +231,11 @@ fn candidate_script_dirs() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if cfg!(windows) {
         if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-            candidates.push(PathBuf::from(local_app_data).join("Microsoft").join("WindowsApps"));
+            candidates.push(
+                PathBuf::from(local_app_data)
+                    .join("Microsoft")
+                    .join("WindowsApps"),
+            );
         }
         if let Some(home) = &home {
             candidates.push(home.join(".local").join("bin"));
@@ -295,13 +294,14 @@ impl CliOptions {
                 }
                 "--compression" => {
                     let value = required_value(args, index, "--compression")?;
-                    options.compression = value
-                        .parse()
-                        .map_err(|_| CliError::Usage(format!("unknown compression level: {value}")))?;
+                    options.compression = value.parse().map_err(|_| {
+                        CliError::Usage(format!("unknown compression level: {value}"))
+                    })?;
                     index += 2;
                 }
                 "--config" => {
-                    options.config_path = Some(PathBuf::from(required_value(args, index, "--config")?));
+                    options.config_path =
+                        Some(PathBuf::from(required_value(args, index, "--config")?));
                     index += 2;
                 }
                 "--server-name" => {
@@ -326,11 +326,8 @@ impl CliOptions {
                     index += 2;
                 }
                 "--transform-mode" => {
-                    options.transform_mode = parse_transform_mode(&required_value(
-                        args,
-                        index,
-                        "--transform-mode",
-                    )?)?;
+                    options.transform_mode =
+                        parse_transform_mode(&required_value(args, index, "--transform-mode")?)?;
                     index += 2;
                 }
                 "--cli-mode" => {
@@ -352,19 +349,6 @@ impl CliOptions {
         }
         Ok(options)
     }
-}
-
-fn apply_backend_auth(mut backend: BackendServerConfig) -> BackendServerConfig {
-    if let Ok(headers) = std::env::var("MCP_COMPRESSOR_BACKEND_HEADER") {
-        backend = backend.with_headers(
-            headers
-                .split('\n')
-                .filter_map(|header| header.split_once(':'))
-                .map(|(name, value)| (name.trim().to_string(), value.trim().to_string()))
-                .filter(|(name, value)| !name.is_empty() && !value.is_empty()),
-        );
-    }
-    backend
 }
 
 fn parse_multi_server(

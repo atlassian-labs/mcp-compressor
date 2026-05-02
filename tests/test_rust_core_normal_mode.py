@@ -224,6 +224,8 @@ async def test_rust_core_normal_stdio_mode_with_remote_streamable_http_backend()
             "remote",
             "--",
             url,
+            "--auth",
+            "explicit-headers",
         )
         async with Client(StdioTransport(command=command[0], args=command[1:])) as client:
             tools = {tool.name for tool in await client.list_tools()}

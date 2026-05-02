@@ -21,9 +21,9 @@ use rmcp::transport::{ConfigureCommandExt, StreamableHttpClientTransport, TokioC
 use rmcp::{RoleClient, ServiceExt};
 use serde_json::Value;
 
-use crate::config::topology::MCPConfig;
 use crate::compression::engine::{CompressionEngine, Tool};
 use crate::compression::CompressionLevel;
+use crate::config::topology::MCPConfig;
 use crate::Error;
 
 /// Transport type used to reach an upstream MCP server.
@@ -35,6 +35,18 @@ pub enum BackendTransport {
     StreamableHttp,
 }
 
+/// Authentication strategy for a remote upstream MCP server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackendAuthMode {
+    /// Match Python parity: explicit `Authorization` headers are used as-is;
+    /// otherwise native OAuth should be attempted for remote HTTP backends.
+    Auto,
+    /// Use explicit backend headers only; never start OAuth.
+    ExplicitHeaders,
+    /// Force native OAuth. This requires the OAuth runtime flow to be implemented.
+    OAuth,
+}
+
 /// Configuration for one upstream MCP server.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackendServerConfig {
@@ -44,6 +56,7 @@ pub struct BackendServerConfig {
     pub env: HashMap<String, String>,
     pub transport: BackendTransport,
     pub headers: HashMap<String, String>,
+    pub auth_mode: BackendAuthMode,
 }
 
 impl BackendServerConfig {
@@ -59,10 +72,10 @@ impl BackendServerConfig {
             BackendTransport::Stdio
         };
         let raw_args = args.into_iter().map(Into::into).collect::<Vec<_>>();
-        let (args, headers) = if transport == BackendTransport::StreamableHttp {
+        let (args, headers, auth_mode) = if transport == BackendTransport::StreamableHttp {
             parse_http_backend_args(raw_args)
         } else {
-            (raw_args, HashMap::new())
+            (raw_args, HashMap::new(), BackendAuthMode::Auto)
         };
         Self {
             name: name.into(),
@@ -71,6 +84,7 @@ impl BackendServerConfig {
             env: HashMap::new(),
             transport,
             headers,
+            auth_mode,
         }
     }
 
@@ -90,6 +104,26 @@ impl BackendServerConfig {
             .map(|(name, value)| (name.into(), value.into()))
             .collect();
         self
+    }
+
+    pub fn with_auth_mode(mut self, auth_mode: BackendAuthMode) -> Self {
+        self.auth_mode = auth_mode;
+        self
+    }
+
+    pub fn has_authorization_header(&self) -> bool {
+        self.headers
+            .keys()
+            .any(|name| name.eq_ignore_ascii_case("authorization"))
+    }
+
+    pub fn should_use_oauth(&self) -> bool {
+        self.transport == BackendTransport::StreamableHttp
+            && match self.auth_mode {
+                BackendAuthMode::Auto => !self.has_authorization_header(),
+                BackendAuthMode::ExplicitHeaders => false,
+                BackendAuthMode::OAuth => true,
+            }
     }
 }
 
@@ -302,7 +336,8 @@ impl CompressedServer {
         tool_input: Value,
     ) -> Result<String, Error> {
         let backend = self.backend_for_wrapper(_wrapper_tool_name)?;
-        self.invoke_backend(backend, backend_tool_name, tool_input).await
+        self.invoke_backend(backend, backend_tool_name, tool_input)
+            .await
     }
 
     /// List frontend resources, including pass-through backend resources and
@@ -393,7 +428,8 @@ impl CompressedServer {
             .first()
             .filter(|_| self.backends.len() == 1)
             .ok_or_else(|| Error::ToolNotFound(backend_tool_name.to_string()))?;
-        self.invoke_backend(backend, backend_tool_name, tool_input).await
+        self.invoke_backend(backend, backend_tool_name, tool_input)
+            .await
     }
 
     async fn invoke_backend(
@@ -500,6 +536,12 @@ async fn connect_streamable_http_backend(
             "streamable HTTP backend URLs do not accept command arguments".to_string(),
         ));
     }
+    if backend.should_use_oauth() {
+        return Err(Error::Config(format!(
+            "native OAuth for remote streamable HTTP backend {} is not implemented yet; pass an explicit Authorization header with `-H \"Authorization=...\"` to skip OAuth for now",
+            backend.command
+        )));
+    }
     let mut config = StreamableHttpClientTransportConfig::with_uri(backend.command.clone());
     let headers = backend_http_headers(backend)?;
     if !headers.is_empty() {
@@ -511,9 +553,12 @@ async fn connect_streamable_http_backend(
         .map_err(|error| remote_backend_error(&backend.command, error.to_string()))
 }
 
-fn parse_http_backend_args(args: Vec<String>) -> (Vec<String>, HashMap<String, String>) {
+fn parse_http_backend_args(
+    args: Vec<String>,
+) -> (Vec<String>, HashMap<String, String>, BackendAuthMode) {
     let mut remaining = Vec::new();
     let mut headers = HashMap::new();
+    let mut auth_mode = BackendAuthMode::Auto;
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
@@ -530,7 +575,40 @@ fn parse_http_backend_args(args: Vec<String>) -> (Vec<String>, HashMap<String, S
                 remaining.push(arg.clone());
                 index += 1;
             }
-        } else if let Some(header) = arg.strip_prefix("-H=").or_else(|| arg.strip_prefix("--header=")) {
+        } else if let Some(mode) = arg.strip_prefix("--auth=") {
+            match mode {
+                "explicit-headers" | "headers" | "none" => {
+                    auth_mode = BackendAuthMode::ExplicitHeaders;
+                }
+                "oauth" => {
+                    auth_mode = BackendAuthMode::OAuth;
+                }
+                _ => remaining.push(arg.clone()),
+            }
+            index += 1;
+        } else if arg == "--auth" {
+            if let Some(mode) = args.get(index + 1) {
+                match mode.as_str() {
+                    "explicit-headers" | "headers" | "none" => {
+                        auth_mode = BackendAuthMode::ExplicitHeaders;
+                    }
+                    "oauth" => {
+                        auth_mode = BackendAuthMode::OAuth;
+                    }
+                    _ => {
+                        remaining.push(arg.clone());
+                        remaining.push(mode.clone());
+                    }
+                }
+                index += 2;
+            } else {
+                remaining.push(arg.clone());
+                index += 1;
+            }
+        } else if let Some(header) = arg
+            .strip_prefix("-H=")
+            .or_else(|| arg.strip_prefix("--header="))
+        {
             if let Some((name, value)) = parse_header_arg(header) {
                 headers.insert(name, value);
             } else {
@@ -542,13 +620,11 @@ fn parse_http_backend_args(args: Vec<String>) -> (Vec<String>, HashMap<String, S
             index += 1;
         }
     }
-    (remaining, headers)
+    (remaining, headers, auth_mode)
 }
 
 fn parse_header_arg(header: &str) -> Option<(String, String)> {
-    let (name, value) = header
-        .split_once('=')
-        .or_else(|| header.split_once(':'))?;
+    let (name, value) = header.split_once('=').or_else(|| header.split_once(':'))?;
     let name = name.trim();
     let value = value.trim();
     if name.is_empty() || value.is_empty() {
@@ -715,13 +791,80 @@ mod tests {
         let backend = BackendServerConfig::new(
             "remote",
             "https://example.test/mcp",
-            ["-H", "Authorization=Bearer ${MCP_COMPRESSOR_MISSING_TEST_TOKEN}"],
+            [
+                "-H",
+                "Authorization=Bearer ${MCP_COMPRESSOR_MISSING_TEST_TOKEN}",
+            ],
         );
 
         assert_eq!(
             backend.headers["Authorization"],
             "Bearer ${MCP_COMPRESSOR_MISSING_TEST_TOKEN}"
         );
+    }
+
+    #[test]
+    fn remote_http_auto_auth_uses_oauth_without_authorization_header() {
+        let backend =
+            BackendServerConfig::new("remote", "https://example.test/mcp", [] as [&str; 0]);
+
+        assert!(backend.should_use_oauth());
+    }
+
+    #[test]
+    fn remote_http_auto_auth_skips_oauth_with_authorization_header() {
+        let backend = BackendServerConfig::new(
+            "remote",
+            "https://example.test/mcp",
+            ["-H", "Authorization=Basic token"],
+        );
+
+        assert!(backend.has_authorization_header());
+        assert!(!backend.should_use_oauth());
+    }
+
+    #[test]
+    fn http_backend_url_parses_auth_mode_args() {
+        let explicit = BackendServerConfig::new(
+            "remote",
+            "https://example.test/mcp",
+            ["--auth", "explicit-headers"],
+        );
+        let oauth =
+            BackendServerConfig::new("remote", "https://example.test/mcp", ["--auth=oauth"]);
+
+        assert_eq!(explicit.auth_mode, BackendAuthMode::ExplicitHeaders);
+        assert!(explicit.args.is_empty());
+        assert_eq!(oauth.auth_mode, BackendAuthMode::OAuth);
+        assert!(oauth.args.is_empty());
+    }
+
+    #[test]
+    fn explicit_headers_auth_mode_skips_oauth_without_authorization_header() {
+        let backend =
+            BackendServerConfig::new("remote", "https://example.test/mcp", [] as [&str; 0])
+                .with_auth_mode(BackendAuthMode::ExplicitHeaders);
+
+        assert!(!backend.should_use_oauth());
+    }
+
+    #[test]
+    fn forced_oauth_auth_mode_uses_oauth_even_with_authorization_header() {
+        let backend = BackendServerConfig::new(
+            "remote",
+            "https://example.test/mcp",
+            ["-H", "Authorization=Basic token"],
+        )
+        .with_auth_mode(BackendAuthMode::OAuth);
+
+        assert!(backend.should_use_oauth());
+    }
+
+    #[test]
+    fn stdio_backend_never_uses_oauth() {
+        let backend = BackendServerConfig::new("local", "python", ["server.py"]);
+
+        assert!(!backend.should_use_oauth());
     }
 
     #[test]
