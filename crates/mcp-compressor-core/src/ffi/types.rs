@@ -4,10 +4,16 @@
 //! objects that binding crates can expose idiomatically in Python and
 //! TypeScript while sharing the same core behavior.
 
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::cli::parser::parse_argv;
+use crate::client_gen::cli::CliGenerator;
+use crate::client_gen::generator::{ClientGenerator, GeneratorConfig};
+use crate::client_gen::python::PythonGenerator;
+use crate::client_gen::typescript::TypeScriptGenerator;
 use crate::compression::engine::{CompressionEngine, Tool};
 use crate::compression::CompressionLevel;
 use crate::config::topology::MCPConfig;
@@ -59,6 +65,35 @@ pub fn parse_tool_argv(tool: FfiTool, argv: Vec<String>) -> Result<Value, Error>
     parse_argv(&argv, &tool.into())
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FfiGeneratorConfig {
+    pub cli_name: String,
+    pub bridge_url: String,
+    pub token: String,
+    pub tools: Vec<FfiTool>,
+    pub session_pid: u32,
+    pub output_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FfiClientArtifactKind {
+    Cli,
+    Python,
+    TypeScript,
+}
+
+pub fn generate_client_artifacts(
+    kind: FfiClientArtifactKind,
+    config: FfiGeneratorConfig,
+) -> Result<Vec<PathBuf>, Error> {
+    let config = GeneratorConfig::from(config);
+    match kind {
+        FfiClientArtifactKind::Cli => CliGenerator.generate(&config),
+        FfiClientArtifactKind::Python => PythonGenerator.generate(&config),
+        FfiClientArtifactKind::TypeScript => TypeScriptGenerator.generate(&config),
+    }
+}
+
 pub fn parse_mcp_config(config_json: &str) -> Result<Vec<FfiMcpServer>, Error> {
     let config = MCPConfig::from_json(config_json)?;
     Ok(config
@@ -79,6 +114,19 @@ pub fn parse_mcp_config(config_json: &str) -> Result<Vec<FfiMcpServer>, Error> {
             })
         })
         .collect())
+}
+
+impl From<FfiGeneratorConfig> for GeneratorConfig {
+    fn from(value: FfiGeneratorConfig) -> Self {
+        Self {
+            cli_name: value.cli_name,
+            bridge_url: value.bridge_url,
+            token: value.token,
+            tools: value.tools.into_iter().map(Into::into).collect(),
+            session_pid: value.session_pid,
+            output_dir: value.output_dir,
+        }
+    }
 }
 
 impl From<FfiTool> for Tool {
@@ -159,6 +207,59 @@ mod tests {
         )
         .unwrap();
         assert_eq!(parsed, json!({ "message": "hello" }));
+    }
+
+    fn generator_config(output_dir: &std::path::Path) -> FfiGeneratorConfig {
+        FfiGeneratorConfig {
+            cli_name: "ffi-server".to_string(),
+            bridge_url: "http://127.0.0.1:12345".to_string(),
+            token: "token".repeat(16),
+            tools: vec![sample_tool()],
+            session_pid: 42,
+            output_dir: output_dir.to_path_buf(),
+        }
+    }
+
+    #[test]
+    fn ffi_generates_cli_artifacts() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths =
+            generate_client_artifacts(FfiClientArtifactKind::Cli, generator_config(dir.path()))
+                .unwrap();
+        assert_eq!(paths.len(), 1);
+        let content = std::fs::read_to_string(&paths[0]).unwrap();
+        assert!(content.contains("ffi-server - the ffi-server toolset"));
+    }
+
+    #[test]
+    fn ffi_generates_python_artifacts() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths =
+            generate_client_artifacts(FfiClientArtifactKind::Python, generator_config(dir.path()))
+                .unwrap();
+        assert_eq!(paths.len(), 1);
+        assert_eq!(
+            paths[0].extension().and_then(|ext| ext.to_str()),
+            Some("py")
+        );
+    }
+
+    #[test]
+    fn ffi_generates_typescript_artifacts() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = generate_client_artifacts(
+            FfiClientArtifactKind::TypeScript,
+            generator_config(dir.path()),
+        )
+        .unwrap();
+        assert_eq!(paths.len(), 2);
+        assert!(paths
+            .iter()
+            .any(|path| path.extension().and_then(|ext| ext.to_str()) == Some("ts")));
+        assert!(paths.iter().any(|path| path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(".d.ts"))));
     }
 
     #[test]
