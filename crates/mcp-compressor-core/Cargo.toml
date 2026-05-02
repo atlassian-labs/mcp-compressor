@@ -15,6 +15,7 @@ async-trait = "0.1"
 dirs = "6"
 reqwest = { version = "0.13.3", default-features = false, features = ["native-tls"] }
 clap = { version = "4", features = ["derive"] }
+open = "5.3"
 
 [dev-dependencies]
 # async test runtime and macros (#[tokio::test])
