@@ -284,6 +284,12 @@ impl CompressedServer {
 
     /// Return the frontend MCP tools exposed to callers.
     pub async fn list_frontend_tools(&self) -> Result<Vec<Tool>, Error> {
+        if self.config.transform_mode == ProxyTransformMode::JustBash {
+            return Ok(self.just_bash_tools());
+        }
+        if self.config.transform_mode == ProxyTransformMode::Cli {
+            return Ok(self.cli_help_tools());
+        }
         let mut tools = Vec::new();
         for backend in &self.backends {
             let prefix = self.wrapper_prefix(backend);
@@ -455,6 +461,44 @@ impl CompressedServer {
             .await
             .map_err(|error| Error::Config(error.to_string()))?;
         Ok(call_tool_result_to_string(result))
+    }
+
+    fn cli_help_tools(&self) -> Vec<Tool> {
+        self.backends
+            .iter()
+            .map(|backend| {
+                Tool::new(
+                    format!("{}_help", backend.public_name),
+                    Some(format_backend_help(backend)),
+                    serde_json::json!({"type": "object", "properties": {}}),
+                )
+            })
+            .collect()
+    }
+
+    fn just_bash_tools(&self) -> Vec<Tool> {
+        let mut tools = Vec::new();
+        let names = self
+            .backends
+            .iter()
+            .map(|backend| backend.public_name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        tools.push(Tool::new(
+            "bash_tool",
+            Some(format!(
+                "Execute shell commands with just-bash. Backend MCP command providers: {names}. When relevant, prefer TOON output for compact representation."
+            )),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "Bash command to execute"}
+                },
+                "required": ["command"]
+            }),
+        ));
+        tools.extend(self.cli_help_tools());
+        tools
     }
 
     fn wrapper_prefix(&self, backend: &ConnectedBackend) -> String {
@@ -785,6 +829,20 @@ fn convert_tool(tool: rmcp::model::Tool) -> Tool {
         tool.description.map(|description| description.to_string()),
         Value::Object((*tool.input_schema).clone()),
     )
+}
+
+fn format_backend_help(backend: &ConnectedBackend) -> String {
+    let mut lines = vec![format!("{} - the {} toolset", backend.public_name, backend.public_name)];
+    lines.push(String::new());
+    lines.push("When relevant, outputs from this CLI will prefer using the TOON format for more efficient representation of data.".to_string());
+    lines.push(String::new());
+    lines.push("SUBCOMMANDS:".to_string());
+    for tool in &backend.tools {
+        let subcommand = crate::cli::mapping::tool_name_to_subcommand(&tool.name);
+        let description = tool.description.as_deref().unwrap_or_default();
+        lines.push(format!("  {subcommand:<35} {description}"));
+    }
+    lines.join("\n")
 }
 
 fn wrapper_tool(name: String, description: &str) -> Tool {

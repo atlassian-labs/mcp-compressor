@@ -241,7 +241,6 @@ fn wait_for_generated_cli_path(reader: &mut impl BufRead) -> String {
 }
 
 #[test]
-#[ignore = "Just Bash runtime is implemented after CLI mode/proxy runtime"]
 fn rust_cli_contract_just_bash_transform_mode_multi_server() {
     let tempdir = tempfile::tempdir().unwrap();
     let config_path = tempdir.path().join("mcp.json");
@@ -255,6 +254,7 @@ fn rust_cli_contract_just_bash_transform_mode_multi_server() {
     .unwrap();
 
     let mut cmd = core_cmd();
+    cmd.env("MCP_COMPRESSOR_EXIT_AFTER_READY", "1");
     cmd.args([
         "--just-bash",
         "--config",
@@ -262,7 +262,7 @@ fn rust_cli_contract_just_bash_transform_mode_multi_server() {
     ])
     .assert()
     .success()
-    .stdout(predicate::str::contains("bash_tool"))
-    .stdout(predicate::str::contains("alpha_help"))
-    .stdout(predicate::str::contains("beta_help"));
+    .stdout(predicate::str::contains("Just Bash ready"))
+    .stdout(predicate::str::contains("Bridge URL:"))
+    .stdout(predicate::str::contains("Session: bash"));
 }
