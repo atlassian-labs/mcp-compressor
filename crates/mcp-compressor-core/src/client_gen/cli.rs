@@ -8,6 +8,7 @@
 //! - Passes `Authorization: Bearer $TOKEN` on every `POST /exec` request.
 //! - Is marked executable (Unix `chmod 755`).
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
@@ -134,7 +135,10 @@ fn render_windows_cmd(config: &GeneratorConfig) -> String {
         config.bridge_url, config.token
     );
     for tool in &config.tools {
-        script.push_str(&format!("REM subcommand: {}\r\n", tool_name_to_subcommand(&tool.name)));
+        script.push_str(&format!(
+            "REM subcommand: {}\r\n",
+            tool_name_to_subcommand(&tool.name)
+        ));
     }
     script
 }
@@ -168,14 +172,111 @@ fn render_tool_help(cli_name: &str, tool: &crate::compression::engine::Tool) -> 
         help.push_str(&format!(" --{} <value>", tool_name_to_subcommand(&param)));
     }
     help.push_str("\n");
-    let params = tool.param_names();
-    if !params.is_empty() {
+    let options = tool_options(tool);
+    if !options.is_empty() {
         help.push_str("\nOPTIONS:\n");
-        for param in params {
-            help.push_str(&format!("  --{} <value>\n", tool_name_to_subcommand(&param)));
+        for option in options {
+            help.push_str(&format_tool_option_help(&option));
         }
     }
     help
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ToolOption {
+    name: String,
+    ty: String,
+    required: bool,
+    description: Option<String>,
+    default: Option<String>,
+}
+
+fn tool_options(tool: &crate::compression::engine::Tool) -> Vec<ToolOption> {
+    let required = tool
+        .input_schema
+        .get("required")
+        .and_then(|value| value.as_array())
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_str().map(str::to_string))
+                .collect::<HashSet<_>>()
+        })
+        .unwrap_or_default();
+
+    tool.input_schema
+        .get("properties")
+        .and_then(|value| value.as_object())
+        .map(|properties| {
+            properties
+                .iter()
+                .map(|(name, schema)| ToolOption {
+                    name: name.clone(),
+                    ty: schema_type_label(schema),
+                    required: required.contains(name),
+                    description: schema
+                        .get("description")
+                        .and_then(|value| value.as_str())
+                        .map(str::to_string),
+                    default: schema.get("default").map(default_value_label),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn format_tool_option_help(option: &ToolOption) -> String {
+    let flag = format!("--{}", tool_name_to_subcommand(&option.name));
+    let requirement = if option.required {
+        "required"
+    } else {
+        "optional"
+    };
+    let mut line = format!("  {flag:<28} <{}>  {requirement}", option.ty);
+    let mut details = Vec::new();
+    if let Some(description) = &option.description {
+        details.push(first_line(description).to_string());
+    }
+    if let Some(default) = &option.default {
+        details.push(format!("default: {default}"));
+    }
+    if !details.is_empty() {
+        line.push_str(" — ");
+        line.push_str(&details.join("; "));
+    }
+    line.push('\n');
+    line
+}
+
+fn schema_type_label(schema: &serde_json::Value) -> String {
+    if let Some(values) = schema.get("enum").and_then(|value| value.as_array()) {
+        let labels = values
+            .iter()
+            .filter_map(|value| value.as_str().map(str::to_string))
+            .collect::<Vec<_>>();
+        if !labels.is_empty() {
+            return labels.join("|");
+        }
+    }
+    match schema.get("type").and_then(|value| value.as_str()) {
+        Some("integer") => "integer".to_string(),
+        Some("number") => "number".to_string(),
+        Some("boolean") => "boolean".to_string(),
+        Some("array") => schema
+            .get("items")
+            .map(|items| format!("{}[]", schema_type_label(items)))
+            .unwrap_or_else(|| "array".to_string()),
+        Some("object") => "json".to_string(),
+        Some("string") | None => "string".to_string(),
+        Some(other) => other.to_string(),
+    }
+}
+
+fn default_value_label(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(value) => value.clone(),
+        other => other.to_string(),
+    }
 }
 
 fn first_line(value: &str) -> &str {
@@ -207,7 +308,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = make_config(dir.path());
         let paths = CliGenerator.generate(&config).unwrap();
-        assert!(!paths.is_empty(), "expected at least one generated artifact");
+        assert!(
+            !paths.is_empty(),
+            "expected at least one generated artifact"
+        );
     }
 
     /// All returned paths actually exist on disk.
@@ -249,7 +353,10 @@ mod tests {
         let paths = CliGenerator.generate(&config).unwrap();
         let unix_script = paths.iter().find(|p| p.extension().is_none()).unwrap();
         let content = fs::read_to_string(unix_script).unwrap();
-        assert!(content.starts_with("#!"), "script must start with shebang, got: {content:?}");
+        assert!(
+            content.starts_with("#!"),
+            "script must start with shebang, got: {content:?}"
+        );
     }
 
     /// On Unix the primary script is named after `cli_name`.
@@ -286,7 +393,10 @@ mod tests {
         let paths = CliGenerator.generate(&config).unwrap();
         let unix_script = paths.iter().find(|p| p.extension().is_none()).unwrap();
         let content = fs::read_to_string(unix_script).unwrap();
-        assert!(content.contains(&config.bridge_url), "bridge URL not found in script");
+        assert!(
+            content.contains(&config.bridge_url),
+            "bridge URL not found in script"
+        );
     }
 
     /// Each upstream tool name appears as a subcommand in the script.
@@ -346,6 +456,10 @@ mod tests {
         assert!(content.contains("my-server fetch"));
         assert!(content.contains("OPTIONS:"));
         assert!(content.contains("--url <value>"));
+        assert!(content.contains("--url"));
+        assert!(content.contains("<string>  required — URL to fetch."));
+        assert!(content.contains("--timeout"));
+        assert!(content.contains("<integer>  optional — Timeout in seconds.; default: 30"));
     }
 
     /// On Unix the generated script is executable.
@@ -374,7 +488,9 @@ mod tests {
         let config = make_config(dir.path());
         let paths = CliGenerator.generate(&config).unwrap();
         assert!(
-            paths.iter().any(|p| p.extension() == Some(OsStr::new("cmd"))),
+            paths
+                .iter()
+                .any(|p| p.extension() == Some(OsStr::new("cmd"))),
             "expected a .cmd file on Windows",
         );
     }
@@ -387,7 +503,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = make_config(dir.path());
         let paths = CliGenerator.generate(&config).unwrap();
-        let cmd = paths.iter().find(|p| p.extension() == Some(OsStr::new("cmd"))).unwrap();
+        let cmd = paths
+            .iter()
+            .find(|p| p.extension() == Some(OsStr::new("cmd")))
+            .unwrap();
         let content = fs::read_to_string(cmd).unwrap();
         assert!(content.contains(&config.token));
     }
