@@ -17,7 +17,11 @@ use crate::client_gen::typescript::TypeScriptGenerator;
 use crate::compression::engine::{CompressionEngine, Tool};
 use crate::compression::CompressionLevel;
 use crate::config::topology::MCPConfig;
-use crate::server::{JustBashCommandSpec, JustBashProviderSpec};
+use crate::proxy::ToolProxyServer;
+use crate::server::{
+    BackendServerConfig, CompressedServer, CompressedServerConfig, JustBashCommandSpec,
+    JustBashProviderSpec,
+};
 use crate::Error;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -94,6 +98,90 @@ pub fn generate_client_artifacts(
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FfiBackendConfig {
+    pub name: String,
+    pub command_or_url: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FfiCompressedSessionConfig {
+    pub compression_level: String,
+    pub server_name: Option<String>,
+    #[serde(default)]
+    pub include_tools: Vec<String>,
+    #[serde(default)]
+    pub exclude_tools: Vec<String>,
+    #[serde(default)]
+    pub toonify: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FfiCompressedSessionInfo {
+    pub bridge_url: String,
+    pub token: String,
+    pub frontend_tools: Vec<FfiTool>,
+    pub just_bash_providers: Vec<FfiJustBashProviderSpec>,
+}
+
+pub struct FfiCompressedSession {
+    info: FfiCompressedSessionInfo,
+}
+
+impl FfiCompressedSession {
+    pub fn bridge_url(&self) -> &str {
+        &self.info.bridge_url
+    }
+
+    pub fn token(&self) -> &str {
+        &self.info.token
+    }
+
+    pub fn info(&self) -> FfiCompressedSessionInfo {
+        self.info.clone()
+    }
+}
+
+pub async fn start_compressed_session(
+    config: FfiCompressedSessionConfig,
+    backends: Vec<FfiBackendConfig>,
+) -> Result<FfiCompressedSession, Error> {
+    let server = CompressedServer::connect_multi_stdio(
+        CompressedServerConfig {
+            level: config.compression_level.parse()?,
+            server_name: config.server_name,
+            include_tools: config.include_tools,
+            exclude_tools: config.exclude_tools,
+            toonify: config.toonify,
+            ..CompressedServerConfig::default()
+        },
+        backends.into_iter().map(Into::into).collect(),
+    )
+    .await?;
+    let frontend_tools = server
+        .list_frontend_tools()
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    let just_bash_providers = server
+        .just_bash_provider_specs()
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    let proxy = ToolProxyServer::start(server).await?;
+    Ok(FfiCompressedSession {
+        info: FfiCompressedSessionInfo {
+            bridge_url: proxy.bridge_url().to_string(),
+            token: proxy.token_value().to_string(),
+            frontend_tools,
+            just_bash_providers,
+        },
+    })
+}
+
 pub fn parse_mcp_config(config_json: &str) -> Result<Vec<FfiMcpServer>, Error> {
     let config = MCPConfig::from_json(config_json)?;
     Ok(config
@@ -114,6 +202,12 @@ pub fn parse_mcp_config(config_json: &str) -> Result<Vec<FfiMcpServer>, Error> {
             })
         })
         .collect())
+}
+
+impl From<FfiBackendConfig> for BackendServerConfig {
+    fn from(value: FfiBackendConfig) -> Self {
+        BackendServerConfig::new(value.name, value.command_or_url, value.args)
+    }
 }
 
 impl From<FfiGeneratorConfig> for GeneratorConfig {
@@ -260,6 +354,56 @@ mod tests {
             .file_name()
             .and_then(|name| name.to_str())
             .is_some_and(|name| name.ends_with(".d.ts"))));
+    }
+
+    #[tokio::test]
+    async fn ffi_starts_compressed_session_and_proxy() {
+        let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("alpha_server.py");
+        let session = start_compressed_session(
+            FfiCompressedSessionConfig {
+                compression_level: "max".to_string(),
+                server_name: Some("alpha".to_string()),
+                include_tools: Vec::new(),
+                exclude_tools: Vec::new(),
+                toonify: false,
+            },
+            vec![FfiBackendConfig {
+                name: "alpha".to_string(),
+                command_or_url: std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_string()),
+                args: vec![fixture.to_string_lossy().into_owned()],
+            }],
+        )
+        .await
+        .unwrap();
+        let info = session.info();
+        assert!(info.bridge_url.starts_with("http://127.0.0.1:"));
+        assert!(!info.token.is_empty());
+        let invoke_tool_name = info
+            .frontend_tools
+            .iter()
+            .find(|tool| tool.name.ends_with("invoke_tool"))
+            .map(|tool| tool.name.clone())
+            .expect("invoke wrapper tool");
+
+        let client = reqwest::Client::new();
+        let response = client
+            .post(format!("{}/exec", info.bridge_url))
+            .bearer_auth(info.token)
+            .json(&serde_json::json!({
+                "tool": invoke_tool_name,
+                "input": {
+                    "tool_name": "echo",
+                    "tool_input": {"message": "ffi"}
+                }
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert!(response.status().is_success());
+        assert_eq!(response.text().await.unwrap(), "alpha:ffi");
     }
 
     #[test]
