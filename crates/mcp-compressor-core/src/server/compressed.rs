@@ -26,7 +26,10 @@ use serde_json::Value;
 use crate::compression::engine::{CompressionEngine, Tool};
 use crate::compression::CompressionLevel;
 use crate::config::topology::MCPConfig;
-use crate::oauth::{FileCredentialStore, FileStateStore, OAuthCallbackListener};
+use crate::oauth::{
+    open_authorization_url, BrowserOpenStatus, FileCredentialStore, FileStateStore,
+    OAuthCallbackListener,
+};
 use crate::Error;
 
 /// Transport type used to reach an upstream MCP server.
@@ -632,8 +635,22 @@ async fn connect_oauth_streamable_http_backend(
         let auth_url = state.get_authorization_url().await.map_err(|error| {
             Error::Config(format!("failed to get OAuth authorization URL: {error}"))
         })?;
+        match open_authorization_url(&auth_url) {
+            Ok(BrowserOpenStatus::Opened) => {
+                eprintln!("Opened browser to authorize {name}.", name = backend.name);
+            }
+            Ok(BrowserOpenStatus::Disabled) => {
+                eprintln!("Browser opening disabled for {name}.", name = backend.name);
+            }
+            Err(error) => {
+                eprintln!(
+                    "Failed to open browser for {name}: {error}",
+                    name = backend.name
+                );
+            }
+        }
         eprintln!(
-            "Open this URL to authorize {name}:\n{auth_url}",
+            "If the browser did not open, authorize {name} with this URL:\n{auth_url}",
             name = backend.name
         );
         let callback = listener.wait_for_callback().map_err(Error::Io)?;
@@ -832,7 +849,10 @@ fn convert_tool(tool: rmcp::model::Tool) -> Tool {
 }
 
 fn format_backend_help(backend: &ConnectedBackend) -> String {
-    let mut lines = vec![format!("{} - the {} toolset", backend.public_name, backend.public_name)];
+    let mut lines = vec![format!(
+        "{} - the {} toolset",
+        backend.public_name, backend.public_name
+    )];
     lines.push(String::new());
     lines.push("When relevant, outputs from this CLI will prefer using the TOON format for more efficient representation of data.".to_string());
     lines.push(String::new());

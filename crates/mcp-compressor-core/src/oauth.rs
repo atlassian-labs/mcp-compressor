@@ -3,6 +3,7 @@
 //! The runtime delegates OAuth protocol details to `rmcp`. This module only
 //! provides compressor-specific storage and local callback plumbing.
 
+use std::env;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener};
@@ -199,6 +200,27 @@ impl OAuthCallbackListener {
     }
 }
 
+pub fn open_authorization_url(url: &str) -> Result<BrowserOpenStatus, std::io::Error> {
+    if browser_open_disabled() {
+        return Ok(BrowserOpenStatus::Disabled);
+    }
+    open::that(url)
+        .map(|_| BrowserOpenStatus::Opened)
+        .map_err(std::io::Error::other)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BrowserOpenStatus {
+    Opened,
+    Disabled,
+}
+
+fn browser_open_disabled() -> bool {
+    env::var("MCP_COMPRESSOR_NO_BROWSER")
+        .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OAuthCallback {
     pub code: String,
@@ -363,6 +385,20 @@ mod tests {
 
         assert!(store.load("missing-token").await.unwrap().is_none());
         store.delete("missing-token").await.unwrap();
+    }
+
+    #[test]
+    fn browser_open_can_be_disabled_for_headless_runs() {
+        unsafe {
+            std::env::set_var("MCP_COMPRESSOR_NO_BROWSER", "1");
+        }
+        assert_eq!(
+            open_authorization_url("https://example.test/auth").unwrap(),
+            BrowserOpenStatus::Disabled
+        );
+        unsafe {
+            std::env::remove_var("MCP_COMPRESSOR_NO_BROWSER");
+        }
     }
 
     #[test]
