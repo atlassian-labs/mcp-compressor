@@ -17,9 +17,9 @@ fn rust_cli_help_describes_supported_modes() {
     cmd.arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("--compression <LEVEL>"))
-        .stdout(predicate::str::contains("--config <PATH>"))
-        .stdout(predicate::str::contains("--transform-mode <MODE>"))
+        .stdout(predicate::str::contains("--compression <COMPRESSION>"))
+        .stdout(predicate::str::contains("--config <CONFIG_PATH>"))
+        .stdout(predicate::str::contains("--transform-mode <TRANSFORM_MODE>"))
         .stdout(predicate::str::contains("--cli-mode"))
         .stdout(predicate::str::contains("--just-bash"));
 }
@@ -31,7 +31,7 @@ fn rust_cli_invalid_compression_level_exits_nonzero() {
         .assert()
         .failure()
         .code(2)
-        .stderr(predicate::str::contains("unknown compression level: verbose"));
+        .stderr(predicate::str::contains("invalid value 'verbose'"));
 }
 
 #[test]

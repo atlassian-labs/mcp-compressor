@@ -91,11 +91,9 @@ async def test_rust_core_normal_stdio_mode_with_multi_server_direct_config() -> 
         "--server-name",
         "suite",
         "--multi-server",
-        "alpha=python3",
-        str(alpha),
+        f"alpha=python3 {alpha}",
         "--multi-server",
-        "beta=python3",
-        str(beta),
+        f"beta=python3 {beta}",
     )
 
     async with Client(StdioTransport(command=command[0], args=command[1:])) as client:
