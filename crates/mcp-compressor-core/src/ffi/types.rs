@@ -17,12 +17,45 @@ use crate::client_gen::typescript::TypeScriptGenerator;
 use crate::compression::engine::{CompressionEngine, Tool};
 use crate::compression::CompressionLevel;
 use crate::config::topology::MCPConfig;
+use crate::oauth::{
+    clear_oauth_store, list_oauth_stores, oauth_store_root, remember_oauth_store,
+    OAuthStoreIndexEntry,
+};
 use crate::proxy::ToolProxyServer;
 use crate::server::{
     BackendServerConfig, CompressedServer, CompressedServerConfig, JustBashCommandSpec,
     JustBashProviderSpec,
 };
 use crate::Error;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FfiOAuthStoreEntry {
+    pub backend_name: String,
+    pub backend_uri: String,
+    pub store_dir: PathBuf,
+}
+
+pub fn oauth_store_path() -> PathBuf {
+    oauth_store_root()
+}
+
+pub fn remember_oauth_backend(
+    backend_uri: &str,
+    backend_name: &str,
+    store_dir: PathBuf,
+) -> Result<(), Error> {
+    remember_oauth_store(backend_uri, backend_name, &store_dir).map_err(Error::Io)
+}
+
+pub fn list_oauth_credentials() -> Result<Vec<FfiOAuthStoreEntry>, Error> {
+    list_oauth_stores()
+        .map(|entries| entries.into_iter().map(Into::into).collect())
+        .map_err(Error::Io)
+}
+
+pub fn clear_oauth_credentials(target: Option<&str>) -> Result<Vec<PathBuf>, Error> {
+    clear_oauth_store(target).map_err(Error::Io)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FfiTool {
@@ -204,6 +237,16 @@ pub fn parse_mcp_config(config_json: &str) -> Result<Vec<FfiMcpServer>, Error> {
         .collect())
 }
 
+impl From<OAuthStoreIndexEntry> for FfiOAuthStoreEntry {
+    fn from(value: OAuthStoreIndexEntry) -> Self {
+        Self {
+            backend_name: value.name,
+            backend_uri: value.uri,
+            store_dir: value.store_dir.into(),
+        }
+    }
+}
+
 impl From<FfiBackendConfig> for BackendServerConfig {
     fn from(value: FfiBackendConfig) -> Self {
         BackendServerConfig::new(value.name, value.command_or_url, value.args)
@@ -277,6 +320,38 @@ mod tests {
                 },
                 "required": ["message"]
             }),
+        }
+    }
+
+    #[test]
+    fn ffi_lists_and_clears_oauth_credentials() {
+        let dir = tempfile::tempdir().unwrap();
+        let previous = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+
+        let store_dir = oauth_store_path().join("example-store");
+        std::fs::create_dir_all(&store_dir).unwrap();
+        remember_oauth_backend("https://example.test/mcp", "example", store_dir.clone()).unwrap();
+
+        let entries = list_oauth_credentials().unwrap();
+        let entry = entries
+            .iter()
+            .find(|entry| entry.backend_name == "example")
+            .expect("remembered entry");
+        assert_eq!(entry.backend_uri, "https://example.test/mcp");
+        assert_eq!(entry.store_dir, store_dir);
+
+        let cleared = clear_oauth_credentials(Some("example")).unwrap();
+        assert!(cleared.iter().any(|path| path.ends_with("example-store")));
+        assert!(!list_oauth_credentials()
+            .unwrap()
+            .iter()
+            .any(|entry| entry.backend_name == "example"));
+
+        if let Some(value) = previous {
+            std::env::set_var("XDG_CONFIG_HOME", value);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
         }
     }
 
