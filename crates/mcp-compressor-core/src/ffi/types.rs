@@ -28,7 +28,7 @@ use crate::oauth::{
 use crate::proxy::ToolProxyServer;
 use crate::server::{
     BackendServerConfig, CompressedServer, CompressedServerConfig, JustBashCommandSpec,
-    JustBashProviderSpec,
+    JustBashProviderSpec, ProxyTransformMode,
 };
 use crate::Error;
 
@@ -153,6 +153,7 @@ pub struct FfiCompressedSessionConfig {
     pub exclude_tools: Vec<String>,
     #[serde(default)]
     pub toonify: bool,
+    pub transform_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -178,6 +179,15 @@ impl FfiCompressedSession {
 
     pub fn info(&self) -> FfiCompressedSessionInfo {
         self.info.clone()
+    }
+}
+
+fn parse_ffi_transform_mode(value: Option<&str>) -> Result<ProxyTransformMode, Error> {
+    match value.unwrap_or("compressed-tools") {
+        "compressed-tools" | "compressed" | "normal" => Ok(ProxyTransformMode::CompressedTools),
+        "cli" | "cli-mode" => Ok(ProxyTransformMode::Cli),
+        "just-bash" | "just_bash" => Ok(ProxyTransformMode::JustBash),
+        other => Err(Error::Config(format!("invalid transform mode: {other}"))),
     }
 }
 
@@ -217,6 +227,7 @@ pub async fn start_compressed_session(
             include_tools: config.include_tools,
             exclude_tools: config.exclude_tools,
             toonify: config.toonify,
+            transform_mode: parse_ffi_transform_mode(config.transform_mode.as_deref())?,
             ..CompressedServerConfig::default()
         },
         backends.into_iter().map(Into::into).collect(),
@@ -236,6 +247,7 @@ pub async fn start_compressed_session_from_mcp_config(
             include_tools: config.include_tools,
             exclude_tools: config.exclude_tools,
             toonify: config.toonify,
+            transform_mode: parse_ffi_transform_mode(config.transform_mode.as_deref())?,
             ..CompressedServerConfig::default()
         },
         mcp_config_json,
@@ -497,6 +509,7 @@ mod tests {
                 include_tools: Vec::new(),
                 exclude_tools: Vec::new(),
                 toonify: false,
+                transform_mode: None,
             },
             vec![FfiBackendConfig {
                 name: "alpha".to_string(),
@@ -554,6 +567,7 @@ mod tests {
                 include_tools: Vec::new(),
                 exclude_tools: Vec::new(),
                 toonify: false,
+                transform_mode: None,
             },
             &config_json,
         )
@@ -588,6 +602,86 @@ mod tests {
             .await,
             "12"
         );
+    }
+
+    #[tokio::test]
+    async fn ffi_session_can_request_cli_transform_mode() {
+        let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("alpha_server.py");
+        let session = start_compressed_session(
+            FfiCompressedSessionConfig {
+                compression_level: "max".to_string(),
+                server_name: Some("alpha".to_string()),
+                include_tools: Vec::new(),
+                exclude_tools: Vec::new(),
+                toonify: false,
+                transform_mode: Some("cli".to_string()),
+            },
+            vec![FfiBackendConfig {
+                name: "alpha".to_string(),
+                command_or_url: std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_string()),
+                args: vec![fixture.to_string_lossy().into_owned()],
+            }],
+        )
+        .await
+        .unwrap();
+        let info = session.info();
+        assert_eq!(info.frontend_tools.len(), 1);
+        assert!(info.frontend_tools[0].name.ends_with("alpha_help"));
+    }
+
+    #[tokio::test]
+    async fn ffi_session_can_request_just_bash_transform_mode() {
+        let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures");
+        let python = std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_string());
+        let session = start_compressed_session(
+            FfiCompressedSessionConfig {
+                compression_level: "max".to_string(),
+                server_name: None,
+                include_tools: Vec::new(),
+                exclude_tools: Vec::new(),
+                toonify: false,
+                transform_mode: Some("just-bash".to_string()),
+            },
+            vec![
+                FfiBackendConfig {
+                    name: "alpha".to_string(),
+                    command_or_url: python.clone(),
+                    args: vec![fixture_dir
+                        .join("alpha_server.py")
+                        .to_string_lossy()
+                        .into_owned()],
+                },
+                FfiBackendConfig {
+                    name: "beta".to_string(),
+                    command_or_url: python,
+                    args: vec![fixture_dir
+                        .join("beta_server.py")
+                        .to_string_lossy()
+                        .into_owned()],
+                },
+            ],
+        )
+        .await
+        .unwrap();
+        let info = session.info();
+        assert!(info
+            .frontend_tools
+            .iter()
+            .any(|tool| tool.name == "bash_tool"));
+        assert!(info
+            .frontend_tools
+            .iter()
+            .any(|tool| tool.name == "alpha_help"));
+        assert_eq!(info.just_bash_providers.len(), 2);
+        assert!(info
+            .just_bash_providers
+            .iter()
+            .any(|provider| provider.provider_name == "alpha"));
     }
 
     #[tokio::test]
@@ -643,6 +737,7 @@ mod tests {
                 include_tools: Vec::new(),
                 exclude_tools: Vec::new(),
                 toonify: false,
+                transform_mode: None,
             },
             vec![FfiBackendConfig {
                 name: "remote".to_string(),
