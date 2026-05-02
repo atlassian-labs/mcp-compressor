@@ -63,7 +63,17 @@ pub mod test_helpers {
                     Some("Fetch a URL.".to_string()),
                     json!({
                         "type": "object",
-                        "properties": { "url": { "type": "string" } },
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "URL to fetch."
+                            },
+                            "timeout": {
+                                "type": "integer",
+                                "description": "Timeout in seconds.",
+                                "default": 30
+                            }
+                        },
                         "required": ["url"]
                     }),
                 ),

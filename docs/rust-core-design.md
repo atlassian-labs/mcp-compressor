@@ -221,8 +221,8 @@ Status as of 2026-05-01, after the first Rust runtime implementation pass:
 
 ### Known gaps and cleanup candidates
 
-- **Top-level Rust CLI parsing is hand-rolled.** This is now complex enough that it should move to `clap` before more flags/modes are added. Keep the generated command argv parser (`cli/parser.rs`) separate because it is schema-driven and parses backend tool arguments, not the Rust binary's own options.
-- **Native OAuth works as a first pass but should be simplified/hardened.** The current Rust code uses `rmcp` OAuth support plus local compressor callback/storage helpers. The next iteration should investigate replacing most custom callback/browser plumbing with `clio-auth`, while continuing to let `rmcp` own MCP OAuth protocol state and authorized HTTP transport.
+- **Top-level Rust CLI parsing has moved to `clap`.** The generated command argv parser (`cli/parser.rs`) remains separate because it is schema-driven and parses backend tool arguments, not the Rust binary's own options.
+- **Native OAuth has been hardened beyond the first pass.** Rust now has `rmcp`-backed credential/state stores, callback error handling, browser opening with fallback, and a `clear-oauth` subcommand. Continue to keep `rmcp` in charge of MCP/OAuth protocol state.
 - **Just Bash mode is a scaffold.** It starts the proxy and exposes `bash_tool` plus per-server help tools, but full Rust-native Just Bash AST execution remains TODO.
 - **Legacy SSE backend support is not implemented.** `rmcp` 1.6.0 exposes SSE primitives for streamable HTTP, but no standalone legacy SSE client transport was identified. Revisit only if parity requires direct SSE backends or `rmcp` adds a public client transport.
 - **Richer generated CLI help parity remains optional.** Current help is close to Python's top-level/subcommand shape, but argument descriptions, required/optional labels, type/default rendering, and edge-case formatting can still improve.
@@ -234,11 +234,10 @@ Status as of 2026-05-01, after the first Rust runtime implementation pass:
 
 ### Recommended next implementation order
 
-1. Refactor the Rust binary's top-level CLI parsing to `clap`.
-2. Rework native OAuth around the cleanest combination of `rmcp` OAuth state/transport plus `clio-auth` for the local browser/callback UX.
-3. Complete full Just Bash execution semantics or explicitly narrow/split the Just Bash MVP.
-4. Add richer generated CLI help parity if manual testing shows meaningful gaps.
-5. Begin Python and TypeScript bindings only after CLI/OAuth/Just Bash behavior is stable enough to avoid binding churn.
+1. Complete full Just Bash execution semantics or explicitly narrow/split the Just Bash MVP.
+2. Continue generated CLI help parity polish if manual testing shows remaining gaps.
+3. Begin Python and TypeScript bindings once CLI/OAuth/Just Bash behavior is stable enough to avoid binding churn.
+4. Add packaging/release automation for Rust artifacts when bindings begin.
 
 ### Technical direction updates
 
