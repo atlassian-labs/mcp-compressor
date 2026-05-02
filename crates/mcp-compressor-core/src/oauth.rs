@@ -7,6 +7,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use rmcp::transport::auth::{
     AuthError, CredentialStore, StateStore, StoredAuthorizationState, StoredCredentials,
@@ -162,24 +163,39 @@ impl OAuthCallbackListener {
 
     pub fn wait_for_callback(self) -> Result<OAuthCallback, std::io::Error> {
         let (mut stream, _) = self.listener.accept()?;
-        let mut request = [0_u8; 4096];
+        stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+        let mut request = [0_u8; 8192];
         let bytes = stream.read(&mut request)?;
         let request = String::from_utf8_lossy(&request[..bytes]);
-        let callback = parse_callback_request(&request).unwrap_or_else(|| OAuthCallback {
-            code: String::new(),
-            state: String::new(),
-        });
-        let body = if callback.code.is_empty() || callback.state.is_empty() {
-            "OAuth callback was missing code or state. You can close this tab."
-        } else {
-            "OAuth complete. You can close this tab and return to mcp-compressor."
-        };
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            body.len(), body
-        );
-        stream.write_all(response.as_bytes())?;
-        Ok(callback)
+        match parse_callback_request(&request) {
+            OAuthCallbackResult::Success(callback) => {
+                write_callback_response(
+                    &mut stream,
+                    200,
+                    "OAuth complete. You can close this tab and return to mcp-compressor.",
+                )?;
+                Ok(callback)
+            }
+            OAuthCallbackResult::ProviderError { error, description } => {
+                write_callback_response(
+                    &mut stream,
+                    400,
+                    "OAuth authorization failed. You can close this tab and return to mcp-compressor.",
+                )?;
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format_callback_provider_error(&error, description.as_deref()),
+                ))
+            }
+            OAuthCallbackResult::Malformed(reason) => {
+                write_callback_response(
+                    &mut stream,
+                    400,
+                    "OAuth callback was missing required parameters. You can close this tab.",
+                )?;
+                Err(std::io::Error::new(std::io::ErrorKind::InvalidData, reason))
+            }
+        }
     }
 }
 
@@ -189,24 +205,85 @@ pub struct OAuthCallback {
     pub state: String,
 }
 
-fn parse_callback_request(request: &str) -> Option<OAuthCallback> {
-    let first_line = request.lines().next()?;
-    let path = first_line.split_whitespace().nth(1)?;
-    let query = path.split_once('?')?.1;
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum OAuthCallbackResult {
+    Success(OAuthCallback),
+    ProviderError {
+        error: String,
+        description: Option<String>,
+    },
+    Malformed(String),
+}
+
+fn parse_callback_request(request: &str) -> OAuthCallbackResult {
+    let Some(first_line) = request.lines().next() else {
+        return OAuthCallbackResult::Malformed("OAuth callback request was empty".to_string());
+    };
+    let Some(path) = first_line.split_whitespace().nth(1) else {
+        return OAuthCallbackResult::Malformed(
+            "OAuth callback request line was invalid".to_string(),
+        );
+    };
+    let Some(query) = path.split_once('?').map(|(_, query)| query) else {
+        return OAuthCallbackResult::Malformed(
+            "OAuth callback query string was missing".to_string(),
+        );
+    };
     let mut code = None;
     let mut state = None;
+    let mut error = None;
+    let mut error_description = None;
     for pair in query.split('&') {
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
         match key {
             "code" => code = Some(percent_decode(value)),
             "state" => state = Some(percent_decode(value)),
+            "error" => error = Some(percent_decode(value)),
+            "error_description" => error_description = Some(percent_decode(value)),
             _ => {}
         }
     }
-    Some(OAuthCallback {
-        code: code?,
-        state: state?,
-    })
+    if let Some(error) = error {
+        return OAuthCallbackResult::ProviderError {
+            error,
+            description: error_description,
+        };
+    }
+    match (code, state) {
+        (Some(code), Some(state)) if !code.is_empty() && !state.is_empty() => {
+            OAuthCallbackResult::Success(OAuthCallback { code, state })
+        }
+        _ => OAuthCallbackResult::Malformed(
+            "OAuth callback was missing non-empty code or state".to_string(),
+        ),
+    }
+}
+
+fn write_callback_response(
+    stream: &mut impl Write,
+    status: u16,
+    body: &str,
+) -> Result<(), std::io::Error> {
+    let status_text = match status {
+        200 => "OK",
+        400 => "Bad Request",
+        _ => "OK",
+    };
+    let response = format!(
+        "HTTP/1.1 {status} {status_text}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
+    stream.write_all(response.as_bytes())
+}
+
+fn format_callback_provider_error(error: &str, description: Option<&str>) -> String {
+    match description {
+        Some(description) if !description.is_empty() => {
+            format!("OAuth provider returned {error}: {description}")
+        }
+        _ => format!("OAuth provider returned {error}"),
+    }
 }
 
 fn percent_decode(value: &str) -> String {
@@ -292,17 +369,53 @@ mod tests {
     fn callback_request_parser_extracts_and_decodes_code_and_state() {
         let callback = parse_callback_request(
             "GET /callback?code=abc%20123&state=state+value HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
-        )
-        .unwrap();
+        );
 
-        assert_eq!(callback.code, "abc 123");
-        assert_eq!(callback.state, "state value");
+        assert_eq!(
+            callback,
+            OAuthCallbackResult::Success(OAuthCallback {
+                code: "abc 123".to_string(),
+                state: "state value".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn callback_request_parser_reports_provider_errors() {
+        let callback = parse_callback_request(
+            "GET /callback?error=access_denied&error_description=user+cancelled HTTP/1.1\r\n\r\n",
+        );
+
+        assert_eq!(
+            callback,
+            OAuthCallbackResult::ProviderError {
+                error: "access_denied".to_string(),
+                description: Some("user cancelled".to_string()),
+            }
+        );
     }
 
     #[test]
     fn callback_request_parser_rejects_missing_fields() {
-        assert!(parse_callback_request("GET /callback?code=abc HTTP/1.1\r\n\r\n").is_none());
-        assert!(parse_callback_request("GET /callback?state=abc HTTP/1.1\r\n\r\n").is_none());
+        assert!(matches!(
+            parse_callback_request("GET /callback?code=abc HTTP/1.1\r\n\r\n"),
+            OAuthCallbackResult::Malformed(_)
+        ));
+        assert!(matches!(
+            parse_callback_request("GET /callback?state=abc HTTP/1.1\r\n\r\n"),
+            OAuthCallbackResult::Malformed(_)
+        ));
+    }
+
+    #[test]
+    fn callback_response_writes_status_and_body() {
+        let mut response = Vec::new();
+        write_callback_response(&mut response, 400, "nope").unwrap();
+        let response = String::from_utf8(response).unwrap();
+
+        assert!(response.starts_with("HTTP/1.1 400 Bad Request"));
+        assert!(response.contains("Content-Length: 4"));
+        assert!(response.ends_with("\r\n\r\nnope"));
     }
 
     #[test]
