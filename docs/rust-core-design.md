@@ -201,6 +201,7 @@ Status as of 2026-05-01, after the first Rust runtime implementation pass:
   - `GET /health`
   - bearer-token-protected `POST /exec`
   - wrapper-style and generated-client direct dispatch
+- Rust uses the official `toon-format` crate for TOON encoding when `toonify` is enabled.
 - Direct Rust CLI runtime is implemented:
   - normal stdio MCP frontend mode
   - normal streamable HTTP MCP frontend mode
@@ -223,7 +224,7 @@ Status as of 2026-05-01, after the first Rust runtime implementation pass:
 
 - **Top-level Rust CLI parsing has moved to `clap`.** The generated command argv parser (`cli/parser.rs`) remains separate because it is schema-driven and parses backend tool arguments, not the Rust binary's own options.
 - **Native OAuth has been hardened beyond the first pass.** Rust now has `rmcp`-backed credential/state stores, callback error handling, browser opening with fallback, and a `clear-oauth` subcommand. Continue to keep `rmcp` in charge of MCP/OAuth protocol state.
-- **Just Bash mode is a scaffold.** It starts the proxy and exposes `bash_tool` plus per-server help tools, but full Rust-native Just Bash AST execution remains TODO.
+- **Just Bash mode is a provider-metadata scaffold.** Rust starts the proxy and exposes `bash_tool`, per-server help tools, and provider specs for backend MCP tools. Python and TypeScript own the actual Just Bash instances/execution because those packages host the Just Bash implementations.
 - **Legacy SSE backend support is not implemented.** `rmcp` 1.6.0 exposes SSE primitives for streamable HTTP, but no standalone legacy SSE client transport was identified. Revisit only if parity requires direct SSE backends or `rmcp` adds a public client transport.
 - **Richer generated CLI help parity remains optional.** Current help is close to Python's top-level/subcommand shape, but argument descriptions, required/optional labels, type/default rendering, and edge-case formatting can still improve.
 - **Python and TypeScript bindings/cutover remain TODO:**
@@ -234,7 +235,7 @@ Status as of 2026-05-01, after the first Rust runtime implementation pass:
 
 ### Recommended next implementation order
 
-1. Complete full Just Bash execution semantics or explicitly narrow/split the Just Bash MVP.
+1. Wire Python/TypeScript Just Bash bindings to consume Rust provider specs and register backend MCP tools as custom commands.
 2. Continue generated CLI help parity polish if manual testing shows remaining gaps.
 3. Begin Python and TypeScript bindings once CLI/OAuth/Just Bash behavior is stable enough to avoid binding churn.
 4. Add packaging/release automation for Rust artifacts when bindings begin.

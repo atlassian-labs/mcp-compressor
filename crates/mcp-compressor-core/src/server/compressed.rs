@@ -20,6 +20,7 @@ use rmcp::transport::auth::{AuthClient, AuthorizationManager};
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::transport::{ConfigureCommandExt, StreamableHttpClientTransport, TokioChildProcess};
 use rmcp::{RoleClient, ServiceExt};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::compression::engine::{CompressionEngine, Tool};
@@ -178,6 +179,22 @@ impl Default for CompressedServerConfig {
             config_source: BackendConfigSource::Command,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JustBashProviderSpec {
+    pub provider_name: String,
+    pub help_tool_name: String,
+    pub tools: Vec<JustBashCommandSpec>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JustBashCommandSpec {
+    pub command_name: String,
+    pub backend_tool_name: String,
+    pub description: Option<String>,
+    pub input_schema: Value,
+    pub invoke_tool_name: String,
 }
 
 /// Handle for a frontend MCP server running over streamable HTTP.
@@ -429,6 +446,30 @@ impl CompressedServer {
     ///
     /// This is used by generated proxy clients, which call `/exec` with the
     /// backend tool name directly rather than the MCP wrapper tool name.
+    pub fn just_bash_provider_specs(&self) -> Vec<JustBashProviderSpec> {
+        self.backends
+            .iter()
+            .map(|backend| {
+                let invoke_tool_name = format!("{}invoke_tool", self.wrapper_prefix(backend));
+                JustBashProviderSpec {
+                    provider_name: backend.public_name.clone(),
+                    help_tool_name: format!("{}_help", backend.public_name),
+                    tools: backend
+                        .tools
+                        .iter()
+                        .map(|tool| JustBashCommandSpec {
+                            command_name: crate::cli::mapping::tool_name_to_subcommand(&tool.name),
+                            backend_tool_name: tool.name.clone(),
+                            description: tool.description.clone(),
+                            input_schema: tool.input_schema.clone(),
+                            invoke_tool_name: invoke_tool_name.clone(),
+                        })
+                        .collect(),
+                }
+            })
+            .collect()
+    }
+
     pub async fn invoke_single_backend_tool(
         &self,
         backend_tool_name: &str,
@@ -462,7 +503,19 @@ impl CompressedServer {
             .call_tool(params)
             .await
             .map_err(|error| Error::Config(error.to_string()))?;
-        Ok(call_tool_result_to_string(result))
+        let output = call_tool_result_to_string(result);
+        Ok(self.maybe_toonify_output(&output))
+    }
+
+    fn maybe_toonify_output(&self, output: &str) -> String {
+        if !self.config.toonify {
+            return output.to_string();
+        }
+        let Ok(value) = serde_json::from_str::<Value>(output) else {
+            return output.to_string();
+        };
+        toon_format::encode(&value, &toon_format::EncodeOptions::default())
+            .unwrap_or_else(|_| output.to_string())
     }
 
     fn cli_help_tools(&self) -> Vec<Tool> {
@@ -489,12 +542,12 @@ impl CompressedServer {
         tools.push(Tool::new(
             "bash_tool",
             Some(format!(
-                "Execute shell commands with just-bash. Backend MCP command providers: {names}. When relevant, prefer TOON output for compact representation."
+                "Register backend MCP tools as custom commands in a language-hosted just-bash instance. Providers: {names}. When relevant, prefer TOON output for compact representation."
             )),
             serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "command": {"type": "string", "description": "Bash command to execute"}
+                    "command": {"type": "string", "description": "Command text interpreted by the host language's just-bash implementation"}
                 },
                 "required": ["command"]
             }),
