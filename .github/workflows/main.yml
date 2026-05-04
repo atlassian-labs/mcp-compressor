@@ -153,7 +153,7 @@ jobs:
         working-directory: python/mcp-compressor-rust
         run: |
           uv run ruff check mcp_compressor_rust tests
-          uv run ty check mcp_compressor_rust tests
+          uv run ty check --project . --python .venv mcp_compressor_rust tests
 
   check-docs:
     runs-on: ubuntu-latest
