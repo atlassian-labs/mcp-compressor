@@ -1,0 +1,39 @@
+[project]
+name = "mcp-compressor-rust"
+version = "0.1.0"
+description = "Rust-backed experimental Python package for mcp-compressor."
+readme = "README.md"
+requires-python = ">=3.11,<4.0"
+authors = [{ name = "Tim Esler", email = "tesler@atlassian.com" }]
+
+[project.urls]
+Homepage = "https://atlassian-labs.github.io/mcp-compressor/"
+Repository = "https://github.com/atlassian-labs/mcp-compressor"
+
+[build-system]
+requires = ["maturin>=1.10,<2"]
+build-backend = "maturin"
+
+[tool.maturin]
+manifest-path = "../../crates/mcp-compressor-python/Cargo.toml"
+python-source = "."
+module-name = "mcp_compressor_rust._mcp_compressor_core"
+features = ["pyo3/extension-module"]
+
+[dependency-groups]
+dev = ["maturin>=1.10,<2", "pytest>=9.0.2", "ruff>=0.14.8", "ty>=0.0.1a32"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+fix = true
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF", "S"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]

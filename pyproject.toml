@@ -75,6 +75,9 @@ packages = ["mcp_compressor"]
 python = "./.venv"
 python-version = "3.10"
 
+[tool.deptry]
+extend_exclude = ["python/mcp-compressor-rust"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

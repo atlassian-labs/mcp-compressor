@@ -1059,6 +1059,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcp-compressor-python"
+version = "0.1.0"
+dependencies = [
+ "mcp-compressor-core",
+ "pyo3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

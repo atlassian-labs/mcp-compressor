@@ -1,3 +1,3 @@
 [workspace]
 resolver = "2"
-members  = ["crates/mcp-compressor-core"]
+members  = ["crates/mcp-compressor-core", "crates/mcp-compressor-python"]

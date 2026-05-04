@@ -129,6 +129,34 @@ jobs:
       - name: Compile all Rust core integration targets
         run: cargo test -p mcp-compressor-core --tests --no-run
 
+  python-rust-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Build native extension in editable mode
+        working-directory: python/mcp-compressor-rust
+        run: |
+          uv sync --frozen --group dev
+          uv run maturin develop
+
+      - name: Run rust-backed Python package tests
+        working-directory: python/mcp-compressor-rust
+        run: uv run pytest -q tests
+
+      - name: Run rust-backed Python package lint and type checks
+        working-directory: python/mcp-compressor-rust
+        run: |
+          uv run ruff check mcp_compressor_rust tests
+          uv run ty check mcp_compressor_rust tests
+
   check-docs:
     runs-on: ubuntu-latest
     steps:

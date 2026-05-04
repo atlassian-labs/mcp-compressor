@@ -227,18 +227,19 @@ Status as of 2026-05-01, after the first Rust runtime implementation pass:
 - **Just Bash mode is a provider-metadata scaffold.** Rust starts the proxy and exposes `bash_tool`, per-server help tools, and provider specs for backend MCP tools. Python and TypeScript own the actual Just Bash instances/execution because those packages host the Just Bash implementations.
 - **Legacy SSE backend support is not implemented.** `rmcp` 1.6.0 exposes SSE primitives for streamable HTTP, but no standalone legacy SSE client transport was identified. Revisit only if parity requires direct SSE backends or `rmcp` adds a public client transport.
 - **Richer generated CLI help parity remains optional.** Current help is close to Python's top-level/subcommand shape, but argument descriptions, required/optional labels, type/default rendering, and edge-case formatting can still improve.
-- **Python and TypeScript bindings/cutover remain TODO:**
-  - PyO3/maturin package surface
-  - napi-rs package surface
-  - parity tests against legacy Python/TS behavior
+- **Python/TypeScript binding cutover remains TODO, but binding scaffolds exist:**
+  - PyO3 and napi-rs compile-time scaffolds exist in the Rust core for helper exposure.
+  - A separate Rust-backed Python package scaffold now lives under `python/mcp-compressor-rust`, backed by the `crates/mcp-compressor-python` PyO3 extension crate.
+  - The next work is expanding package coverage, adding runtime/session wrappers, and writing parity tests against legacy Python/TS behavior.
 - **WASM/V8-isolate strategy remains future design work, not an initial implementation target.**
 
 ### Recommended next implementation order
 
-1. Wire Python/TypeScript Just Bash bindings to consume Rust provider specs and register backend MCP tools as custom commands.
-2. Continue generated CLI help parity polish if manual testing shows remaining gaps.
-3. Begin Python and TypeScript bindings once CLI/OAuth/Just Bash behavior is stable enough to avoid binding churn.
-4. Add packaging/release automation for Rust artifacts when bindings begin.
+1. Expand the separate Rust-backed Python package (`python/mcp-compressor-rust`) beyond pure helpers into runtime/session wrappers.
+2. Add the analogous Rust-backed TypeScript package / napi-rs packaging surface without disturbing the legacy `typescript/` package.
+3. Wire Python/TypeScript Just Bash bindings to consume Rust provider specs and register backend MCP tools as custom commands.
+4. Add parity tests comparing legacy Python/TS behavior with Rust-backed packages before any cutover.
+5. Add packaging/release automation for Rust-backed Python wheels, TypeScript native addons, and the Rust binary.
 
 ### Technical direction updates
 
@@ -758,7 +759,31 @@ crates/mcp-compressor-core/
         └── types.rs             # FFI-safe structs and C-ABI surface
 ```
 
-#### Python package (`mcp_compressor/`)
+#### Rust-backed Python package (`python/mcp-compressor-rust/`)
+
+The Rust-backed Python package is intentionally separate from the existing legacy package while parity is proven.
+
+```
+python/mcp-compressor-rust/
+├── pyproject.toml              # maturin-backed Python package config
+├── mcp_compressor_rust/
+│   ├── __init__.py
+│   └── core.py                 # thin wrappers around native extension helpers
+└── tests/
+    └── test_core.py            # real native extension import tests
+```
+
+The native extension itself is built from a separate PyO3 crate:
+
+```
+crates/mcp-compressor-python/
+├── Cargo.toml                  # cdylib extension crate
+└── src/lib.rs                  # PyO3 module forwarding into mcp-compressor-core FFI helpers
+```
+
+This keeps the legacy package untouched during migration while giving CI a real wheel/import path for Rust-backed Python functionality.
+
+#### Existing Python package (`mcp_compressor/`)
 
 ```
 mcp_compressor/
