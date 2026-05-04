@@ -30,7 +30,10 @@ fn rust_cli_help_describes_supported_modes() {
 fn rust_cli_clear_oauth_without_state_reports_no_credentials() {
     let tempdir = tempfile::tempdir().unwrap();
     let mut cmd = core_cmd();
-    cmd.env("XDG_CONFIG_HOME", tempdir.path())
+    cmd.env_clear()
+        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .env("XDG_CONFIG_HOME", tempdir.path())
+        .env("HOME", tempdir.path().join("home"))
         .arg("clear-oauth")
         .assert()
         .success()
