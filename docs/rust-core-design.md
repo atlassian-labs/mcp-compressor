@@ -227,10 +227,10 @@ Status as of 2026-05-01, after the first Rust runtime implementation pass:
 - **Just Bash mode is a provider-metadata scaffold.** Rust starts the proxy and exposes `bash_tool`, per-server help tools, and provider specs for backend MCP tools. Python and TypeScript own the actual Just Bash instances/execution because those packages host the Just Bash implementations.
 - **Legacy SSE backend support is not implemented.** `rmcp` 1.6.0 exposes SSE primitives for streamable HTTP, but no standalone legacy SSE client transport was identified. Revisit only if parity requires direct SSE backends or `rmcp` adds a public client transport.
 - **Richer generated CLI help parity remains optional.** Current help is close to Python's top-level/subcommand shape, but argument descriptions, required/optional labels, type/default rendering, and edge-case formatting can still improve.
-- **Python/TypeScript binding cutover remains TODO, but binding scaffolds exist:**
-  - PyO3 and napi-rs compile-time scaffolds exist in the Rust core for helper exposure.
-  - A separate Rust-backed Python package scaffold now lives under `python/mcp-compressor-rust`, backed by the `crates/mcp-compressor-python` PyO3 extension crate.
-  - The next work is expanding package coverage, adding runtime/session wrappers, and writing parity tests against legacy Python/TS behavior.
+- **Python/TypeScript binding cutover remains TODO, but package scaffolding has started:**
+  - `mcp-compressor-core` now keeps only pure JSON-serializable FFI DTO/helper surfaces and does not depend on PyO3 or napi-rs.
+  - A separate Rust-backed Python package scaffold lives under `python/mcp-compressor-rust`, backed by the `crates/mcp-compressor-python` PyO3 extension crate.
+  - The next work is expanding package coverage, adding runtime/session wrappers, adding an analogous TypeScript/native-addon package, and writing parity tests against legacy Python/TS behavior.
 - **WASM/V8-isolate strategy remains future design work, not an initial implementation target.**
 
 ### Recommended next implementation order
@@ -756,7 +756,7 @@ crates/mcp-compressor-core/
     │   └── parser.rs            # argv → tool_input (JSON Schema-driven)
     └── ffi/
         ├── mod.rs
-        └── types.rs             # FFI-safe structs and C-ABI surface
+        └── types.rs             # language-neutral JSON DTOs and helper surface for binding crates
 ```
 
 #### Rust-backed Python package (`python/mcp-compressor-rust/`)
@@ -781,7 +781,7 @@ crates/mcp-compressor-python/
 └── src/lib.rs                  # PyO3 module forwarding into mcp-compressor-core FFI helpers
 ```
 
-This keeps the legacy package untouched during migration while giving CI a real wheel/import path for Rust-backed Python functionality.
+This keeps the legacy package untouched during migration while giving CI a real wheel/import path for Rust-backed Python functionality. PyO3-specific code lives in this extension crate rather than in `mcp-compressor-core`, preserving the core crate as language-neutral Rust.
 
 #### Existing Python package (`mcp_compressor/`)
 

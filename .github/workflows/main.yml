@@ -64,10 +64,8 @@ jobs:
       - name: Check Rust core library
         run: cargo check -p mcp-compressor-core
 
-      - name: Check optional Rust binding features
-        run: |
-          cargo check -p mcp-compressor-core --features python
-          cargo check -p mcp-compressor-core --features node
+      - name: Check Rust-backed Python extension crate
+        run: cargo check -p mcp-compressor-python
 
       - name: Run Rust core library tests
         env:
