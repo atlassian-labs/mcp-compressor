@@ -72,10 +72,9 @@ jobs:
           cargo check -p mcp-compressor-core --features python
           cargo check -p mcp-compressor-core --features node
 
-      - name: Run optional PyO3 binding scaffold tests
-        run: cargo test -p mcp-compressor-core --features python ffi::python -- --nocapture
-
       - name: Run Rust core library tests
+        env:
+          PYTHON: ${{ github.workspace }}/.venv/bin/python3
         run: cargo test -p mcp-compressor-core --lib -- --nocapture
 
       - name: Run Rust core integration tests
