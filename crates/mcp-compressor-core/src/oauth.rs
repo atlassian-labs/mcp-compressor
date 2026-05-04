@@ -388,6 +388,10 @@ pub fn remember_oauth_store(uri: &str, name: &str, store_dir: &Path) -> Result<(
     )
 }
 
+pub fn list_oauth_stores() -> Result<Vec<OAuthStoreIndexEntry>, std::io::Error> {
+    read_oauth_store_index_from(&oauth_store_root().join("index.json"))
+}
+
 pub fn clear_oauth_store(target: Option<&str>) -> Result<Vec<PathBuf>, std::io::Error> {
     let root = oauth_store_root();
     let index_path = root.join("index.json");
