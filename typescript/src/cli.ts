@@ -1,16 +1,13 @@
 #!/usr/bin/env node
 import { Command, Option } from "commander";
 
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { VERSION } from "./version.js";
 
-import {
-  clearAllOAuth,
-  clearOAuth,
-  initializeCliMode,
-  resolveBackends,
-  startCompressorServer,
-  startMultipleCompressorServers,
-} from "./index.js";
 import type { BackendConfig } from "./types.js";
 
 function parseBackendArg(backendArgs: string[]): BackendConfig | string {
@@ -202,9 +199,9 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   return parseCliArgsWithOptions(argv, { exitOverride: true });
 }
 
-async function handleClearOAuth(args: string[]): Promise<boolean> {
+function parseClearOAuthArgs(args: string[]): { target?: string; all: boolean } | null {
   if (args[0] !== "clear-oauth") {
-    return false;
+    return null;
   }
 
   const clearProgram = new Command()
@@ -214,227 +211,80 @@ async function handleClearOAuth(args: string[]): Promise<boolean> {
     .argument("[backend]", "backend URL or MCP config JSON string")
     .option("--all", "also remove the encryption key");
   clearProgram.parse(args.slice(1), { from: "user" });
-  const backend = clearProgram.args[0];
+  const target = clearProgram.args[0] as string | undefined;
   const options = clearProgram.opts<{ all?: boolean }>();
+  return { ...(target ? { target } : {}), all: options.all ?? false };
+}
 
-  if (backend) {
-    const cleared = await clearOAuth(backend);
-    if (!cleared) {
-      console.warn("No OAuth state applies to that backend.");
+function candidateCoreBinaries(): string[] {
+  const candidates: string[] = [];
+  if (process.env.MCP_COMPRESSOR_CORE_BINARY) {
+    candidates.push(process.env.MCP_COMPRESSOR_CORE_BINARY);
+  }
+  candidates.push("mcp-compressor-core");
+  const here = dirname(fileURLToPath(import.meta.url));
+  candidates.push(
+    join(
+      here,
+      "..",
+      "..",
+      "target",
+      "debug",
+      process.platform === "win32" ? "mcp-compressor-core.exe" : "mcp-compressor-core",
+    ),
+  );
+  candidates.push(
+    join(
+      process.cwd(),
+      "..",
+      "target",
+      "debug",
+      process.platform === "win32" ? "mcp-compressor-core.exe" : "mcp-compressor-core",
+    ),
+  );
+  return candidates;
+}
+
+function translateArgsForRust(args: string[]): string[] {
+  const clearOAuth = parseClearOAuthArgs(args);
+  if (clearOAuth) {
+    return clearOAuth.target ? ["clear-oauth", clearOAuth.target] : ["clear-oauth"];
+  }
+  return args;
+}
+
+async function runRustCoreCli(args: string[]): Promise<number> {
+  for (const binary of candidateCoreBinaries()) {
+    if (binary !== "mcp-compressor-core" && !existsSync(binary)) {
+      continue;
     }
-    return true;
+    const child = spawn(binary, translateArgsForRust(args), { stdio: "inherit" });
+    return await new Promise((resolve, reject) => {
+      child.on("error", (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") {
+          resolve(127);
+          return;
+        }
+        reject(error);
+      });
+      child.on("exit", (code, signal) => {
+        if (signal) {
+          resolve(1);
+          return;
+        }
+        resolve(code ?? 0);
+      });
+    });
   }
-
-  const removed = await clearAllOAuth({ all: options.all ?? false });
-  if (removed.length > 0) {
-    const removedKey = removed.some((entry) => entry.endsWith("/.key") || entry.endsWith("\\.key"));
-    const removedStateFiles = removed.length - (removedKey ? 1 : 0);
-    console.info(
-      `Removed ${removedStateFiles} OAuth state file(s)${removedKey ? " and encryption key" : ""}.`,
-    );
-    console.info(
-      "OAuth credentials cleared. You will be prompted to authenticate on next connection.",
-    );
-  } else {
-    console.warn("No stored OAuth credentials found.");
-  }
-  return true;
+  console.error(
+    "mcp-compressor-core binary was not found. Build it with `cargo build -p mcp-compressor-core` or set MCP_COMPRESSOR_CORE_BINARY.",
+  );
+  return 127;
 }
 
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  if (await handleClearOAuth(args)) {
-    return;
-  }
-
-  const {
-    backend,
-    justBash,
-    cliMode,
-    cliPort,
-    compressionLevel,
-    cwd,
-    env,
-    excludeTools,
-    headers,
-    includeTools,
-    logLevel,
-    serverName,
-    timeout,
-    toonify,
-  } = parseCliArgsWithOptions(args);
-
-  // Enrich the backend config with CLI transport options (--cwd, --env, --header, --timeout)
-  function enrichBackend(b: BackendConfig | string): BackendConfig | string {
-    if (typeof b === "string") {
-      return b; // JSON config string — transport options go inside the JSON
-    }
-    if (b.type === "stdio") {
-      return {
-        ...b,
-        ...(cwd ? { cwd } : {}),
-        ...(Object.keys(env).length > 0 ? { env: { ...b.env, ...env } } : {}),
-      };
-    }
-    // HTTP or SSE
-    return {
-      ...b,
-      ...(Object.keys(headers).length > 0 ? { headers: { ...b.headers, ...headers } } : {}),
-      ...(timeout !== 10 ? { timeoutMs: timeout * 1000 } : {}),
-    };
-  }
-
-  const enrichedBackend = enrichBackend(backend);
-
-  if (logLevel !== "error") {
-    console.warn(
-      `[mcp-compressor-ts] log-level ${logLevel} requested; detailed logging is not implemented yet.`,
-    );
-  }
-
-  if (justBash) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let Bash: any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let bashCommandsModule: any;
-    try {
-      ({ Bash } = await import("just-bash"));
-      bashCommandsModule = await import("./bash_commands.js");
-    } catch {
-      throw new Error(
-        "Bash mode requires the 'just-bash' package. Install it with: npm install just-bash",
-      );
-    }
-
-    const resolvedBackends = resolveBackends(enrichedBackend, serverName);
-    const { createCompressorRuntime } = await import("./index.js");
-    const runtimes: Awaited<ReturnType<typeof createCompressorRuntime>>[] = [];
-    const serverCmds: Array<{
-      serverName: string;
-      command: { name: string };
-      tools: unknown[];
-    }> = [];
-
-    for (const resolved of resolvedBackends) {
-      const runtime = createCompressorRuntime({
-        backend: resolved.backend,
-        compressionLevel,
-        excludeTools: excludeTools.length > 0 ? excludeTools : undefined,
-        includeTools: includeTools.length > 0 ? includeTools : undefined,
-        serverName: resolved.serverName,
-        toonify,
-      });
-      await runtime.connect();
-      runtimes.push(runtime);
-
-      const tools = await runtime.listUncompressedTools();
-      const command = bashCommandsModule.createBashCommand(runtime, tools);
-      serverCmds.push({ serverName: resolved.serverName ?? "mcp", command, tools });
-    }
-
-    const allCommands = serverCmds.map((sc) => sc.command);
-    const { ReadWriteFs } = await import("just-bash");
-    const bash = new Bash({
-      customCommands: allCommands,
-      fs: new ReadWriteFs({ root: process.cwd() }),
-      cwd: "/",
-      python: true,
-      javascript: true,
-    });
-    // Auto-inject MCP_TOONIFY hints based on pipe/redirection at the AST level.
-    const { installPipingHintPlugin } = await import("./just_bash_transform.js");
-    installPipingHintPlugin(
-      bash,
-      allCommands.map((c) => c.name),
-    );
-    const description = bashCommandsModule.buildBashToolDescription(serverCmds) as string;
-
-    // Serve as a single "bash" MCP tool via FastMCP
-    const { FastMCP } = await import("fastmcp");
-    const { z } = await import("zod");
-    const mcp = new FastMCP({ name: "mcp-compressor-bash", version: "1.0.0" });
-    mcp.addTool({
-      name: "bash",
-      description,
-      parameters: z.object({
-        command: z.string().describe("The bash command to execute."),
-      }),
-      execute: async (args: { command: string }) => {
-        const result = await bash.exec(args.command);
-        if (result.exitCode !== 0) {
-          return `Exit code: ${result.exitCode}\n${result.stdout}${result.stderr ? `\nSTDERR: ${result.stderr}` : ""}`;
-        }
-        return result.stdout || "(no output)";
-      },
-    });
-
-    console.error("Bash mode active.");
-    console.error(`Available commands: ${allCommands.map((c) => c.name).join(", ")}`);
-
-    const shutdown = async () => {
-      await Promise.allSettled(runtimes.map((r) => r.disconnect()));
-      process.exit(0);
-    };
-    process.once("SIGINT", () => void shutdown());
-    process.once("SIGTERM", () => void shutdown());
-
-    await mcp.start({ transportType: "stdio" });
-    return;
-  }
-
-  if (cliMode) {
-    const session = await initializeCliMode({
-      backend: enrichedBackend,
-      cliPort: cliPort ? Number.parseInt(cliPort, 10) : undefined,
-      compressionLevel,
-      excludeTools: excludeTools.length > 0 ? excludeTools : undefined,
-      includeTools: includeTools.length > 0 ? includeTools : undefined,
-      serverName,
-      toonify,
-    });
-
-    console.info("CLI mode active.");
-    for (const script of session.scripts) {
-      const invoke = script.onPath ? script.cliName : `./${script.cliName}`;
-      console.info(`Generated CLI: ${script.scriptPath ?? "(no script)"}`);
-      console.info(`Run '${invoke} --help' for usage.`);
-    }
-
-    const shutdown = async () => {
-      await session.close();
-      process.exit(0);
-    };
-    process.once("SIGINT", () => void shutdown());
-    process.once("SIGTERM", () => void shutdown());
-
-    await new Promise(() => {
-      // keep the bridge/runtime process alive
-    });
-    return;
-  }
-
-  const resolvedBackends = resolveBackends(enrichedBackend, serverName);
-  if (resolvedBackends.length > 1) {
-    await startMultipleCompressorServers({
-      backends: resolvedBackends.map((r) => ({ backend: r.backend, serverName: r.serverName! })),
-      compressionLevel,
-      excludeTools: excludeTools.length > 0 ? excludeTools : undefined,
-      includeTools: includeTools.length > 0 ? includeTools : undefined,
-      toonify,
-      start: { transportType: "stdio" },
-    });
-    return;
-  }
-
-  await startCompressorServer({
-    backend: enrichedBackend,
-    compressionLevel,
-    excludeTools: excludeTools.length > 0 ? excludeTools : undefined,
-    includeTools: includeTools.length > 0 ? includeTools : undefined,
-    serverName,
-    start: { transportType: "stdio" },
-    toonify,
-  });
+  const exitCode = await runRustCoreCli(process.argv.slice(2));
+  process.exitCode = exitCode;
 }
 
 main().catch((error: unknown) => {

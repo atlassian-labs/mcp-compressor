@@ -15,10 +15,7 @@ nav:
 plugins:
   - search
   - include-markdown
-  - mkdocstrings:
-      handlers:
-        python:
-          paths: ["mcp_compressor"]
+  - mkdocstrings
 theme:
   name: material
   logo: https://raw.githubusercontent.com/atlassian-forks/SWE-PolyBench/refs/heads/main/rovo-dev-logo.svg

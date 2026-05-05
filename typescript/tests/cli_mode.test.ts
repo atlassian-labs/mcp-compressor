@@ -1,4 +1,8 @@
 import { test, expect } from "vitest";
+import { spawnSync } from "node:child_process";
+import * as fsSync from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import fs from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
@@ -292,6 +296,24 @@ async function stopHealthServer(handle: { server: http.Server }): Promise<void> 
     });
   });
 }
+
+test("TypeScript CLI delegates execution to the Rust core binary", () => {
+  const dir = mkdtempSync(`${tmpdir()}/mcp-compressor-rust-cli-`);
+  const log = `${dir}/argv.txt`;
+  const binary = `${dir}/mcp-compressor-core`;
+  writeFileSync(binary, `#!/bin/sh\nprintf '%s\\n' "$@" > "${log}"\nexit 9\n`);
+  fsSync.chmodSync(binary, 0o755);
+
+  const result = spawnSync("bun", ["src/cli.ts", "--version"], {
+    cwd: new URL("..", import.meta.url).pathname,
+    env: { ...process.env, MCP_COMPRESSOR_CORE_BINARY: binary },
+    encoding: "utf8",
+  });
+  expect({ status: result.status, stdout: result.stdout, stderr: result.stderr }).toMatchObject({
+    status: 9,
+  });
+  expect(fsSync.readFileSync(log, "utf8").trim()).toBe("--version");
+});
 
 test("parseCliArgs supports flag-first CLI mode backend JSON", () => {
   const parsed = parseCliArgs(["--cli-mode", '{"mcpServers":{"alpha":{"command":"uvx"}}}']);
