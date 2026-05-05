@@ -5,8 +5,9 @@ use serde_json::Value;
 
 use mcp_compressor_core::compression::CompressionLevel;
 use mcp_compressor_core::ffi::{
-    clear_oauth_credentials, compress_tool_listing, format_tool_schema_response, list_oauth_credentials,
-    parse_mcp_config, parse_tool_argv, FfiTool,
+    clear_oauth_credentials, compress_tool_listing, format_tool_schema_response, generate_client_artifacts,
+    list_oauth_credentials, parse_mcp_config, parse_tool_argv, FfiClientArtifactKind,
+    FfiGeneratorConfig, FfiTool,
 };
 
 fn napi_error(error: impl std::fmt::Display) -> NapiError {
@@ -36,6 +37,23 @@ pub fn parse_tool_argv_json(tool_json: String, argv_json: String) -> napi::Resul
     let argv = parse_json::<Vec<String>>(&argv_json)?;
     let parsed = parse_tool_argv(tool, argv).map_err(napi_error)?;
     serde_json::to_string(&parsed).map_err(napi_error)
+}
+
+#[napi]
+pub fn generate_client_artifacts_json(kind: String, config_json: String) -> napi::Result<String> {
+    let kind = match kind.as_str() {
+        "cli" => FfiClientArtifactKind::Cli,
+        "python" => FfiClientArtifactKind::Python,
+        "typescript" | "ts" => FfiClientArtifactKind::TypeScript,
+        other => return Err(napi_error(format!("invalid client artifact kind: {other}"))),
+    };
+    let config = parse_json::<FfiGeneratorConfig>(&config_json)?;
+    let paths = generate_client_artifacts(kind, config).map_err(napi_error)?;
+    let values = paths
+        .into_iter()
+        .map(|path| Value::String(path.to_string_lossy().into_owned()))
+        .collect::<Vec<_>>();
+    serde_json::to_string(&values).map_err(napi_error)
 }
 
 #[napi]

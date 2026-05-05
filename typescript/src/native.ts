@@ -10,6 +10,7 @@ export interface NativeCore {
   compressToolListingJson(level: string, toolsJson: string): string;
   formatToolSchemaResponseJson(toolJson: string): string;
   parseToolArgvJson(toolJson: string, argvJson: string): string;
+  generateClientArtifactsJson(kind: string, configJson: string): string;
   parseMcpConfigJson(configJson: string): string;
   listOauthCredentialsJson(): string;
   clearOauthCredentialsJson(target?: string | null): string;

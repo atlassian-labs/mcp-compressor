@@ -32,6 +32,37 @@ export function parseToolArgv(tool: RustTool, argv: string[]): Record<string, un
   ) as Record<string, unknown>;
 }
 
+export type ClientArtifactKind = "cli" | "python" | "typescript";
+
+export interface ClientGeneratorConfig {
+  cliName: string;
+  bridgeUrl: string;
+  token: string;
+  tools: RustTool[];
+  sessionPid: number;
+  outputDir: string;
+}
+
+function toNativeGeneratorConfig(config: ClientGeneratorConfig): Record<string, unknown> {
+  return {
+    cli_name: config.cliName,
+    bridge_url: config.bridgeUrl,
+    token: config.token,
+    tools: config.tools.map(toNativeTool),
+    session_pid: config.sessionPid,
+    output_dir: config.outputDir,
+  };
+}
+
+export function generateClientArtifacts(
+  kind: ClientArtifactKind,
+  config: ClientGeneratorConfig,
+): string[] {
+  return JSON.parse(
+    loadNativeCore().generateClientArtifactsJson(kind, stringify(toNativeGeneratorConfig(config))),
+  ) as string[];
+}
+
 export interface ParsedMcpServer {
   name: string;
   command: string;
