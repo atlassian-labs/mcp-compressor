@@ -12,8 +12,21 @@ export interface NativeCore {
   parseToolArgvJson(toolJson: string, argvJson: string): string;
   generateClientArtifactsJson(kind: string, configJson: string): string;
   parseMcpConfigJson(configJson: string): string;
+  rememberOauthBackendJson(backendUri: string, backendName: string, storeDir: string): void;
   listOauthCredentialsJson(): string;
   clearOauthCredentialsJson(target?: string | null): string;
+  startCompressedSessionJson(
+    configJson: string,
+    backendsJson: string,
+  ): Promise<NativeCompressedSession>;
+  startCompressedSessionFromMcpConfigJson(
+    configJson: string,
+    mcpConfigJson: string,
+  ): Promise<NativeCompressedSession>;
+}
+
+export interface NativeCompressedSession {
+  infoJson(): string;
 }
 
 const require = createRequire(import.meta.url);
