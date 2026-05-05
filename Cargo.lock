@@ -1075,6 +1075,7 @@ dependencies = [
  "pyo3",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -1113,6 +1114,7 @@ dependencies = [
  "napi-sys",
  "nohash-hasher",
  "rustc-hash",
+ "tokio",
 ]
 
 [[package]]
