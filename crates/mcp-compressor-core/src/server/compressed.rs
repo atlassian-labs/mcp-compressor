@@ -239,7 +239,13 @@ impl CompressedServer {
             .server_name
             .clone()
             .unwrap_or_else(|| backend.name.clone());
-        let backend = connect_backend(backend, public_name).await?;
+        let backend = connect_backend(
+            backend,
+            public_name,
+            &config.include_tools,
+            &config.exclude_tools,
+        )
+        .await?;
         Ok(Self {
             config,
             backends: vec![backend],
@@ -258,7 +264,15 @@ impl CompressedServer {
                 Some(prefix) => format!("{prefix}_{}", backend.name),
                 None => backend.name.clone(),
             };
-            connected.push(connect_backend(backend, public_name).await?);
+            connected.push(
+                connect_backend(
+                    backend,
+                    public_name,
+                    &config.include_tools,
+                    &config.exclude_tools,
+                )
+                .await?,
+            );
         }
         Ok(Self {
             config,
@@ -286,7 +300,13 @@ impl CompressedServer {
         if backends.len() == 1 {
             let backend = backends.into_iter().next().expect("one backend exists");
             let public_name = config.server_name.clone().unwrap_or_default();
-            let backend = connect_backend(backend, public_name).await?;
+            let backend = connect_backend(
+                backend,
+                public_name,
+                &config.include_tools,
+                &config.exclude_tools,
+            )
+            .await?;
             Ok(Self {
                 config,
                 backends: vec![backend],
@@ -490,6 +510,9 @@ impl CompressedServer {
         backend_tool_name: &str,
         tool_input: Value,
     ) -> Result<String, Error> {
+        if !backend.tools.iter().any(|tool| tool.name == backend_tool_name) {
+            return Err(Error::ToolNotFound(backend_tool_name.to_string()));
+        }
         let arguments = match tool_input {
             Value::Object(map) => Some(map),
             _ => None,
@@ -578,6 +601,8 @@ impl CompressedServer {
 async fn connect_backend(
     backend: BackendServerConfig,
     public_name: String,
+    include_tools: &[String],
+    exclude_tools: &[String],
 ) -> Result<ConnectedBackend, Error> {
     let client = match backend.transport {
         BackendTransport::Stdio => connect_stdio_backend(&backend).await?,
@@ -588,7 +613,13 @@ async fn connect_backend(
         .list_all_tools()
         .await
         .map_err(|error| Error::Config(error.to_string()))?;
-    let tools = rmcp_tools.into_iter().map(convert_tool).collect::<Vec<_>>();
+    let mut tools = rmcp_tools.into_iter().map(convert_tool).collect::<Vec<_>>();
+    if !include_tools.is_empty() {
+        tools.retain(|tool| include_tools.iter().any(|include| include == &tool.name));
+    }
+    if !exclude_tools.is_empty() {
+        tools.retain(|tool| !exclude_tools.iter().any(|exclude| exclude == &tool.name));
+    }
 
     let resources = client
         .list_all_resources()

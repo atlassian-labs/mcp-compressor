@@ -78,6 +78,20 @@ export interface CompressedSessionConfig {
   transformMode?: string | null;
 }
 
+export interface JustBashCommandSpec {
+  command_name: string;
+  tool_name: string;
+  description?: string | null;
+  input_schema: Record<string, unknown>;
+  invoke_tool_name: string;
+}
+
+export interface JustBashProviderSpec {
+  provider_name: string;
+  help_tool_name: string;
+  tools: JustBashCommandSpec[];
+}
+
 export interface CompressedSessionInfo {
   bridge_url: string;
   token: string;
@@ -86,7 +100,7 @@ export interface CompressedSessionInfo {
     description?: string | null;
     input_schema: Record<string, unknown>;
   }>;
-  just_bash_providers: unknown[];
+  just_bash_providers: JustBashProviderSpec[];
 }
 
 export class CompressedSession {
@@ -148,6 +162,14 @@ export interface ParsedMcpServer {
 
 export function parseMcpConfig(configJson: string): ParsedMcpServer[] {
   return JSON.parse(loadNativeCore().parseMcpConfigJson(configJson)) as ParsedMcpServer[];
+}
+
+export function rememberOAuthBackend(
+  backendUri: string,
+  backendName: string,
+  storeDir: string,
+): void {
+  loadNativeCore().rememberOauthBackendJson(backendUri, backendName, storeDir);
 }
 
 export interface OAuthStoreEntry {

@@ -6,7 +6,9 @@ use serde_json::Value;
 use mcp_compressor_core::compression::CompressionLevel;
 use mcp_compressor_core::ffi::{
     clear_oauth_credentials, compress_tool_listing, format_tool_schema_response, list_oauth_credentials,
-    parse_mcp_config, parse_tool_argv, FfiTool,
+    parse_mcp_config, parse_tool_argv, start_compressed_session,
+    start_compressed_session_from_mcp_config, FfiBackendConfig, FfiCompressedSession,
+    FfiCompressedSessionConfig, FfiTool,
 };
 
 fn py_value_error(error: impl std::fmt::Display) -> PyErr {
@@ -50,6 +52,47 @@ fn list_oauth_credentials_json() -> PyResult<String> {
     serde_json::to_string(&entries).map_err(py_value_error)
 }
 
+#[pyclass]
+struct PyCompressedSession {
+    inner: FfiCompressedSession,
+    #[allow(dead_code)]
+    runtime: tokio::runtime::Runtime,
+}
+
+#[pymethods]
+impl PyCompressedSession {
+    fn info_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.inner.info()).map_err(py_value_error)
+    }
+}
+
+#[pyfunction]
+fn start_compressed_session_json(
+    config_json: &str,
+    backends_json: &str,
+) -> PyResult<PyCompressedSession> {
+    let config = parse_json::<FfiCompressedSessionConfig>(config_json)?;
+    let backends = parse_json::<Vec<FfiBackendConfig>>(backends_json)?;
+    let runtime = tokio::runtime::Runtime::new().map_err(py_value_error)?;
+    let inner = runtime
+        .block_on(start_compressed_session(config, backends))
+        .map_err(py_value_error)?;
+    Ok(PyCompressedSession { inner, runtime })
+}
+
+#[pyfunction]
+fn start_compressed_session_from_mcp_config_json(
+    config_json: &str,
+    mcp_config_json: &str,
+) -> PyResult<PyCompressedSession> {
+    let config = parse_json::<FfiCompressedSessionConfig>(config_json)?;
+    let runtime = tokio::runtime::Runtime::new().map_err(py_value_error)?;
+    let inner = runtime
+        .block_on(start_compressed_session_from_mcp_config(config, mcp_config_json))
+        .map_err(py_value_error)?;
+    Ok(PyCompressedSession { inner, runtime })
+}
+
 #[pyfunction]
 fn clear_oauth_credentials_json(target: Option<&str>) -> PyResult<String> {
     let paths = clear_oauth_credentials(target).map_err(py_value_error)?;
@@ -62,10 +105,13 @@ fn clear_oauth_credentials_json(target: Option<&str>) -> PyResult<String> {
 
 #[pymodule]
 fn _mcp_compressor_core(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_class::<PyCompressedSession>()?;
     module.add_function(wrap_pyfunction!(compress_tool_listing_json, module)?)?;
     module.add_function(wrap_pyfunction!(format_tool_schema_response_json, module)?)?;
     module.add_function(wrap_pyfunction!(parse_tool_argv_json, module)?)?;
     module.add_function(wrap_pyfunction!(parse_mcp_config_json, module)?)?;
+    module.add_function(wrap_pyfunction!(start_compressed_session_json, module)?)?;
+    module.add_function(wrap_pyfunction!(start_compressed_session_from_mcp_config_json, module)?)?;
     module.add_function(wrap_pyfunction!(list_oauth_credentials_json, module)?)?;
     module.add_function(wrap_pyfunction!(clear_oauth_credentials_json, module)?)?;
     Ok(())

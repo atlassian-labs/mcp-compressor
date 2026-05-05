@@ -6,7 +6,8 @@ use serde_json::Value;
 use mcp_compressor_core::compression::CompressionLevel;
 use mcp_compressor_core::ffi::{
     clear_oauth_credentials, compress_tool_listing, format_tool_schema_response, generate_client_artifacts,
-    list_oauth_credentials, parse_mcp_config, parse_tool_argv, start_compressed_session,
+    list_oauth_credentials, parse_mcp_config, parse_tool_argv, remember_oauth_backend,
+    start_compressed_session,
     start_compressed_session_from_mcp_config, FfiBackendConfig, FfiClientArtifactKind,
     FfiCompressedSession, FfiCompressedSessionConfig, FfiGeneratorConfig, FfiTool,
 };
@@ -61,6 +62,15 @@ pub fn generate_client_artifacts_json(kind: String, config_json: String) -> napi
 pub fn parse_mcp_config_json(config_json: String) -> napi::Result<String> {
     let parsed = parse_mcp_config(&config_json).map_err(napi_error)?;
     serde_json::to_string(&parsed).map_err(napi_error)
+}
+
+#[napi]
+pub fn remember_oauth_backend_json(
+    backend_uri: String,
+    backend_name: String,
+    store_dir: String,
+) -> napi::Result<()> {
+    remember_oauth_backend(&backend_uri, &backend_name, store_dir.into()).map_err(napi_error)
 }
 
 #[napi]
