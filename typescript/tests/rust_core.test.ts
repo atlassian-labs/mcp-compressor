@@ -7,7 +7,9 @@ import { describe, expect, it } from "vitest";
 import {
   compressToolListing,
   formatToolSchemaResponse,
+  clearOAuthCredentials,
   generateClientArtifacts,
+  listOAuthCredentials,
   parseMcpConfig,
   parseToolArgv,
   type RustTool,
@@ -72,6 +74,30 @@ describe("Rust native core wrapper", () => {
     });
     expect(tsPaths.some((path) => path.endsWith(".ts"))).toBe(true);
     expect(tsPaths.some((path) => path.endsWith(".d.ts"))).toBe(true);
+  });
+
+  it("lists and clears OAuth credentials through the native addon", () => {
+    const previousXdg = process.env.XDG_CONFIG_HOME;
+    const previousHome = process.env.HOME;
+    const configHome = mkdtempSync(join(tmpdir(), "mcp-compressor-oauth-"));
+    process.env.XDG_CONFIG_HOME = configHome;
+    process.env.HOME = configHome;
+    try {
+      expect(listOAuthCredentials()).toEqual([]);
+      expect(clearOAuthCredentials()).toEqual([]);
+      expect(clearOAuthCredentials("missing")).toEqual([]);
+    } finally {
+      if (previousXdg === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = previousXdg;
+      }
+      if (previousHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = previousHome;
+      }
+    }
   });
 
   it("parses MCP config through the native addon", () => {
