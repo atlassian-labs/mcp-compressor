@@ -19,7 +19,7 @@ from mcp_compressor_rust import (
 
 ROOT = Path(__file__).resolve().parents[2].parent
 FIXTURES = ROOT / "crates" / "mcp-compressor-core" / "tests" / "fixtures"
-PYTHON = os.environ.get("PYTHON") or str(ROOT / ".venv" / "bin" / "python3")
+PYTHON = os.environ.get("PYTHON") or str(ROOT / ".venv" / "bin" / "python")
 
 
 def invoke_proxy(bridge_url: str, token: str, tool: str, tool_name: str, tool_input: dict[str, object]) -> str:

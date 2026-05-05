@@ -76,7 +76,7 @@ function fixturePath(name: string): string {
 function alphaBackend() {
   return {
     name: "alpha",
-    commandOrUrl: process.env.PYTHON ?? "python3",
+    commandOrUrl: process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python"),
     args: [fixturePath("alpha_server.py")],
   };
 }
@@ -84,7 +84,7 @@ function alphaBackend() {
 function betaBackend() {
   return {
     name: "beta",
-    commandOrUrl: process.env.PYTHON ?? "python3",
+    commandOrUrl: process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python"),
     args: [fixturePath("beta_server.py")],
   };
 }
@@ -110,12 +110,15 @@ async function startRemoteAlphaUpstream(): Promise<{
       "--port",
       "0",
       "--",
-      process.env.PYTHON ?? "python3",
+      process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python"),
       fixturePath("alpha_server.py"),
     ],
     {
       cwd: join(process.cwd(), ".."),
-      env: { ...process.env, PYTHON: process.env.PYTHON ?? "python3" },
+      env: {
+        ...process.env,
+        PYTHON: process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python"),
+      },
     },
   );
 
@@ -293,7 +296,7 @@ describe("Rust native core wrapper", () => {
       "tests",
       "fixtures",
     );
-    const python = process.env.PYTHON ?? "python3";
+    const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
     const session = await startCompressedSessionFromMcpConfig(
       { compressionLevel: "max" },
       JSON.stringify({
