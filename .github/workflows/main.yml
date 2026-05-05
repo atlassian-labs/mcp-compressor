@@ -193,6 +193,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Build Rust core binary
+        run: bun run build:core
+
       - name: Build Rust native addon
         run: bun run build:native
 

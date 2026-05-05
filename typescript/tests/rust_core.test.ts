@@ -93,14 +93,16 @@ async function startRemoteAlphaUpstream(): Promise<{
   url: string;
   child: ChildProcessWithoutNullStreams;
 }> {
+  const root = join(process.cwd(), "..");
+  const binary = join(
+    root,
+    "target",
+    "debug",
+    process.platform === "win32" ? "mcp-compressor-core.exe" : "mcp-compressor-core",
+  );
   const child = spawn(
-    "cargo",
+    binary,
     [
-      "run",
-      "-q",
-      "-p",
-      "mcp-compressor-core",
-      "--",
       "--compression",
       "max",
       "--server-name",
@@ -114,7 +116,7 @@ async function startRemoteAlphaUpstream(): Promise<{
       fixturePath("alpha_server.py"),
     ],
     {
-      cwd: join(process.cwd(), ".."),
+      cwd: root,
       env: {
         ...process.env,
         PYTHON: process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python"),
@@ -123,11 +125,22 @@ async function startRemoteAlphaUpstream(): Promise<{
   );
 
   const url = await new Promise<string>((resolve, reject) => {
+    let stderr = "";
+    let stdout = "";
     const timeout = setTimeout(() => {
-      reject(new Error("timed out waiting for streamable HTTP upstream URL"));
-    }, 30_000);
+      reject(
+        new Error(
+          `timed out waiting for streamable HTTP upstream URL\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+        ),
+      );
+    }, 60_000);
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+    });
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
       const match = /listening on (http:\/\/127\.0\.0\.1:\d+\/mcp)/.exec(String(chunk));
       if (match) {
         clearTimeout(timeout);

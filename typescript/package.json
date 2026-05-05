@@ -51,6 +51,7 @@
   },
   "scripts": {
     "build": "bun run tsc -p tsconfig.build.json",
+    "build:core": "cargo build -p mcp-compressor-core",
     "build:native": "napi build --manifest-path ../crates/mcp-compressor-node/Cargo.toml --platform --release --output-dir native",
     "cli": "bun src/cli.ts",
     "dev": "bun run build && bun run dist/cli.js",
