@@ -220,6 +220,28 @@ describe("Rust native core wrapper", () => {
     expect(tsPaths.some((path) => path.endsWith(".d.ts"))).toBe(true);
   });
 
+  it("applies include and exclude filters through native session config", async () => {
+    const session = await startCompressedSession(
+      {
+        compressionLevel: "max",
+        serverName: "alpha",
+        includeTools: ["echo", "add"],
+        excludeTools: ["add"],
+      },
+      [alphaBackend()],
+    );
+    const info = session.info();
+    const invokeTool = info.frontend_tools.find((tool) => tool.name.endsWith("invoke_tool"));
+    expect(info.frontend_tools.some((tool) => tool.name.endsWith("list_tools"))).toBe(true);
+    expect(invokeTool).toBeDefined();
+    await expect(
+      invokeProxy(info.bridge_url, info.token, invokeTool!.name, "echo", { message: "filtered" }),
+    ).resolves.toBe("alpha:filtered");
+    await expect(
+      invokeProxy(info.bridge_url, info.token, invokeTool!.name, "add", { a: 1, b: 2 }),
+    ).rejects.toThrow(/tool not found|unknown tool|not found/i);
+  });
+
   it("starts a compressed session and invokes a real backend through the proxy", async () => {
     const session = await startCompressedSession(
       {
