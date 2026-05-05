@@ -67,6 +67,26 @@ function invokeProxy(
   });
 }
 
+function fixturePath(name: string): string {
+  return join(process.cwd(), "..", "crates", "mcp-compressor-core", "tests", "fixtures", name);
+}
+
+function alphaBackend() {
+  return {
+    name: "alpha",
+    commandOrUrl: process.env.PYTHON ?? "python3",
+    args: [fixturePath("alpha_server.py")],
+  };
+}
+
+function betaBackend() {
+  return {
+    name: "beta",
+    commandOrUrl: process.env.PYTHON ?? "python3",
+    args: [fixturePath("beta_server.py")],
+  };
+}
+
 const sampleTool: RustTool = {
   name: "echo",
   description: "Echo a value.",
@@ -129,27 +149,12 @@ describe("Rust native core wrapper", () => {
   });
 
   it("starts a compressed session and invokes a real backend through the proxy", async () => {
-    const fixture = join(
-      process.cwd(),
-      "..",
-      "crates",
-      "mcp-compressor-core",
-      "tests",
-      "fixtures",
-      "alpha_server.py",
-    );
     const session = await startCompressedSession(
       {
         compressionLevel: "max",
         serverName: "alpha",
       },
-      [
-        {
-          name: "alpha",
-          commandOrUrl: process.env.PYTHON ?? "python3",
-          args: [fixture],
-        },
-      ],
+      [alphaBackend()],
     );
     const info = session.info();
     expect(info.bridge_url).toMatch(/^http:\/\/127\.0\.0\.1:/);
@@ -188,6 +193,46 @@ describe("Rust native core wrapper", () => {
     await expect(
       invokeProxy(info.bridge_url, info.token, "beta_invoke_tool", "multiply", { a: 4, b: 5 }),
     ).resolves.toBe("20");
+  });
+
+  it("starts a CLI transform-mode session through the native addon", async () => {
+    const session = await startCompressedSession(
+      {
+        compressionLevel: "max",
+        serverName: "alpha",
+        transformMode: "cli",
+      },
+      [alphaBackend()],
+    );
+    const info = session.info();
+    expect(info.frontend_tools).toHaveLength(1);
+    expect(info.frontend_tools[0]!.name).toMatch(/alpha_help$/);
+  });
+
+  it("starts a Just Bash transform-mode session with typed provider metadata", async () => {
+    const session = await startCompressedSession(
+      {
+        compressionLevel: "max",
+        transformMode: "just-bash",
+      },
+      [alphaBackend(), betaBackend()],
+    );
+    const info = session.info();
+    expect(info.frontend_tools.some((tool) => tool.name === "bash_tool")).toBe(true);
+    expect(info.frontend_tools.some((tool) => tool.name === "alpha_help")).toBe(true);
+    expect(info.frontend_tools.some((tool) => tool.name === "beta_help")).toBe(true);
+    expect(info.just_bash_providers.map((provider) => provider.provider_name).sort()).toEqual([
+      "alpha",
+      "beta",
+    ]);
+    const alphaProvider = info.just_bash_providers.find(
+      (provider) => provider.provider_name === "alpha",
+    );
+    expect(alphaProvider?.help_tool_name).toBe("alpha_help");
+    expect(alphaProvider?.tools.some((command) => command.command_name === "echo")).toBe(true);
+    expect(
+      alphaProvider?.tools.some((command) => command.invoke_tool_name === "alpha_invoke_tool"),
+    ).toBe(true);
   });
 
   it("lists and clears OAuth credentials through the native addon", () => {
