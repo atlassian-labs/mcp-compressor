@@ -67,6 +67,9 @@ jobs:
       - name: Check Rust-backed Python extension crate
         run: cargo check -p mcp-compressor-python
 
+      - name: Check Rust-backed Node extension crate
+        run: cargo check -p mcp-compressor-node
+
       - name: Run Rust core library tests
         env:
           PYTHON: ${{ github.workspace }}/.venv/bin/python3
@@ -184,6 +187,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Build Rust native addon
+        run: bun run build:native
 
       - name: Run TypeScript package checks
         run: bun run check
