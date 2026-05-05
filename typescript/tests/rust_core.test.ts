@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { request } from "node:http";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,6 +12,7 @@ import {
   clearOAuthCredentials,
   generateClientArtifacts,
   listOAuthCredentials,
+  rememberOAuthBackend,
   startCompressedSession,
   startCompressedSessionFromMcpConfig,
   parseMcpConfig,
@@ -87,6 +89,77 @@ function betaBackend() {
   };
 }
 
+async function startRemoteAlphaUpstream(): Promise<{
+  url: string;
+  child: ChildProcessWithoutNullStreams;
+}> {
+  const child = spawn(
+    "cargo",
+    [
+      "run",
+      "-q",
+      "-p",
+      "mcp-compressor-core",
+      "--",
+      "--compression",
+      "max",
+      "--server-name",
+      "alpha",
+      "--transport",
+      "streamable-http",
+      "--port",
+      "0",
+      "--",
+      process.env.PYTHON ?? "python3",
+      fixturePath("alpha_server.py"),
+    ],
+    {
+      cwd: join(process.cwd(), ".."),
+      env: { ...process.env, PYTHON: process.env.PYTHON ?? "python3" },
+    },
+  );
+
+  const url = await new Promise<string>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("timed out waiting for streamable HTTP upstream URL"));
+    }, 30_000);
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      const match = /listening on (http:\/\/127\.0\.0\.1:\d+\/mcp)/.exec(String(chunk));
+      if (match) {
+        clearTimeout(timeout);
+        resolve(match[1]!);
+      }
+    });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("exit", (code) => {
+      clearTimeout(timeout);
+      reject(new Error(`streamable HTTP upstream exited before ready: ${code}`));
+    });
+  });
+
+  return { url, child };
+}
+
+async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
+  if (child.killed || child.exitCode !== null) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    child.once("exit", () => resolve());
+    child.kill("SIGTERM");
+    setTimeout(() => {
+      if (!child.killed) {
+        child.kill("SIGKILL");
+      }
+      resolve();
+    }, 2_000).unref();
+  });
+}
+
 const sampleTool: RustTool = {
   name: "echo",
   description: "Echo a value.",
@@ -148,6 +221,52 @@ describe("Rust native core wrapper", () => {
     expect(tsPaths.some((path) => path.endsWith(".d.ts"))).toBe(true);
   });
 
+  it("toonifies JSON outputs through native session config", async () => {
+    const session = await startCompressedSession(
+      {
+        compressionLevel: "max",
+        serverName: "alpha",
+        toonify: true,
+      },
+      [alphaBackend()],
+    );
+    const info = session.info();
+    const invokeTool = info.frontend_tools.find((tool) => tool.name.endsWith("invoke_tool"));
+    expect(invokeTool).toBeDefined();
+    const output = await invokeProxy(
+      info.bridge_url,
+      info.token,
+      invokeTool!.name,
+      "structured_data",
+      {},
+    );
+    expect(output).toContain("server: alpha");
+    expect(output).toContain("values");
+    expect(output.trim()).not.toMatch(/^\{/);
+  });
+
+  it("applies include and exclude filters through native session config", async () => {
+    const session = await startCompressedSession(
+      {
+        compressionLevel: "max",
+        serverName: "alpha",
+        includeTools: ["echo", "add"],
+        excludeTools: ["add"],
+      },
+      [alphaBackend()],
+    );
+    const info = session.info();
+    const invokeTool = info.frontend_tools.find((tool) => tool.name.endsWith("invoke_tool"));
+    expect(info.frontend_tools.some((tool) => tool.name.endsWith("list_tools"))).toBe(true);
+    expect(invokeTool).toBeDefined();
+    await expect(
+      invokeProxy(info.bridge_url, info.token, invokeTool!.name, "echo", { message: "filtered" }),
+    ).resolves.toBe("alpha:filtered");
+    await expect(
+      invokeProxy(info.bridge_url, info.token, invokeTool!.name, "add", { a: 1, b: 2 }),
+    ).rejects.toThrow(/tool not found|unknown tool|not found/i);
+  });
+
   it("starts a compressed session and invokes a real backend through the proxy", async () => {
     const session = await startCompressedSession(
       {
@@ -194,6 +313,33 @@ describe("Rust native core wrapper", () => {
       invokeProxy(info.bridge_url, info.token, "beta_invoke_tool", "multiply", { a: 4, b: 5 }),
     ).resolves.toBe("20");
   });
+
+  it("starts a compressed session against a remote streamable HTTP backend", async () => {
+    const upstream = await startRemoteAlphaUpstream();
+    try {
+      const session = await startCompressedSession(
+        { compressionLevel: "max", serverName: "remote-alpha" },
+        [
+          {
+            name: "remote-alpha",
+            commandOrUrl: upstream.url,
+            args: ["--auth", "explicit-headers"],
+          },
+        ],
+      );
+      const info = session.info();
+      const invokeTool = info.frontend_tools.find((tool) => tool.name.endsWith("invoke_tool"));
+      expect(invokeTool).toBeDefined();
+      await expect(
+        invokeProxy(info.bridge_url, info.token, invokeTool!.name, "alpha_invoke_tool", {
+          tool_name: "echo",
+          tool_input: { message: "remote-ts" },
+        }),
+      ).resolves.toBe("alpha:remote-ts");
+    } finally {
+      await stopChild(upstream.child);
+    }
+  }, 90_000);
 
   it("starts a CLI transform-mode session through the native addon", async () => {
     const session = await startCompressedSession(
@@ -243,8 +389,19 @@ describe("Rust native core wrapper", () => {
     process.env.HOME = configHome;
     try {
       expect(listOAuthCredentials()).toEqual([]);
-      expect(clearOAuthCredentials()).toEqual([]);
+      const storeDir = join(configHome, "oauth-store");
+      mkdirSync(storeDir, { recursive: true });
+      rememberOAuthBackend("https://example.test/mcp", "example", storeDir);
+      expect(listOAuthCredentials()).toEqual([
+        {
+          backend_name: "example",
+          backend_uri: "https://example.test/mcp",
+          store_dir: storeDir,
+        },
+      ]);
       expect(clearOAuthCredentials("missing")).toEqual([]);
+      expect(clearOAuthCredentials("example")).toEqual([storeDir]);
+      expect(listOAuthCredentials()).toEqual([]);
     } finally {
       if (previousXdg === undefined) {
         delete process.env.XDG_CONFIG_HOME;
