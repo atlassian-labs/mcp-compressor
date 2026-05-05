@@ -11,6 +11,58 @@ _mcp_compressor_core = importlib.import_module("mcp_compressor_rust._mcp_compres
 
 
 @dataclass(frozen=True)
+class BackendConfig:
+    """Runtime backend configuration accepted by the Rust core extension."""
+
+    name: str
+    command_or_url: str
+    args: list[str] | None = None
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "command_or_url": self.command_or_url,
+            "args": self.args or [],
+        }
+
+
+@dataclass(frozen=True)
+class CompressedSessionConfig:
+    """Runtime session configuration accepted by the Rust core extension."""
+
+    compression_level: str = "max"
+    server_name: str | None = None
+    include_tools: list[str] | None = None
+    exclude_tools: list[str] | None = None
+    toonify: bool = False
+    transform_mode: str | None = None
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "compression_level": self.compression_level,
+            "server_name": self.server_name,
+            "include_tools": self.include_tools or [],
+            "exclude_tools": self.exclude_tools or [],
+            "toonify": self.toonify,
+            "transform_mode": self.transform_mode,
+        }
+
+
+class CompressedSession:
+    """Python wrapper around a Rust-backed compressed session handle."""
+
+    def __init__(self, native_session: Any) -> None:
+        self._native_session = native_session
+
+    def info(self) -> dict[str, Any]:
+        value = json.loads(self._native_session.info_json())
+        if not isinstance(value, dict):
+            msg = "Rust core session info_json returned non-object JSON"
+            raise TypeError(msg)
+        return value
+
+
+@dataclass(frozen=True)
 class RustTool:
     """JSON-serializable tool DTO accepted by the Rust core extension."""
 
@@ -55,6 +107,30 @@ def parse_tool_argv(tool: RustTool, argv: list[str]) -> dict[str, Any]:
         msg = "Rust core parse_tool_argv_json returned non-object JSON"
         raise TypeError(msg)
     return value
+
+
+def start_compressed_session(
+    config: CompressedSessionConfig,
+    backends: list[BackendConfig],
+) -> CompressedSession:
+    """Start a Rust-backed compressed session and local proxy."""
+    native_session = _mcp_compressor_core.start_compressed_session_json(
+        _json_dumps(config.to_json_dict()),
+        _json_dumps([backend.to_json_dict() for backend in backends]),
+    )
+    return CompressedSession(native_session)
+
+
+def start_compressed_session_from_mcp_config(
+    config: CompressedSessionConfig,
+    mcp_config_json: str,
+) -> CompressedSession:
+    """Start a Rust-backed compressed session from MCP config JSON."""
+    native_session = _mcp_compressor_core.start_compressed_session_from_mcp_config_json(
+        _json_dumps(config.to_json_dict()),
+        mcp_config_json,
+    )
+    return CompressedSession(native_session)
 
 
 def parse_mcp_config(config_json: str) -> list[dict[str, Any]]:
