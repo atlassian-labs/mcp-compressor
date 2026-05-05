@@ -12,6 +12,7 @@ import {
   clearOAuthCredentials,
   generateClientArtifacts,
   listOAuthCredentials,
+  rememberOAuthBackend,
   startCompressedSession,
   startCompressedSessionFromMcpConfig,
   parseMcpConfig,
@@ -220,6 +221,52 @@ describe("Rust native core wrapper", () => {
     expect(tsPaths.some((path) => path.endsWith(".d.ts"))).toBe(true);
   });
 
+  it("toonifies JSON outputs through native session config", async () => {
+    const session = await startCompressedSession(
+      {
+        compressionLevel: "max",
+        serverName: "alpha",
+        toonify: true,
+      },
+      [alphaBackend()],
+    );
+    const info = session.info();
+    const invokeTool = info.frontend_tools.find((tool) => tool.name.endsWith("invoke_tool"));
+    expect(invokeTool).toBeDefined();
+    const output = await invokeProxy(
+      info.bridge_url,
+      info.token,
+      invokeTool!.name,
+      "structured_data",
+      {},
+    );
+    expect(output).toContain("server: alpha");
+    expect(output).toContain("values");
+    expect(output.trim()).not.toMatch(/^\{/);
+  });
+
+  it("applies include and exclude filters through native session config", async () => {
+    const session = await startCompressedSession(
+      {
+        compressionLevel: "max",
+        serverName: "alpha",
+        includeTools: ["echo", "add"],
+        excludeTools: ["add"],
+      },
+      [alphaBackend()],
+    );
+    const info = session.info();
+    const invokeTool = info.frontend_tools.find((tool) => tool.name.endsWith("invoke_tool"));
+    expect(info.frontend_tools.some((tool) => tool.name.endsWith("list_tools"))).toBe(true);
+    expect(invokeTool).toBeDefined();
+    await expect(
+      invokeProxy(info.bridge_url, info.token, invokeTool!.name, "echo", { message: "filtered" }),
+    ).resolves.toBe("alpha:filtered");
+    await expect(
+      invokeProxy(info.bridge_url, info.token, invokeTool!.name, "add", { a: 1, b: 2 }),
+    ).rejects.toThrow(/tool not found|unknown tool|not found/i);
+  });
+
   it("starts a compressed session and invokes a real backend through the proxy", async () => {
     const session = await startCompressedSession(
       {
@@ -342,8 +389,19 @@ describe("Rust native core wrapper", () => {
     process.env.HOME = configHome;
     try {
       expect(listOAuthCredentials()).toEqual([]);
-      expect(clearOAuthCredentials()).toEqual([]);
+      const storeDir = join(configHome, "oauth-store");
+      mkdirSync(storeDir, { recursive: true });
+      rememberOAuthBackend("https://example.test/mcp", "example", storeDir);
+      expect(listOAuthCredentials()).toEqual([
+        {
+          backend_name: "example",
+          backend_uri: "https://example.test/mcp",
+          store_dir: storeDir,
+        },
+      ]);
       expect(clearOAuthCredentials("missing")).toEqual([]);
+      expect(clearOAuthCredentials("example")).toEqual([storeDir]);
+      expect(listOAuthCredentials()).toEqual([]);
     } finally {
       if (previousXdg === undefined) {
         delete process.env.XDG_CONFIG_HOME;
