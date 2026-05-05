@@ -12,6 +12,7 @@ export interface NativeCore {
   parseToolArgvJson(toolJson: string, argvJson: string): string;
   generateClientArtifactsJson(kind: string, configJson: string): string;
   parseMcpConfigJson(configJson: string): string;
+  rememberOauthBackendJson(backendUri: string, backendName: string, storeDir: string): void;
   listOauthCredentialsJson(): string;
   clearOauthCredentialsJson(target?: string | null): string;
   startCompressedSessionJson(

@@ -12,6 +12,7 @@ import {
   clearOAuthCredentials,
   generateClientArtifacts,
   listOAuthCredentials,
+  rememberOAuthBackend,
   startCompressedSession,
   startCompressedSessionFromMcpConfig,
   parseMcpConfig,
@@ -388,8 +389,19 @@ describe("Rust native core wrapper", () => {
     process.env.HOME = configHome;
     try {
       expect(listOAuthCredentials()).toEqual([]);
-      expect(clearOAuthCredentials()).toEqual([]);
+      const storeDir = join(configHome, "oauth-store");
+      mkdirSync(storeDir, { recursive: true });
+      rememberOAuthBackend("https://example.test/mcp", "example", storeDir);
+      expect(listOAuthCredentials()).toEqual([
+        {
+          backend_name: "example",
+          backend_uri: "https://example.test/mcp",
+          store_dir: storeDir,
+        },
+      ]);
       expect(clearOAuthCredentials("missing")).toEqual([]);
+      expect(clearOAuthCredentials("example")).toEqual([storeDir]);
+      expect(listOAuthCredentials()).toEqual([]);
     } finally {
       if (previousXdg === undefined) {
         delete process.env.XDG_CONFIG_HOME;
