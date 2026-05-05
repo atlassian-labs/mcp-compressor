@@ -6,8 +6,9 @@ use serde_json::Value;
 use mcp_compressor_core::compression::CompressionLevel;
 use mcp_compressor_core::ffi::{
     clear_oauth_credentials, compress_tool_listing, format_tool_schema_response, generate_client_artifacts,
-    list_oauth_credentials, parse_mcp_config, parse_tool_argv, FfiClientArtifactKind,
-    FfiGeneratorConfig, FfiTool,
+    list_oauth_credentials, parse_mcp_config, parse_tool_argv, start_compressed_session,
+    start_compressed_session_from_mcp_config, FfiBackendConfig, FfiClientArtifactKind,
+    FfiCompressedSession, FfiCompressedSessionConfig, FfiGeneratorConfig, FfiTool,
 };
 
 fn napi_error(error: impl std::fmt::Display) -> NapiError {
@@ -76,4 +77,40 @@ pub fn clear_oauth_credentials_json(target: Option<String>) -> napi::Result<Stri
         .map(|path| Value::String(path.to_string_lossy().into_owned()))
         .collect::<Vec<_>>();
     serde_json::to_string(&values).map_err(napi_error)
+}
+
+#[napi]
+pub struct NativeCompressedSession {
+    inner: FfiCompressedSession,
+}
+
+#[napi]
+impl NativeCompressedSession {
+    #[napi]
+    pub fn info_json(&self) -> napi::Result<String> {
+        serde_json::to_string(&self.inner.info()).map_err(napi_error)
+    }
+}
+
+#[napi]
+pub async fn start_compressed_session_json(
+    config_json: String,
+    backends_json: String,
+) -> napi::Result<NativeCompressedSession> {
+    let config = parse_json::<FfiCompressedSessionConfig>(&config_json)?;
+    let backends = parse_json::<Vec<FfiBackendConfig>>(&backends_json)?;
+    let inner = start_compressed_session(config, backends).await.map_err(napi_error)?;
+    Ok(NativeCompressedSession { inner })
+}
+
+#[napi]
+pub async fn start_compressed_session_from_mcp_config_json(
+    config_json: String,
+    mcp_config_json: String,
+) -> napi::Result<NativeCompressedSession> {
+    let config = parse_json::<FfiCompressedSessionConfig>(&config_json)?;
+    let inner = start_compressed_session_from_mcp_config(config, &mcp_config_json)
+        .await
+        .map_err(napi_error)?;
+    Ok(NativeCompressedSession { inner })
 }
