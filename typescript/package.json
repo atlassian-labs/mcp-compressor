@@ -16,7 +16,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "native"
   ],
   "exports": {
     ".": {
@@ -38,6 +39,10 @@
     "./types": {
       "import": "./dist/types.js",
       "types": "./dist/types.d.ts"
+    },
+    "./rust-core": {
+      "import": "./dist/rust_core.js",
+      "types": "./dist/rust_core.d.ts"
     }
   },
   "bin": {
@@ -46,6 +51,8 @@
   },
   "scripts": {
     "build": "bun run tsc -p tsconfig.build.json",
+    "build:core": "cargo build -p mcp-compressor-core",
+    "build:native": "napi build --manifest-path ../crates/mcp-compressor-node/Cargo.toml --platform --release --output-dir native",
     "cli": "bun src/cli.ts",
     "dev": "bun run build && bun run dist/cli.js",
     "format": "oxfmt src/ tests/ '!**/node_modules/**' '!**/dist/**' '!**/coverage/**'",
@@ -76,6 +83,7 @@
     }
   },
   "devDependencies": {
+    "@napi-rs/cli": "^3.3.4",
     "@types/node": "^24.10.1",
     "just-bash": "^2.14.0",
     "oxfmt": "^0.44.0",

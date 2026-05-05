@@ -230,13 +230,14 @@ Status as of 2026-05-01, after the first Rust runtime implementation pass:
 - **Python/TypeScript binding cutover remains TODO, but package scaffolding has started:**
   - `mcp-compressor-core` now keeps only pure JSON-serializable FFI DTO/helper surfaces and does not depend on PyO3 or napi-rs.
   - A separate Rust-backed Python package scaffold lives under `python/mcp-compressor-rust`, backed by the `crates/mcp-compressor-python` PyO3 extension crate.
-  - The next work is expanding package coverage, adding runtime/session wrappers, adding an analogous TypeScript/native-addon package, and writing parity tests against legacy Python/TS behavior.
+  - A dedicated `crates/mcp-compressor-node` napi-rs extension crate now exposes the same initial native helper surface to the existing TypeScript package via `typescript/src/rust_core.ts`.
+  - The next work is expanding package coverage into runtime/session wrappers and writing parity tests against legacy Python/TS behavior.
 - **WASM/V8-isolate strategy remains future design work, not an initial implementation target.**
 
 ### Recommended next implementation order
 
 1. Expand the separate Rust-backed Python package (`python/mcp-compressor-rust`) beyond pure helpers into runtime/session wrappers.
-2. Add the analogous Rust-backed TypeScript package / napi-rs packaging surface without disturbing the legacy `typescript/` package.
+2. Expand the TypeScript napi-rs wrapper beyond pure helpers into runtime/session wrappers without disturbing existing legacy behavior paths.
 3. Wire Python/TypeScript Just Bash bindings to consume Rust provider specs and register backend MCP tools as custom commands.
 4. Add parity tests comparing legacy Python/TS behavior with Rust-backed packages before any cutover.
 5. Add packaging/release automation for Rust-backed Python wheels, TypeScript native addons, and the Rust binary.
@@ -846,6 +847,26 @@ The Rust CLI e2e test suite should invoke the compiled binary with real fixture 
 These tests are distinct from library-level Rust integration tests. Library tests prove the Rust API works; CLI e2e tests prove the packaged executable, argument parsing, process lifecycle, stdout/stderr behavior, and exit codes work.
 
 #### TypeScript package (`typescript/`)
+
+A dedicated napi-rs native addon crate backs the Rust helper surface:
+
+```
+crates/mcp-compressor-node/
+├── Cargo.toml                  # cdylib extension crate
+├── build.rs                    # napi-rs platform linker setup
+└── src/lib.rs                  # napi module forwarding into mcp-compressor-core FFI helpers
+```
+
+The existing TypeScript package exposes this initial Rust-backed helper surface through a separate subpath:
+
+```
+typescript/src/native.ts        # generated native loader wrapper
+typescript/src/rust_core.ts     # typed TypeScript wrappers over native JSON helpers
+typescript/tests/rust_core.test.ts
+```
+
+The generated napi loader/binaries are build artifacts and are not committed; `bun run build:native` regenerates them.
+
 
 ```
 typescript/

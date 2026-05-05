@@ -24,6 +24,7 @@ test("package.json exports declares the lightweight sub-paths", () => {
     "./bash",
     "./config",
     "./errors",
+    "./rust-core",
     "./types",
   ]);
 });
