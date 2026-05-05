@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { request } from "node:http";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -85,6 +86,77 @@ function betaBackend() {
     commandOrUrl: process.env.PYTHON ?? "python3",
     args: [fixturePath("beta_server.py")],
   };
+}
+
+async function startRemoteAlphaUpstream(): Promise<{
+  url: string;
+  child: ChildProcessWithoutNullStreams;
+}> {
+  const child = spawn(
+    "cargo",
+    [
+      "run",
+      "-q",
+      "-p",
+      "mcp-compressor-core",
+      "--",
+      "--compression",
+      "max",
+      "--server-name",
+      "alpha",
+      "--transport",
+      "streamable-http",
+      "--port",
+      "0",
+      "--",
+      process.env.PYTHON ?? "python3",
+      fixturePath("alpha_server.py"),
+    ],
+    {
+      cwd: join(process.cwd(), ".."),
+      env: { ...process.env, PYTHON: process.env.PYTHON ?? "python3" },
+    },
+  );
+
+  const url = await new Promise<string>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("timed out waiting for streamable HTTP upstream URL"));
+    }, 30_000);
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      const match = /listening on (http:\/\/127\.0\.0\.1:\d+\/mcp)/.exec(String(chunk));
+      if (match) {
+        clearTimeout(timeout);
+        resolve(match[1]!);
+      }
+    });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("exit", (code) => {
+      clearTimeout(timeout);
+      reject(new Error(`streamable HTTP upstream exited before ready: ${code}`));
+    });
+  });
+
+  return { url, child };
+}
+
+async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
+  if (child.killed || child.exitCode !== null) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    child.once("exit", () => resolve());
+    child.kill("SIGTERM");
+    setTimeout(() => {
+      if (!child.killed) {
+        child.kill("SIGKILL");
+      }
+      resolve();
+    }, 2_000).unref();
+  });
 }
 
 const sampleTool: RustTool = {
@@ -194,6 +266,33 @@ describe("Rust native core wrapper", () => {
       invokeProxy(info.bridge_url, info.token, "beta_invoke_tool", "multiply", { a: 4, b: 5 }),
     ).resolves.toBe("20");
   });
+
+  it("starts a compressed session against a remote streamable HTTP backend", async () => {
+    const upstream = await startRemoteAlphaUpstream();
+    try {
+      const session = await startCompressedSession(
+        { compressionLevel: "max", serverName: "remote-alpha" },
+        [
+          {
+            name: "remote-alpha",
+            commandOrUrl: upstream.url,
+            args: ["--auth", "explicit-headers"],
+          },
+        ],
+      );
+      const info = session.info();
+      const invokeTool = info.frontend_tools.find((tool) => tool.name.endsWith("invoke_tool"));
+      expect(invokeTool).toBeDefined();
+      await expect(
+        invokeProxy(info.bridge_url, info.token, invokeTool!.name, "alpha_invoke_tool", {
+          tool_name: "echo",
+          tool_input: { message: "remote-ts" },
+        }),
+      ).resolves.toBe("alpha:remote-ts");
+    } finally {
+      await stopChild(upstream.child);
+    }
+  }, 90_000);
 
   it("starts a CLI transform-mode session through the native addon", async () => {
     const session = await startCompressedSession(
