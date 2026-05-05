@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from urllib import request
+from urllib import error, request
 
 from mcp_compressor_rust import (
     BackendConfig,
@@ -97,6 +97,70 @@ def test_native_extension_starts_session_from_mcp_config_and_routes() -> None:
         invoke_proxy(str(info["bridge_url"]), str(info["token"]), "beta_invoke_tool", "multiply", {"a": 4, "b": 5})
         == "20"
     )
+
+
+def test_native_extension_toonifies_json_outputs() -> None:
+    session = start_compressed_session(
+        CompressedSessionConfig(compression_level="max", server_name="alpha", toonify=True),
+        [BackendConfig(name="alpha", command_or_url=PYTHON, args=[str(FIXTURES / "alpha_server.py")])],
+    )
+    info = session.info()
+    invoke_tool = next(tool for tool in info["frontend_tools"] if tool["name"].endswith("invoke_tool"))
+    output = invoke_proxy(str(info["bridge_url"]), str(info["token"]), invoke_tool["name"], "structured_data", {})
+    assert "server: alpha" in output
+    assert "values" in output
+    assert not output.strip().startswith("{")
+
+
+def test_native_extension_applies_include_exclude_filters() -> None:
+    session = start_compressed_session(
+        CompressedSessionConfig(
+            compression_level="max",
+            server_name="alpha",
+            include_tools=["echo", "add"],
+            exclude_tools=["add"],
+        ),
+        [BackendConfig(name="alpha", command_or_url=PYTHON, args=[str(FIXTURES / "alpha_server.py")])],
+    )
+    info = session.info()
+    invoke_tool = next(tool for tool in info["frontend_tools"] if tool["name"].endswith("invoke_tool"))
+    assert (
+        invoke_proxy(str(info["bridge_url"]), str(info["token"]), invoke_tool["name"], "echo", {"message": "filtered"})
+        == "alpha:filtered"
+    )
+    try:
+        invoke_proxy(str(info["bridge_url"]), str(info["token"]), invoke_tool["name"], "add", {"a": 1, "b": 2})
+    except error.HTTPError as exc:
+        assert exc.code == 400
+        assert "not found" in exc.read().decode().lower()
+    else:  # pragma: no cover - defensive assertion for filter enforcement
+        raise AssertionError("excluded add tool unexpectedly invoked")
+
+
+def test_native_extension_supports_cli_transform_mode() -> None:
+    session = start_compressed_session(
+        CompressedSessionConfig(compression_level="max", server_name="alpha", transform_mode="cli"),
+        [BackendConfig(name="alpha", command_or_url=PYTHON, args=[str(FIXTURES / "alpha_server.py")])],
+    )
+    info = session.info()
+    assert [tool["name"] for tool in info["frontend_tools"]] == ["alpha_alpha_help"]
+
+
+def test_native_extension_supports_just_bash_transform_mode() -> None:
+    session = start_compressed_session(
+        CompressedSessionConfig(compression_level="max", transform_mode="just-bash"),
+        [
+            BackendConfig(name="alpha", command_or_url=PYTHON, args=[str(FIXTURES / "alpha_server.py")]),
+            BackendConfig(name="beta", command_or_url=PYTHON, args=[str(FIXTURES / "beta_server.py")]),
+        ],
+    )
+    info = session.info()
+    tool_names = {tool["name"] for tool in info["frontend_tools"]}
+    assert {"bash_tool", "alpha_help", "beta_help"}.issubset(tool_names)
+    providers = {provider["provider_name"]: provider for provider in info["just_bash_providers"]}
+    assert set(providers) == {"alpha", "beta"}
+    assert providers["alpha"]["help_tool_name"] == "alpha_help"
+    assert any(command["command_name"] == "echo" for command in providers["alpha"]["tools"])
 
 
 def test_native_extension_parses_mcp_config() -> None:
