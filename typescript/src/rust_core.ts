@@ -164,6 +164,14 @@ export function parseMcpConfig(configJson: string): ParsedMcpServer[] {
   return JSON.parse(loadNativeCore().parseMcpConfigJson(configJson)) as ParsedMcpServer[];
 }
 
+export function rememberOAuthBackend(
+  backendUri: string,
+  backendName: string,
+  storeDir: string,
+): void {
+  loadNativeCore().rememberOauthBackendJson(backendUri, backendName, storeDir);
+}
+
 export interface OAuthStoreEntry {
   backend_name: string;
   backend_uri: string;
