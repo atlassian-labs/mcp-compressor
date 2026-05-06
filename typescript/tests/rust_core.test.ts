@@ -300,6 +300,57 @@ describe("Rust native core wrapper", () => {
     ).resolves.toBe("alpha:ts");
   });
 
+  it("lets a TypeScript agent start a compressed multi-server proxy without a compressor subprocess", async () => {
+    const previousPath = process.env.PATH;
+    const previousBinary = process.env.MCP_COMPRESSOR_CORE_BINARY;
+    process.env.PATH = "";
+    process.env.MCP_COMPRESSOR_CORE_BINARY = "definitely-missing-mcp-compressor-core";
+    try {
+      const fixtureDir = join(
+        process.cwd(),
+        "..",
+        "crates",
+        "mcp-compressor-core",
+        "tests",
+        "fixtures",
+      );
+      const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
+      const session = await startCompressedSessionFromMcpConfig(
+        { compressionLevel: "max" },
+        JSON.stringify({
+          mcpServers: {
+            alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] },
+            beta: { command: python, args: [join(fixtureDir, "beta_server.py")] },
+          },
+        }),
+      );
+      try {
+        const info = session.info();
+        expect(info.frontend_tools.map((tool) => tool.name)).toContain("alpha_invoke_tool");
+        expect(info.frontend_tools.map((tool) => tool.name)).toContain("beta_invoke_tool");
+        await expect(
+          invokeProxy(info.bridge_url, info.token, "alpha_invoke_tool", "echo", { message: "agent" }),
+        ).resolves.toBe("alpha:agent");
+        await expect(
+          invokeProxy(info.bridge_url, info.token, "beta_invoke_tool", "multiply", { a: 6, b: 7 }),
+        ).resolves.toBe("42");
+      } finally {
+        session.close();
+      }
+    } finally {
+      if (previousPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = previousPath;
+      }
+      if (previousBinary === undefined) {
+        delete process.env.MCP_COMPRESSOR_CORE_BINARY;
+      } else {
+        process.env.MCP_COMPRESSOR_CORE_BINARY = previousBinary;
+      }
+    }
+  });
+
   it("starts a compressed session from MCP config and routes multiple backends", async () => {
     const fixtureDir = join(
       process.cwd(),
