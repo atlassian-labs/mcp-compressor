@@ -48,7 +48,7 @@ jobs:
 
       - name: Run Rust core library tests
         env:
-          PYTHON: ${{ github.workspace }}/.venv/bin/python3
+          PYTHON: ${{ github.workspace }}/.venv/bin/python
         run: cargo test -p mcp-compressor-core --lib -- --nocapture
 
   rust-core-integration:
@@ -68,7 +68,7 @@ jobs:
 
       - name: Run Rust core integration tests
         env:
-          PYTHON: ${{ github.workspace }}/.venv/bin/python3
+          PYTHON: ${{ github.workspace }}/.venv/bin/python
         run: |
           cargo test -p mcp-compressor-core --test compressed_server_stdio -- --nocapture
           cargo test -p mcp-compressor-core --test compression_levels -- --nocapture

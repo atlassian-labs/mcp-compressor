@@ -4,6 +4,6 @@ pub mod tool_cache;
 
 pub use compressed::{
     BackendConfigSource, BackendServerConfig, CompressedServer, CompressedServerConfig,
-    JustBashCommandSpec, JustBashProviderSpec, ProxyTransformMode, RunningCompressedServer,
+    JustBashCommandSpec, JustBashProviderSpec, ProxyTransformMode,
 };
 pub use tool_cache::ToolCache;

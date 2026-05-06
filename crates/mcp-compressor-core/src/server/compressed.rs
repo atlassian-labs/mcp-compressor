@@ -1,12 +1,10 @@
 //! `CompressedServer` — the top-level object that owns the backend client,
 //! tool cache, and compression engine, and exposes them via a frontend MCP server.
 //!
-//! This file intentionally exposes the runtime API that integration tests and
-//! language bindings should target. Method bodies remain `todo!()` until the
-//! Phase 1 runtime is implemented.
+//! This file exposes the high-level runtime API used by integration tests,
+//! language bindings, and the standalone Rust CLI.
 
 use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::process::Stdio;
 use std::str::FromStr;
 
@@ -197,22 +195,6 @@ pub struct JustBashCommandSpec {
     pub invoke_tool_name: String,
 }
 
-/// Handle for a frontend MCP server running over streamable HTTP.
-#[derive(Debug, Clone)]
-pub struct RunningCompressedServer {
-    addr: SocketAddr,
-}
-
-impl RunningCompressedServer {
-    pub fn addr(&self) -> SocketAddr {
-        self.addr
-    }
-
-    pub fn url(&self) -> String {
-        format!("http://{}", self.addr)
-    }
-}
-
 /// Connected compressor runtime.
 #[derive(Debug)]
 pub struct CompressedServer {
@@ -314,11 +296,6 @@ impl CompressedServer {
         } else {
             Self::connect_multi_stdio(config, backends).await
         }
-    }
-
-    /// Start the frontend MCP server over streamable HTTP.
-    pub async fn run_http(&self, _addr: SocketAddr) -> Result<RunningCompressedServer, Error> {
-        todo!()
     }
 
     /// Return the frontend MCP tools exposed to callers.
