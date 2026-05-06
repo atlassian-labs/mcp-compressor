@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -19,14 +20,27 @@ def _candidate_binaries() -> list[str]:
     return candidates
 
 
+def _run_child(command: list[str]) -> int:
+    child = subprocess.Popen(command)  # noqa: S603 - controlled CLI delegation
+    try:
+        return int(child.wait())
+    except KeyboardInterrupt:
+        child.terminate()
+        try:
+            child.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait()
+        return 128 + signal.SIGINT
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the Rust core CLI, preserving stdio and process semantics."""
     args = sys.argv[1:] if argv is None else argv
     last_error: OSError | None = None
     for binary in _candidate_binaries():
         try:
-            completed = subprocess.run([binary, *args], check=False)  # noqa: S603 - controlled CLI delegation
-            return int(completed.returncode)
+            return _run_child([binary, *args])
         except FileNotFoundError as exc:
             last_error = exc
             continue
