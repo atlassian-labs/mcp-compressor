@@ -7,6 +7,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
+use mcp_compressor_core::app::paths::cli_output_dir;
 use mcp_compressor_core::client_gen::cli::CliGenerator;
 use mcp_compressor_core::client_gen::{ClientGenerator, GeneratorConfig};
 use mcp_compressor_core::compression::CompressionLevel;
@@ -183,7 +184,8 @@ async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(), C
     let proxy = ToolProxyServer::start(server)
         .await
         .map_err(|error| CliError::Runtime(error.to_string()))?;
-    let (output_dir, on_path) = cli_output_dir(&cli)?;
+    let (output_dir, on_path) = cli_output_dir()
+        .map_err(|error| CliError::Runtime(error.to_string()))?;
     let cli_name = cli.server_name.clone().unwrap_or_else(|| "mcp".to_string());
     let config = GeneratorConfig {
         cli_name: cli_name.clone(),
@@ -224,60 +226,6 @@ async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(), C
 
     std::future::pending::<()>().await;
     Ok(())
-}
-
-fn cli_output_dir(_cli: &CliOptions) -> Result<(PathBuf, bool), CliError> {
-    if let Some(path) = std::env::var_os("MCP_COMPRESSOR_CLI_OUTPUT_DIR") {
-        return Ok((PathBuf::from(path), true));
-    }
-
-    let path_dirs = path_dirs();
-    for candidate in candidate_script_dirs() {
-        let resolved = candidate.canonicalize().unwrap_or(candidate.clone());
-        if resolved.is_dir() && path_dirs.iter().any(|path_dir| path_dir == &resolved) {
-            return Ok((resolved, true));
-        }
-    }
-
-    Ok((
-        std::env::current_dir().map_err(|error| CliError::Runtime(error.to_string()))?,
-        false,
-    ))
-}
-
-fn candidate_script_dirs() -> Vec<PathBuf> {
-    let home = std::env::var_os("HOME").map(PathBuf::from);
-    let mut candidates = Vec::new();
-    if cfg!(windows) {
-        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-            candidates.push(
-                PathBuf::from(local_app_data)
-                    .join("Microsoft")
-                    .join("WindowsApps"),
-            );
-        }
-        if let Some(home) = &home {
-            candidates.push(home.join(".local").join("bin"));
-        }
-    } else {
-        if let Some(home) = &home {
-            candidates.push(home.join(".local").join("bin"));
-            candidates.push(home.join("bin"));
-        }
-        candidates.push(PathBuf::from("/usr/local/bin"));
-        candidates.push(PathBuf::from("/opt/homebrew/bin"));
-    }
-    candidates
-}
-
-fn path_dirs() -> Vec<PathBuf> {
-    std::env::var_os("PATH")
-        .map(|path| {
-            std::env::split_paths(&path)
-                .map(|entry| entry.canonicalize().unwrap_or(entry))
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 #[derive(Debug, Parser)]

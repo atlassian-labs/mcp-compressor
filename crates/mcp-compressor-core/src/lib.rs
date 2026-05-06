@@ -12,6 +12,7 @@
 //! | [`server`] | `CompressedServer`, `ToolCache`, tool registration |
 //! | [`ffi`] | FFI-safe surface for PyO3 / napi-rs language bindings |
 
+pub mod app;
 pub mod cli;
 pub mod client_gen;
 pub mod compression;
