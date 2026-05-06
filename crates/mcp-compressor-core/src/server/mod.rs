@@ -1,5 +1,6 @@
 pub mod backend;
 pub mod compressed;
+pub(crate) mod connect;
 pub mod registration;
 pub mod tool_cache;
 
