@@ -2,6 +2,7 @@ from __future__ import annotations
 
 # These tests intentionally spawn trusted local binaries and call the fixed Atlassian MCP HTTPS endpoint.
 # ruff: noqa: S105,S603,S607,S310
+import importlib
 import json
 import os
 import re
@@ -11,7 +12,7 @@ import tempfile
 import textwrap
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib import request
 
 import pytest
@@ -29,7 +30,7 @@ def _token() -> str:
     token = os.environ.get(TOKEN_ENV)
     if not token:
         pytest.skip(f"{TOKEN_ENV} is not set")
-    return token
+    return cast("str", token)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -108,15 +109,20 @@ def _stop(child: subprocess.Popen[str]) -> None:
 @pytest.mark.asyncio
 async def test_atlassian_cli_stdio_compression_levels(level: str) -> None:
     _token()
-    async with Client([
-        str(CORE_BIN),
-        "-c",
-        level,
-        "--server-name",
-        "atlassian",
-        "--",
-        *_backend_args(),
-    ]) as client:
+    async with Client(
+        cast(
+            "Any",
+            [
+                str(CORE_BIN),
+                "-c",
+                level,
+                "--server-name",
+                "atlassian",
+                "--",
+                *_backend_args(),
+            ],
+        )
+    ) as client:
         tools = {tool.name for tool in await client.list_tools()}
         assert "atlassian_get_tool_schema" in tools
         assert "atlassian_invoke_tool" in tools
@@ -126,18 +132,23 @@ async def test_atlassian_cli_stdio_compression_levels(level: str) -> None:
 @pytest.mark.asyncio
 async def test_atlassian_cli_filters_and_toonify() -> None:
     _token()
-    async with Client([
-        str(CORE_BIN),
-        "-c",
-        "medium",
-        "--server-name",
-        "atlassian",
-        "--include-tools",
-        "getConfluencePage,updateConfluencePage",
-        "--toonify",
-        "--",
-        *_backend_args(),
-    ]) as client:
+    async with Client(
+        cast(
+            "Any",
+            [
+                str(CORE_BIN),
+                "-c",
+                "medium",
+                "--server-name",
+                "atlassian",
+                "--include-tools",
+                "getConfluencePage,updateConfluencePage",
+                "--toonify",
+                "--",
+                *_backend_args(),
+            ],
+        )
+    ) as client:
         schema = await client.call_tool(
             "atlassian_get_tool_schema",
             {"tool_name": "getConfluencePage"},
@@ -272,14 +283,14 @@ async def test_atlassian_mcp_config_multi_server_and_streamable_http_port() -> N
 
 def test_atlassian_python_native_session() -> None:
     sys.path.insert(0, str(ROOT / "python" / "mcp-compressor-rust"))
-    from mcp_compressor_rust import BackendConfig, CompressedSessionConfig, start_compressed_session
+    rust_package = cast("Any", importlib.import_module("mcp_compressor_rust"))
 
-    session = start_compressed_session(
-        CompressedSessionConfig(
+    session = rust_package.start_compressed_session(
+        rust_package.CompressedSessionConfig(
             compression_level="medium", server_name="atlassian", include_tools=["getConfluencePage"]
         ),
         [
-            BackendConfig(
+            rust_package.BackendConfig(
                 name="atlassian",
                 command_or_url=ATLASSIAN_URL,
                 args=["-H", f"Authorization=Basic {_token()}", "--auth", "explicit-headers"],
