@@ -201,10 +201,31 @@ def test_atlassian_code_modes_generate_clients(flag: str, expected: str) -> None
     child, _script_dir, _bridge, _token_value = _start_proxy_mode(flag, "--output-dir", output_dir, script_name=None)
     try:
         assert any(path.suffix == expected for path in Path(output_dir).iterdir())
-        # The generated artifacts are intentionally smoke-tested here for real-world
-        # schema generation and proxy startup. Deeper generated-client invocation is
-        # covered by fixture-backed e2e; Atlassian schemas include optional-before-required
-        # patterns that need a dedicated generator hardening PR.
+        if flag == "--python-mode":
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    f"import sys; sys.path.insert(0, {output_dir!r}); import atlassian; print(atlassian.getAccessibleAtlassianResources())",
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+                timeout=30,
+            )
+        else:
+            result = subprocess.run(
+                [
+                    "bun",
+                    "--eval",
+                    f"import {{ getAccessibleAtlassianResources }} from {json.dumps(str(Path(output_dir) / 'atlassian.ts'))}; console.log(await getAccessibleAtlassianResources());",
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+                timeout=30,
+            )
+        assert result.stdout.strip()
     finally:
         _stop(child)
 
