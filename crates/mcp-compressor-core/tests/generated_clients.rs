@@ -6,10 +6,10 @@ use mcp_compressor_core::client_gen::cli::CliGenerator;
 use mcp_compressor_core::client_gen::python::PythonGenerator;
 use mcp_compressor_core::client_gen::typescript::TypeScriptGenerator;
 use mcp_compressor_core::client_gen::{ClientGenerator, GeneratorConfig};
-use mcp_compressor_core::proxy::ToolProxyServer;
+use mcp_compressor_core::proxy::{RunningToolProxy, ToolProxyServer};
 use mcp_compressor_core::server::CompressedServer;
 
-async fn running_proxy_config(output_dir: &std::path::Path) -> GeneratorConfig {
+async fn running_proxy_config(output_dir: &std::path::Path) -> (GeneratorConfig, RunningToolProxy) {
     let compressed = CompressedServer::connect_stdio(
         common::max_config(Some("alpha")),
         common::backend("alpha", "alpha_server.py"),
@@ -18,7 +18,7 @@ async fn running_proxy_config(output_dir: &std::path::Path) -> GeneratorConfig {
     .unwrap();
     let proxy = ToolProxyServer::start(compressed).await.unwrap();
 
-    GeneratorConfig {
+    let config = GeneratorConfig {
         cli_name: "alpha".to_string(),
         bridge_url: proxy.bridge_url().to_string(),
         token: proxy.token_value().to_string(),
@@ -33,13 +33,14 @@ async fn running_proxy_config(output_dir: &std::path::Path) -> GeneratorConfig {
         )],
         session_pid: std::process::id(),
         output_dir: output_dir.to_path_buf(),
-    }
+    };
+    (config, proxy)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn generated_cli_script_invokes_real_proxy_and_backend() {
     let tempdir = tempfile::tempdir().unwrap();
-    let config = running_proxy_config(tempdir.path()).await;
+    let (config, _proxy) = running_proxy_config(tempdir.path()).await;
     let paths = CliGenerator.generate(&config).unwrap();
     let script = paths
         .iter()
@@ -65,7 +66,7 @@ async fn generated_cli_script_invokes_real_proxy_and_backend() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn generated_python_module_invokes_real_proxy_and_backend() {
     let tempdir = tempfile::tempdir().unwrap();
-    let config = running_proxy_config(tempdir.path()).await;
+    let (config, _proxy) = running_proxy_config(tempdir.path()).await;
     PythonGenerator.generate(&config).unwrap();
 
     let code = "import alpha; print(alpha.echo('hello'))";
@@ -89,7 +90,7 @@ async fn generated_python_module_invokes_real_proxy_and_backend() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn generated_typescript_module_invokes_real_proxy_and_backend() {
     let tempdir = tempfile::tempdir().unwrap();
-    let config = running_proxy_config(tempdir.path()).await;
+    let (config, _proxy) = running_proxy_config(tempdir.path()).await;
     TypeScriptGenerator.generate(&config).unwrap();
 
     let module_path = tempdir.path().join("alpha.ts");
