@@ -1,4 +1,4 @@
-use crate::proxy::ToolProxyServer;
+use crate::proxy::{RunningToolProxy, ToolProxyServer};
 use crate::server::{CompressedServer, CompressedServerConfig, ProxyTransformMode};
 use crate::Error;
 
@@ -8,6 +8,7 @@ use super::dto::{
 
 pub struct FfiCompressedSession {
     info: FfiCompressedSessionInfo,
+    _proxy: RunningToolProxy,
 }
 
 impl FfiCompressedSession {
@@ -22,6 +23,8 @@ impl FfiCompressedSession {
     pub fn info(&self) -> FfiCompressedSessionInfo {
         self.info.clone()
     }
+
+    pub fn close(self) {}
 }
 
 fn parse_ffi_transform_mode(value: Option<&str>) -> Result<ProxyTransformMode, Error> {
@@ -55,6 +58,7 @@ async fn compressed_session_from_server(
             frontend_tools,
             just_bash_providers,
         },
+        _proxy: proxy,
     })
 }
 

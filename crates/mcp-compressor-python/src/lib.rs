@@ -64,6 +64,10 @@ impl PyCompressedSession {
     fn info_json(&self) -> PyResult<String> {
         serde_json::to_string(&self.inner.info()).map_err(py_value_error)
     }
+
+    fn close(&mut self) {
+        // The Rust session/proxy shuts down when the Python object is dropped.
+    }
 }
 
 #[pyfunction]

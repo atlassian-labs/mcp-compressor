@@ -100,6 +100,9 @@ impl NativeCompressedSession {
     pub fn info_json(&self) -> napi::Result<String> {
         serde_json::to_string(&self.inner.info()).map_err(napi_error)
     }
+
+    #[napi]
+    pub fn close(&mut self) {}
 }
 
 #[napi]

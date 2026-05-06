@@ -61,6 +61,9 @@ class CompressedSession:
             raise TypeError(msg)
         return value
 
+    def close(self) -> None:
+        self._native_session.close()
+
 
 @dataclass(frozen=True)
 class RustTool:

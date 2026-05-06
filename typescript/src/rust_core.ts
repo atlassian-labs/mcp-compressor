@@ -109,6 +109,10 @@ export class CompressedSession {
   info(): CompressedSessionInfo {
     return JSON.parse(this.nativeSession.infoJson()) as CompressedSessionInfo;
   }
+
+  close(): void {
+    this.nativeSession.close();
+  }
 }
 
 function toNativeSessionConfig(config: CompressedSessionConfig): Record<string, unknown> {
