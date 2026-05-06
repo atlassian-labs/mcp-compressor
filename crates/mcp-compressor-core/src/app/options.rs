@@ -1,4 +1,6 @@
 use std::path::PathBuf;
+
+use crate::ffi::FfiClientArtifactKind;
 use std::str::FromStr;
 
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
@@ -17,7 +19,7 @@ pub struct CliOptions {
     pub command_kind: Option<CliCommand>,
 
     /// Compression level: low, medium, high, or max.
-    #[arg(long, value_enum, default_value = "medium")]
+    #[arg(short = 'c', long, value_enum, default_value = "medium")]
     compression: CompressionLevelArg,
 
     /// MCP config JSON file.
@@ -39,6 +41,34 @@ pub struct CliOptions {
     /// Alias for --transform-mode just-bash.
     #[arg(long, action = ArgAction::SetTrue)]
     just_bash: bool,
+
+    /// Alias for --transform-mode just-bash.
+    #[arg(long = "just-bash-mode", action = ArgAction::SetTrue)]
+    just_bash_mode: bool,
+
+    /// Generate a Python client module that talks to the local proxy.
+    #[arg(long = "python-mode", action = ArgAction::SetTrue)]
+    python_mode: bool,
+
+    /// Generate a TypeScript client module that talks to the local proxy.
+    #[arg(long = "typescript-mode", action = ArgAction::SetTrue)]
+    typescript_mode: bool,
+
+    /// Comma-separated backend tool names to include.
+    #[arg(long, value_delimiter = ',')]
+    pub include_tools: Vec<String>,
+
+    /// Comma-separated backend tool names to exclude.
+    #[arg(long, value_delimiter = ',')]
+    pub exclude_tools: Vec<String>,
+
+    /// Convert JSON text outputs to TOON where possible.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub toonify: bool,
+
+    /// Output directory for generated Python/TypeScript code clients.
+    #[arg(long = "output-dir")]
+    pub output_dir: Option<PathBuf>,
 
     /// Multi-server backend spec: name=command [args...]. Repeat for each backend.
     #[arg(long = "multi-server", value_name = "NAME=COMMAND [ARGS...]", action = ArgAction::Append)]
@@ -63,12 +93,22 @@ impl CliOptions {
     }
 
     pub fn transform_mode(&self) -> ProxyTransformMode {
-        if self.just_bash {
+        if self.just_bash || self.just_bash_mode {
             ProxyTransformMode::JustBash
-        } else if self.cli_mode {
+        } else if self.cli_mode || self.python_mode || self.typescript_mode {
             ProxyTransformMode::Cli
         } else {
             self.transform_mode.into()
+        }
+    }
+
+    pub fn client_artifact_kind(&self) -> Option<FfiClientArtifactKind> {
+        if self.python_mode {
+            Some(FfiClientArtifactKind::Python)
+        } else if self.typescript_mode {
+            Some(FfiClientArtifactKind::TypeScript)
+        } else {
+            None
         }
     }
 }

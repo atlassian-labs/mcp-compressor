@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::client_gen::cli::CliGenerator;
 use crate::client_gen::{ClientGenerator, GeneratorConfig};
+use crate::ffi::{generate_client_artifacts, FfiClientArtifactKind, FfiGeneratorConfig};
 use crate::proxy::ToolProxyServer;
 use crate::server::registration::FrontendServer;
 use crate::server::CompressedServer;
@@ -93,16 +94,36 @@ pub async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(
         session_pid: std::process::id(),
         output_dir,
     };
-    let paths = CliGenerator
-        .generate(&config)
-        .map_err(|error| error.to_string())?;
+    let paths = if let Some(kind) = cli.client_artifact_kind() {
+        let ffi_config = FfiGeneratorConfig {
+            cli_name: config.cli_name.clone(),
+            bridge_url: config.bridge_url.clone(),
+            token: config.token.clone(),
+            tools: config.tools.clone().into_iter().map(Into::into).collect(),
+            session_pid: config.session_pid,
+            output_dir: config.output_dir.clone(),
+        };
+        generate_client_artifacts(kind, ffi_config).map_err(|error| error.to_string())?
+    } else {
+        CliGenerator
+            .generate(&config)
+            .map_err(|error| error.to_string())?
+    };
     let script = paths
         .iter()
         .find(|path| path.file_name().and_then(|name| name.to_str()) == Some(cli_name.as_str()))
         .unwrap_or(&paths[0]);
 
-    println!("CLI ready");
-    println!("Generated CLI: {}", script.display());
+    if let Some(kind) = cli.client_artifact_kind() {
+        println!("{} code client ready", client_artifact_label(kind));
+        println!("Generated files:");
+        for path in &paths {
+            println!("  {}", path.display());
+        }
+    } else {
+        println!("CLI ready");
+        println!("Generated CLI: {}", script.display());
+    }
     if on_path {
         println!("Invoke with: {cli_name} <subcommand> [args...]");
     } else {
@@ -120,6 +141,14 @@ pub async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(
 
     wait_until_stopped().await;
     Ok(())
+}
+
+fn client_artifact_label(kind: FfiClientArtifactKind) -> &'static str {
+    match kind {
+        FfiClientArtifactKind::Cli => "CLI",
+        FfiClientArtifactKind::Python => "Python",
+        FfiClientArtifactKind::TypeScript => "TypeScript",
+    }
 }
 
 async fn wait_until_stopped() {
