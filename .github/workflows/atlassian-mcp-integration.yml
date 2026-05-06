@@ -1,0 +1,55 @@
+name: Atlassian MCP Integration
+
+on:
+  push:
+    branches:
+      - main
+      - rust-core-migration-trunk
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  atlassian-mcp-real-world:
+    name: atlassian-mcp-real-world
+    runs-on: ubuntu-latest
+    environment: atlassian-mcp-integration
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python environment
+        uses: ./.github/actions/setup-python-env
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install TypeScript dependencies
+        working-directory: typescript
+        run: bun install --frozen-lockfile
+
+      - name: Build Rust core binary
+        run: cargo build -p mcp-compressor-core
+
+      - name: Build Rust-backed Python extension
+        working-directory: python/mcp-compressor-rust
+        run: |
+          uv sync --frozen --group dev
+          uv run maturin develop
+
+      - name: Build TypeScript package and native addon
+        working-directory: typescript
+        run: |
+          bun run build
+          bun run build:native
+
+      - name: Run Atlassian MCP real-world integration tests
+        env:
+          ATLASSIAN_MCP_BASIC_TOKEN: ${{ secrets.ATLASSIAN_MCP_BASIC_TOKEN }}
+          PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: uv run pytest -q tests/test_atlassian_mcp_real_world.py

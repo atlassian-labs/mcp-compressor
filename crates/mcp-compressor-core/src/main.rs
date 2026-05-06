@@ -54,9 +54,9 @@ async fn build_server(cli: &CliOptions) -> Result<CompressedServer, CliError> {
     let config = CompressedServerConfig {
         level: cli.compression(),
         server_name: cli.server_name.clone(),
-        include_tools: Vec::new(),
-        exclude_tools: Vec::new(),
-        toonify: false,
+        include_tools: cli.include_tools.clone(),
+        exclude_tools: cli.exclude_tools.clone(),
+        toonify: cli.toonify,
         transform_mode: cli.transform_mode(),
         config_source: BackendConfigSource::Command,
     };
