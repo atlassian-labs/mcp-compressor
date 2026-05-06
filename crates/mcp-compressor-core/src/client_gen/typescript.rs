@@ -104,11 +104,10 @@ fn snake_to_camel(name: &str) -> String {
 }
 
 fn ts_params(tool: &crate::compression::engine::Tool) -> String {
-    let required = required_params(tool);
-    tool.param_names()
+    ordered_param_names(tool)
         .into_iter()
-        .map(|name| {
-            if required.contains(&name) {
+        .map(|(name, required)| {
+            if required {
                 format!("{name}: string")
             } else {
                 format!("{name}?: string")
@@ -126,6 +125,20 @@ fn ts_input_object(tool: &crate::compression::engine::Tool) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!("{{ {pairs} }}")
+}
+
+fn ordered_param_names(tool: &crate::compression::engine::Tool) -> Vec<(String, bool)> {
+    let required = required_params(tool);
+    let mut params = tool
+        .param_names()
+        .into_iter()
+        .map(|name| {
+            let is_required = required.contains(&name);
+            (name, is_required)
+        })
+        .collect::<Vec<_>>();
+    params.sort_by_key(|(_name, is_required)| !*is_required);
+    params
 }
 
 fn required_params(tool: &crate::compression::engine::Tool) -> Vec<String> {
@@ -150,7 +163,8 @@ fn required_params(tool: &crate::compression::engine::Tool) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::client_gen::generator::test_helpers::{make_config, make_config_multiword_tool};
-    use crate::client_gen::ClientGenerator;
+    use crate::client_gen::{ClientGenerator, GeneratorConfig};
+    use crate::compression::engine::Tool;
     use std::ffi::OsStr;
     use std::fs;
 
@@ -319,6 +333,39 @@ mod tests {
             content.contains("Promise<string>"),
             "Promise<string> return type not found"
         );
+    }
+
+    #[test]
+    fn required_params_are_ordered_before_optional_params() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = GeneratorConfig {
+            cli_name: "real".to_string(),
+            bridge_url: "http://127.0.0.1:1".to_string(),
+            token: "token".to_string(),
+            tools: vec![Tool::new(
+                "real_tool",
+                Some("Real schema".to_string()),
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "optional_first": {"type": "string"},
+                        "required_second": {"type": "string"},
+                        "optional_third": {"type": "string"}
+                    },
+                    "required": ["required_second"]
+                }),
+            )],
+            session_pid: 1,
+            output_dir: dir.path().to_path_buf(),
+        };
+        let paths = TypeScriptGenerator.generate(&config).unwrap();
+        let ts = find_ts(&paths);
+        let dts = find_dts(&paths);
+        let content = fs::read_to_string(ts).unwrap();
+        let declarations = fs::read_to_string(dts).unwrap();
+        assert!(content.contains("export async function realTool(required_second: string, optional_first?: string, optional_third?: string): Promise<string>"));
+        assert!(content.contains("{ optional_first: optional_first, required_second: required_second, optional_third: optional_third }"));
+        assert!(declarations.contains("export function realTool(required_second: string, optional_first?: string, optional_third?: string): Promise<string>;"));
     }
 
     /// A multi-word snake_case tool name is exported as camelCase.
