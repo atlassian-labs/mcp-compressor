@@ -1,48 +1,18 @@
 [project]
-name = "mcp-compressor"
+name = "mcp-compressor-workspace"
 version = "0.0.0"
-description = "An MCP server wrapper for reducing tokens consumed by MCP tools."
+description = "Workspace tooling for the Rust-backed mcp-compressor migration."
 authors = [{ name = "Tim Esler", email = "tesler@atlassian.com" }]
 readme = "README.md"
-keywords = ['python']
 requires-python = ">=3.11,<4.0"
-classifiers = [
-    "Intended Audience :: Developers",
-    "Programming Language :: Python",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-]
 dependencies = [
-    "anyio>=4.0.0",
-    "cryptography>=42.0.0",
-    "keyring>=25.0.0",
-    "py-key-value-aio>=0.3.0",
     "fastmcp==3.2.4",
-    "loguru>=0.7.3",
-    "loguru-logging-intercept>=0.1.5",
-    "mcp>=1.25.0",
-    "pydantic>=2.0.0",
-    "psutil>=5.9.0",
-    "starlette>=0.40.0",
-    "toons>=0.5.3",
-    "typer>=0.16.0",
-    "uvicorn>=0.30.0",
-    "click>=8.3.1",
-    "just-bash>=0.1.16",
-    "httpx>=0.28.1",
 ]
 
 [project.urls]
 Homepage = "https://atlassian-labs.github.io/mcp-compressor/"
 Repository = "https://github.com/atlassian-labs/mcp-compressor"
 Documentation = "https://atlassian-labs.github.io/mcp-compressor/"
-
-[project.scripts]
-mcp-compressor = "mcp_compressor.main:entrypoint"
 
 [dependency-groups]
 dev = [
@@ -68,20 +38,22 @@ build-backend = "hatchling.build"
 [tool.hatch.metadata]
 allow-direct-references = true
 
-[tool.hatch.build.targets.wheel]
-packages = ["mcp_compressor"]
-
 [tool.ty.environment]
 python = "./.venv"
 python-version = "3.10"
 
+[tool.uv]
+package = false
+
 [tool.deptry]
 extend_exclude = ["python/mcp-compressor-rust"]
+
+[tool.ty.src]
+include = ["tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "--cov=mcp_compressor --cov-report=term-missing"
 
 [tool.ruff]
 target-version = "py39"

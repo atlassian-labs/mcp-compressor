@@ -782,43 +782,9 @@ crates/mcp-compressor-python/
 └── src/lib.rs                  # PyO3 module forwarding into mcp-compressor-core FFI helpers
 ```
 
-This keeps the legacy package untouched during migration while giving CI a real wheel/import path for Rust-backed Python functionality. PyO3-specific code lives in this extension crate rather than in `mcp-compressor-core`, preserving the core crate as language-neutral Rust.
+This gives CI a real wheel/import path for Rust-backed Python functionality. PyO3-specific code lives in this extension crate rather than in `mcp-compressor-core`, preserving the core crate as language-neutral Rust.
 
-#### Existing Python package (`mcp_compressor/`)
-
-```
-mcp_compressor/
-├── main.py                      # CLI entry point (unchanged public API)
-├── tools.py                     # CompressedTools middleware (unchanged)
-├── types.py                     # CompressionLevel, LogLevel, TransportType
-├── cli_tools.py                 # tool_name_to_subcommand, parse_argv, help text
-├── logging.py                   # configure_logging, OAuth traceback suppression
-├── oauth.py                     # OAuth token persistence helpers
-├── banner.py                    # startup banner
-├── proxy/
-│   ├── __init__.py
-│   ├── server.py                # ToolProxyServer (replaces CliBridge)
-│   │                            #   - binds 127.0.0.1:<port>
-│   │                            #   - generates SessionToken at startup
-│   │                            #   - validates Bearer token on /exec
-│   │                            #   - routes /health and /exec
-│   └── auth.py                  # SessionToken (generate, constant-time verify)
-└── client_gen/
-    ├── __init__.py
-    ├── base.py                  # ClientGenerator ABC: generate() → list[Path]
-    ├── cli.py                   # CliGenerator (replaces cli_script.py)
-    │                            #   - Unix shebang script + Windows .cmd
-    │                            #   - BRIDGES map with {pid: {url, token}}
-    ├── python_lib.py            # PythonGenerator
-    │                            #   - one function per tool, typed signatures
-    │                            #   - httpx-based, token in module constant
-    └── typescript_lib.py        # TypeScriptGenerator
-                                 #   - ESM async functions, typed with TS interfaces
-                                 #   - fetch-based, .ts + .d.ts output
-```
-
-`CliBridge` and `cli_script.py` are superseded by `proxy/server.py` and `client_gen/cli.py` respectively.
-The public CLI flags (`--cli-mode`, `--cli-port`) and all existing behaviour are preserved.
+On the migration trunk, the legacy top-level `mcp_compressor/` package is removed. The Rust-backed package publishes under `mcp-compressor-rust` for now, with a `mcp-compressor-rust` console script that delegates to the Rust core binary. This avoids overwriting the existing published Python package until the migration is ready for a final cutover.
 
 #### Rust CLI binary
 

@@ -6,6 +6,9 @@ readme = "README.md"
 requires-python = ">=3.11,<4.0"
 authors = [{ name = "Tim Esler", email = "tesler@atlassian.com" }]
 
+[project.scripts]
+mcp-compressor-rust = "mcp_compressor_rust.cli:entrypoint"
+
 [project.urls]
 Homepage = "https://atlassian-labs.github.io/mcp-compressor/"
 Repository = "https://github.com/atlassian-labs/mcp-compressor"
