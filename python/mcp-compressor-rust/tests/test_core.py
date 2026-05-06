@@ -74,6 +74,38 @@ def test_native_extension_starts_session_and_invokes_backend() -> None:
     )
 
 
+def test_python_agent_can_start_compressed_multi_server_proxy_without_compressor_subprocess(monkeypatch) -> None:
+    monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
+    monkeypatch.setenv("PATH", "")
+    session = start_compressed_session_from_mcp_config(
+        CompressedSessionConfig(compression_level="max"),
+        json.dumps(
+            {
+                "mcpServers": {
+                    "alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]},
+                    "beta": {"command": PYTHON, "args": [str(FIXTURES / "beta_server.py")]},
+                }
+            }
+        ),
+    )
+    try:
+        info = session.info()
+        tool_names = {tool["name"] for tool in info["frontend_tools"]}
+        assert {"alpha_get_tool_schema", "alpha_invoke_tool", "beta_get_tool_schema", "beta_invoke_tool"}.issubset(
+            tool_names
+        )
+        assert (
+            invoke_proxy(str(info["bridge_url"]), str(info["token"]), "alpha_invoke_tool", "echo", {"message": "agent"})
+            == "alpha:agent"
+        )
+        assert (
+            invoke_proxy(str(info["bridge_url"]), str(info["token"]), "beta_invoke_tool", "multiply", {"a": 6, "b": 7})
+            == "42"
+        )
+    finally:
+        session.close()
+
+
 def test_native_extension_starts_session_from_mcp_config_and_routes() -> None:
     session = start_compressed_session_from_mcp_config(
         CompressedSessionConfig(compression_level="max"),
