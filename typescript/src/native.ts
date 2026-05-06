@@ -27,6 +27,7 @@ export interface NativeCore {
 
 export interface NativeCompressedSession {
   infoJson(): string;
+  close(): void;
 }
 
 const require = createRequire(import.meta.url);

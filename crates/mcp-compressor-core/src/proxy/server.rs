@@ -22,10 +22,11 @@ use crate::Error;
 #[derive(Debug)]
 pub struct ToolProxyServer;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct RunningToolProxy {
     bridge_url: String,
     token: SessionToken,
+    task: tokio::task::JoinHandle<()>,
 }
 
 #[derive(Clone)]
@@ -63,7 +64,7 @@ impl ToolProxyServer {
 
         let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).await?;
         let addr = listener.local_addr()?;
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             if let Err(error) = axum::serve(listener, app).await {
                 eprintln!("mcp-compressor proxy server error: {error}");
             }
@@ -72,6 +73,7 @@ impl ToolProxyServer {
         Ok(RunningToolProxy {
             bridge_url: format!("http://{addr}"),
             token,
+            task,
         })
     }
 }
@@ -121,6 +123,12 @@ fn authorized(token: &SessionToken, headers: &HeaderMap) -> bool {
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .is_some_and(|header| token.verify(header))
+}
+
+impl Drop for RunningToolProxy {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
 }
 
 impl RunningToolProxy {
