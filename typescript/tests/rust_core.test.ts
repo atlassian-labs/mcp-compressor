@@ -329,7 +329,9 @@ describe("Rust native core wrapper", () => {
         expect(info.frontend_tools.map((tool) => tool.name)).toContain("alpha_invoke_tool");
         expect(info.frontend_tools.map((tool) => tool.name)).toContain("beta_invoke_tool");
         await expect(
-          invokeProxy(info.bridge_url, info.token, "alpha_invoke_tool", "echo", { message: "agent" }),
+          invokeProxy(info.bridge_url, info.token, "alpha_invoke_tool", "echo", {
+            message: "agent",
+          }),
         ).resolves.toBe("alpha:agent");
         await expect(
           invokeProxy(info.bridge_url, info.token, "beta_invoke_tool", "multiply", { a: 6, b: 7 }),
