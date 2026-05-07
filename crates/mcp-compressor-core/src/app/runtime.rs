@@ -84,7 +84,14 @@ pub async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(
     let proxy = ToolProxyServer::start(server)
         .await
         .map_err(|error| error.to_string())?;
-    let (output_dir, on_path) = cli_output_dir().map_err(|error| error.to_string())?;
+    let (output_dir, on_path) = if let Some(output_dir) = cli.output_dir.clone() {
+        let on_path = std::env::var_os("PATH")
+            .map(|paths| std::env::split_paths(&paths).any(|path| path == output_dir))
+            .unwrap_or(false);
+        (output_dir, on_path)
+    } else {
+        cli_output_dir().map_err(|error| error.to_string())?
+    };
     let cli_name = cli.server_name.clone().unwrap_or_else(|| "mcp".to_string());
     let config = GeneratorConfig {
         cli_name: cli_name.clone(),

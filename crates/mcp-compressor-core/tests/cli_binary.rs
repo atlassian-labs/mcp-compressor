@@ -186,6 +186,34 @@ fn rust_cli_mode_installs_generated_script_in_path_candidate_by_default() {
 }
 
 #[test]
+fn rust_cli_mode_honors_explicit_output_dir() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let output_dir = tempdir.path().join("custom-bin");
+    let expected_script = output_dir.join("alpha");
+
+    let mut cmd = core_cmd();
+    cmd.env("MCP_COMPRESSOR_EXIT_AFTER_READY", "1")
+        .args([
+            "--cli-mode",
+            "--server-name",
+            "alpha",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--",
+            &common::python_command(),
+            common::fixture_path("alpha_server.py").to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "Generated CLI: {}",
+            expected_script.display()
+        )));
+
+    assert!(expected_script.exists());
+}
+
+#[test]
 fn rust_cli_mode_manual_flow_generates_script_that_invokes_backend() {
     let tempdir = tempfile::tempdir().unwrap();
     let output_dir = tempdir.path().join("generated");

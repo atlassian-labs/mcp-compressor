@@ -139,6 +139,44 @@ jobs:
           uv run ruff check mcp_compressor_rust tests
           uv run ty check --project . --python .venv mcp_compressor_rust tests
 
+  rust-binary-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python environment for fixture server
+        uses: ./.github/actions/setup-python-env
+
+      - name: Build Rust CLI binary
+        run: cargo build -p mcp-compressor-core --release
+
+      - name: Smoke-test Rust CLI binary
+        env:
+          PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: |
+          BIN=target/release/mcp-compressor-core
+          "$BIN" --help
+          if "$BIN" --compression invalid -- "$PYTHON" crates/mcp-compressor-core/tests/fixtures/alpha_server.py; then
+            echo "Expected invalid compression level to fail" >&2
+            exit 1
+          fi
+          MCP_COMPRESSOR_EXIT_AFTER_READY=1 "$BIN" \
+            --cli-mode \
+            --server-name alpha \
+            --output-dir /tmp/mcp-compressor-rust-bin-smoke \
+            -- "$PYTHON" crates/mcp-compressor-core/tests/fixtures/alpha_server.py
+          test -x /tmp/mcp-compressor-rust-bin-smoke/alpha
+
+      - name: Upload Rust CLI binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-compressor-core-linux-x86_64
+          path: target/release/mcp-compressor-core
+
   python-rust-wheel:
     runs-on: ubuntu-latest
     steps:

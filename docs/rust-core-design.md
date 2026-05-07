@@ -237,7 +237,7 @@ Status as of 2026-05-07 on `rust-core-migration-trunk`:
 
 ### Recommended next implementation order
 
-1. Harden packaging/release automation for Rust-backed Python wheels, TypeScript native addon artifacts, and the Rust binary.
+1. Harden packaging/release automation for Rust-backed Python wheels, TypeScript native addon artifacts, and the Rust binary. CI now includes smoke jobs for Python wheels, TypeScript package artifacts, and the Rust CLI binary.
 2. Finish Just Bash integration around Rust provider specs and language-hosted Just Bash execution.
 3. Continue OAuth hardening against real hosted MCP servers.
 4. Add final API/reference docs for the Rust, Python, TypeScript SDKs, generated-client modes, and migration/cutover behavior.
@@ -817,6 +817,18 @@ The Rust `CompressorProxy` exposes the same concepts as the language SDKs: compr
 #### Rust CLI binary
 
 The Rust core crate should also ship a directly usable CLI executable. This binary is not just a development harness; it is a supported entrypoint for users who want the Rust implementation without the Python or TypeScript wrappers.
+
+A local packaging smoke test is:
+
+```bash
+cargo build -p mcp-compressor-core --release
+MCP_COMPRESSOR_EXIT_AFTER_READY=1 target/release/mcp-compressor-core \
+  --cli-mode \
+  --server-name alpha \
+  --output-dir /tmp/mcp-compressor-rust-bin-smoke \
+  -- python3 crates/mcp-compressor-core/tests/fixtures/alpha_server.py
+test -x /tmp/mcp-compressor-rust-bin-smoke/alpha
+```
 
 The Rust CLI should support the same high-level modes as the wrappers:
 
