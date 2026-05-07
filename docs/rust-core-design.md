@@ -153,7 +153,7 @@ Replace the existing implementations once the Rust-backed packages are productio
 
 ## Implementation Progress
 
-Status as of 2026-05-01, after the first Rust runtime implementation pass:
+Status as of 2026-05-07 on `rust-core-migration-trunk`:
 
 ### Landed
 
@@ -227,20 +227,21 @@ Status as of 2026-05-01, after the first Rust runtime implementation pass:
 - **Just Bash mode is a provider-metadata scaffold.** Rust starts the proxy and exposes `bash_tool`, per-server help tools, and provider specs for backend MCP tools. Python and TypeScript own the actual Just Bash instances/execution because those packages host the Just Bash implementations.
 - **Legacy SSE backend support is not implemented.** `rmcp` 1.6.0 exposes SSE primitives for streamable HTTP, but no standalone legacy SSE client transport was identified. Revisit only if parity requires direct SSE backends or `rmcp` adds a public client transport.
 - **Richer generated CLI help parity remains optional.** Current help is close to Python's top-level/subcommand shape, but argument descriptions, required/optional labels, type/default rendering, and edge-case formatting can still improve.
-- **Python/TypeScript binding cutover remains TODO, but package scaffolding has started:**
-  - `mcp-compressor-core` now keeps only pure JSON-serializable FFI DTO/helper surfaces and does not depend on PyO3 or napi-rs.
-  - A separate Rust-backed Python package scaffold lives under `python/mcp-compressor-rust`, backed by the `crates/mcp-compressor-python` PyO3 extension crate.
-  - A dedicated `crates/mcp-compressor-node` napi-rs extension crate now exposes the same initial native helper surface to the existing TypeScript package via `typescript/src/rust_core.ts`.
-  - The next work is expanding package coverage into runtime/session wrappers and writing parity tests against legacy Python/TS behavior.
+- **Python/TypeScript/Rust SDK cutover is now substantially implemented on the migration trunk:**
+  - `mcp-compressor-core` keeps pure Rust runtime, SDK, and JSON-serializable FFI helper surfaces; it does not depend on PyO3 or napi-rs.
+  - `python/mcp-compressor-rust` exposes a high-level `CompressorClient` backed by the `crates/mcp-compressor-python` PyO3 extension crate.
+  - `typescript/` now exposes the Rust-backed `CompressorClient` as the root TypeScript SDK and has removed the legacy TypeScript runtime/client/server implementation from the migration trunk.
+  - `crates/mcp-compressor-core::sdk` exposes a Rust `CompressorClient` / `CompressorProxy` wrapper aligned with the Python and TypeScript SDK concepts.
+  - Real-world Atlassian MCP tests cover CLI, native Python/TS high-level SDKs, and generated Python/TS clients.
 - **WASM/V8-isolate strategy remains future design work, not an initial implementation target.**
 
 ### Recommended next implementation order
 
-1. Expand the separate Rust-backed Python package (`python/mcp-compressor-rust`) beyond pure helpers into runtime/session wrappers.
-2. Expand the TypeScript napi-rs wrapper beyond pure helpers into runtime/session wrappers without disturbing existing legacy behavior paths.
-3. Wire Python/TypeScript Just Bash bindings to consume Rust provider specs and register backend MCP tools as custom commands.
-4. Add parity tests comparing legacy Python/TS behavior with Rust-backed packages before any cutover.
-5. Add packaging/release automation for Rust-backed Python wheels, TypeScript native addons, and the Rust binary.
+1. Harden packaging/release automation for Rust-backed Python wheels, TypeScript native addon artifacts, and the Rust binary.
+2. Finish Just Bash integration around Rust provider specs and language-hosted Just Bash execution.
+3. Continue OAuth hardening against real hosted MCP servers.
+4. Add final API/reference docs for the Rust, Python, TypeScript SDKs, generated-client modes, and migration/cutover behavior.
+5. Decide final package naming/cutover timing for `mcp-compressor-rust` -> `mcp-compressor`.
 
 ### Technical direction updates
 
@@ -786,6 +787,33 @@ This gives CI a real wheel/import path for Rust-backed Python functionality. PyO
 
 On the migration trunk, the legacy top-level `mcp_compressor/` package is removed. The Rust-backed package publishes under `mcp-compressor-rust` for now, with a `mcp-compressor-rust` console script that delegates to the Rust core binary. This avoids overwriting the existing published Python package until the migration is ready for a final cutover.
 
+#### Rust SDK (`mcp_compressor_core::sdk`)
+
+The Rust core crate exposes a high-level SDK that mirrors the Python and TypeScript client concepts:
+
+```rust
+use mcp_compressor_core::compression::CompressionLevel;
+use mcp_compressor_core::sdk::{CompressorClient, ServerConfig};
+use serde_json::json;
+
+let client = CompressorClient::builder()
+    .server(
+        "atlassian",
+        ServerConfig::url("https://mcp.atlassian.com/v1/mcp")
+            .header("Authorization", format!("Basic {token}")),
+    )
+    .compression_level(CompressionLevel::Medium)
+    .include_tools(["getAccessibleAtlassianResources"])
+    .build();
+
+let proxy = client.connect().await?;
+let output = proxy
+    .invoke("getAccessibleAtlassianResources", json!({}))
+    .await?;
+```
+
+The Rust `CompressorProxy` exposes the same concepts as the language SDKs: compressed frontend tools, backend tool metadata, proxy bridge URL/token, `invoke`, `invoke_on`, and `write_client` for shell/Python/TypeScript generated clients.
+
 #### Rust CLI binary
 
 The Rust core crate should also ship a directly usable CLI executable. This binary is not just a development harness; it is a supported entrypoint for users who want the Rust implementation without the Python or TypeScript wrappers.
@@ -814,7 +842,7 @@ These tests are distinct from library-level Rust integration tests. Library test
 
 #### TypeScript package (`typescript/`)
 
-A dedicated napi-rs native addon crate backs the Rust helper surface:
+A dedicated napi-rs native addon crate backs the TypeScript package:
 
 ```
 crates/mcp-compressor-node/
@@ -823,28 +851,24 @@ crates/mcp-compressor-node/
 └── src/lib.rs                  # napi module forwarding into mcp-compressor-core FFI helpers
 ```
 
-The existing TypeScript package exposes this initial Rust-backed helper surface through a separate subpath:
-
-```
-typescript/src/native.ts        # generated native loader wrapper
-typescript/src/rust_core.ts     # typed TypeScript wrappers over native JSON helpers
-typescript/tests/rust_core.test.ts
-```
-
-The generated napi loader/binaries are build artifacts and are not committed; `bun run build:native` regenerates them.
-
+On the migration trunk, the TypeScript root package exposes the Rust-backed SDK as its primary public surface:
 
 ```
 typescript/
 ├── src/
-│   ├── index.ts                 # public exports
-│   ├── proxy/
-│   │   ├── server.ts            # ToolProxyServer (HTTP, token auth)
-│   │   └── auth.ts              # SessionToken
-│   └── client_gen/
-│       ├── base.ts              # ClientGenerator interface
-│       ├── cli.ts               # CliGenerator (shell script)
-│       ├── pythonLib.ts         # PythonGenerator
-│       └── typescriptLib.ts     # TypeScriptGenerator
-└── README.md
+│   ├── index.ts                # public exports, including CompressorClient
+│   ├── cli.ts                  # thin CLI wrapper delegating to Rust core binary
+│   ├── native.ts               # generated native loader wrapper
+│   ├── native_client.ts        # high-level CompressorClient / CompressorProxy
+│   ├── rust_core.ts            # typed wrappers over native JSON helpers
+│   ├── config.ts               # config interpolation helper retained as utility surface
+│   ├── errors.ts
+│   └── version.ts
+└── tests/
+    ├── rust_core.test.ts       # native SDK/runtime/codegen e2e
+    ├── config.test.ts
+    ├── just_bash_transform.test.ts
+    └── subpath_exports.test.ts
 ```
+
+The old TypeScript runtime/client/server implementation is removed from the migration trunk. Generated napi loader/binaries are build artifacts and are not committed; `bun run build:native` regenerates them.

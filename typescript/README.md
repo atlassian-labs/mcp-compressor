@@ -275,7 +275,20 @@ try {
 }
 ```
 
-The existing `CompressorClient` remains available for compatibility while this native implementation is validated.
+The package root now exposes the Rust-backed `CompressorClient` as the primary SDK surface on the migration trunk.
+
+Connected proxies can also write shell, Python, or TypeScript clients that call the live Rust proxy:
+
+```ts
+const proxy = await client.connect();
+try {
+  proxy.writeClient("cli", "./bin", { name: "atlassian" });
+  proxy.writeClient("python", "./generated-py", { name: "atlassian" });
+  proxy.writeClient("typescript", "./generated-ts", { name: "atlassian" });
+} finally {
+  proxy.close();
+}
+```
 
 ## Development
 

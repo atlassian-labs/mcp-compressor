@@ -6,6 +6,9 @@ The package name is temporary while the Rust-core migration is validated. The pu
 
 ## Quick start
 
+The primary SDK object is `CompressorClient`. It starts a Rust-backed local proxy in-process and returns a `CompressorProxy`; no `mcp-compressor` stdio subprocess is required.
+
+
 ```python
 from mcp_compressor_rust import CompressorClient
 
@@ -45,6 +48,19 @@ with CompressorClient(
 - `compressed` — expose compressed wrapper tools such as `<server>_get_tool_schema` and `<server>_invoke_tool`.
 - `cli` — expose CLI/help transform metadata through the Rust core session.
 - `bash` — expose Just Bash provider metadata through the Rust core session.
-- `python` / `typescript` — reserved for generated-code workflows.
+Generated Python and TypeScript clients are produced with `proxy.write_client(...)` rather than by selecting a long-lived session mode.
 
-Low-level helpers such as `compress_tool_listing` and `parse_tool_argv` remain available for tests and advanced integrations, but the primary SDK entry point is `CompressorClient`.
+## Generated clients
+
+A connected proxy can write shell, Python, or TypeScript clients that call the live Rust proxy:
+
+```python
+with CompressorClient(servers=servers, compression_level="max") as proxy:
+    proxy.write_client("cli", "./bin", name="atlassian")
+    proxy.write_client("python", "./generated-py", name="atlassian")
+    proxy.write_client("typescript", "./generated-ts", name="atlassian")
+```
+
+## Advanced helpers
+
+Low-level helpers such as `compress_tool_listing`, `parse_tool_argv`, and `ToolSpec` remain available for tests and advanced integrations, but the primary SDK entry point is `CompressorClient`.
