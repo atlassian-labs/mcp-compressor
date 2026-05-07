@@ -71,6 +71,7 @@ class CompressorProxy:
     def __init__(self, session: CompressedSession, default_server: str | None = None) -> None:
         self._session = session
         self._default_server = default_server
+        self._closed = False
 
     @property
     def bridge_url(self) -> str:
@@ -91,7 +92,14 @@ class CompressorProxy:
             for tool in self._session.info()["frontend_tools"]
         ]
 
+    def close(self) -> None:
+        self._closed = True
+        self._session.close()
+
     def invoke_wrapper(self, wrapper_tool: str, tool_input: dict[str, Any]) -> ProxyResponse:
+        if self._closed:
+            msg = "Compressor proxy is closed"
+            raise RuntimeError(msg)
         body = json.dumps({"tool": wrapper_tool, "input": tool_input}).encode()
         req = request.Request(  # noqa: S310 - local Rust proxy URL
             f"{self.bridge_url}/exec",

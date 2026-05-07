@@ -351,6 +351,29 @@ describe("Rust native core wrapper", () => {
     }
   });
 
+  it("makes high-level native CompressorClient lifecycle explicit", async () => {
+    const fixtureDir = join(
+      process.cwd(),
+      "..",
+      "crates",
+      "mcp-compressor-core",
+      "tests",
+      "fixtures",
+    );
+    const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
+    const client = new NativeCompressorClient({
+      servers: { alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] } },
+      compressionLevel: "max",
+    });
+    const proxy = await client.connect();
+    await expect(proxy.invoke("echo", { message: "before-close" })).resolves.toBe(
+      "alpha:before-close",
+    );
+    proxy.close();
+    proxy.close();
+    await expect(proxy.invoke("echo", { message: "after-close" })).rejects.toThrow();
+  });
+
   it("defaults single-server native CompressorClient invocation to that server", async () => {
     const previousPath = process.env.PATH;
     const previousBinary = process.env.MCP_COMPRESSOR_CORE_BINARY;

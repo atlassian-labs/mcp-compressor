@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from urllib import error, request
 
+import pytest
+
 from mcp_compressor_rust import (
     BackendConfig,
     CompressedSessionConfig,
@@ -93,6 +95,21 @@ def test_high_level_compressor_client_exposes_compressed_tools_and_invocation(mo
         assert proxy.schema("echo", server="alpha")
         assert proxy.invoke("echo", {"message": "sdk"}, server="alpha") == "alpha:sdk"
         assert proxy.invoke("multiply", {"a": 6, "b": 7}, server="beta") == "42"
+
+
+def test_high_level_compressor_client_lifecycle_is_explicit(monkeypatch) -> None:
+    monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
+    monkeypatch.setenv("PATH", "")
+    client = CompressorClient(
+        servers={"alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]}},
+        compression_level="max",
+    )
+    proxy = client.connect()
+    assert proxy.invoke("echo", {"message": "before-close"}) == "alpha:before-close"
+    proxy.close()
+    proxy.close()
+    with pytest.raises(RuntimeError):
+        proxy.invoke("echo", {"message": "after-close"})
 
 
 def test_high_level_compressor_client_defaults_single_server_wrapper(monkeypatch) -> None:
