@@ -94,6 +94,7 @@ async fn compressed_session_from_server(
         .into_iter()
         .map(FfiTool::from)
         .collect();
+    let backend_tools = server.backend_tools().into_iter().map(FfiTool::from).collect();
     let just_bash_providers = server
         .just_bash_provider_specs()
         .into_iter()
@@ -105,6 +106,7 @@ async fn compressed_session_from_server(
             bridge_url: proxy.bridge_url().to_string(),
             token: proxy.token_value().to_string(),
             frontend_tools,
+            backend_tools,
             just_bash_providers,
         },
         _proxy: proxy,

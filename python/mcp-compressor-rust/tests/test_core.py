@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 from urllib import error, request
 
@@ -99,16 +102,50 @@ def test_high_level_compressor_client_exposes_compressed_tools_and_invocation(mo
 
 def test_high_level_compressor_client_writes_generated_clients(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
-    monkeypatch.setenv("PATH", "")
     with CompressorClient(
         servers={"alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]}},
         compression_level="max",
     ) as proxy:
+        cli_paths = proxy.write_client("cli", tmp_path / "bin", name="alpha")
         python_paths = proxy.write_client("python", tmp_path / "py", name="alpha")
         ts_paths = proxy.write_client("typescript", tmp_path / "ts", name="alpha")
-    assert any(path.name == "alpha.py" for path in python_paths)
-    assert any(path.name == "alpha.ts" for path in ts_paths)
+    cli_script = next(path for path in cli_paths if path.name == "alpha")
+    cli_result = subprocess.run(  # noqa: S603 - trusted generated test CLI
+        [str(cli_script), "echo", "--message", "generated-cli"],
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=30,
+    )
+    assert cli_result.stdout.strip() == "alpha:generated-cli"
+    python_module = next(path for path in python_paths if path.name == "alpha.py")
+    typescript_module = next(path for path in ts_paths if path.name == "alpha.ts")
     assert any(path.name == "alpha.d.ts" for path in ts_paths)
+    py_result = subprocess.run(  # noqa: S603 - trusted generated test module
+        [
+            sys.executable,
+            "-c",
+            f"import sys; sys.path.insert(0, {str(python_module.parent)!r}); import alpha; print(alpha.echo('generated'))",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=30,
+    )
+    assert py_result.stdout.strip() == "alpha:generated"
+    bun = shutil.which("bun") or "bun"
+    ts_result = subprocess.run(  # noqa: S603 - trusted generated test module
+        [
+            bun,
+            "--eval",
+            f"import {{ echo }} from {json.dumps(str(typescript_module))}; console.log(await echo('generated-ts'));",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=30,
+    )
+    assert ts_result.stdout.strip() == "alpha:generated-ts"
 
 
 def test_high_level_compressor_client_reports_invalid_server_config() -> None:
