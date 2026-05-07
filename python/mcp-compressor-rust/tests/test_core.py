@@ -8,6 +8,7 @@ from urllib import error, request
 from mcp_compressor_rust import (
     BackendConfig,
     CompressedSessionConfig,
+    CompressorClient,
     RustTool,
     compress_tool_listing,
     format_tool_schema_response,
@@ -72,6 +73,43 @@ def test_native_extension_starts_session_and_invokes_backend() -> None:
         invoke_proxy(str(info["bridge_url"]), str(info["token"]), invoke_tool["name"], "echo", {"message": "py"})
         == "alpha:py"
     )
+
+
+def test_high_level_compressor_client_exposes_compressed_tools_and_invocation(monkeypatch) -> None:
+    monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
+    monkeypatch.setenv("PATH", "")
+    with CompressorClient(
+        servers={
+            "alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]},
+            "beta": {"command": PYTHON, "args": [str(FIXTURES / "beta_server.py")]},
+        },
+        mode="compressed",
+        compression_level="max",
+    ) as proxy:
+        tool_names = {tool.name for tool in proxy.tools}
+        assert {"alpha_get_tool_schema", "alpha_invoke_tool", "beta_get_tool_schema", "beta_invoke_tool"}.issubset(
+            tool_names
+        )
+        assert proxy.schema("echo", server="alpha")
+        assert proxy.invoke("echo", {"message": "sdk"}, server="alpha") == "alpha:sdk"
+        assert proxy.invoke("multiply", {"a": 6, "b": 7}, server="beta") == "42"
+
+
+def test_high_level_compressor_client_supports_remote_config_shape() -> None:
+    from mcp_compressor_rust import normalize_servers
+
+    backends = normalize_servers(
+        {
+            "remote": {
+                "url": "https://example.test/mcp",
+                "headers": {"Authorization": "Bearer token"},
+                "args": ["--auth", "explicit-headers"],
+            }
+        }
+    )
+    assert backends is not None
+    assert backends[0].command_or_url == "https://example.test/mcp"
+    assert backends[0].args == ["-H", "Authorization=Bearer token", "--auth", "explicit-headers"]
 
 
 def test_python_agent_can_start_compressed_multi_server_proxy_without_compressor_subprocess(monkeypatch) -> None:
