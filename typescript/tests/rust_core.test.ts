@@ -351,6 +351,33 @@ describe("Rust native core wrapper", () => {
     }
   });
 
+  it("writes generated clients from the high-level native proxy", async () => {
+    const fixtureDir = join(
+      process.cwd(),
+      "..",
+      "crates",
+      "mcp-compressor-core",
+      "tests",
+      "fixtures",
+    );
+    const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
+    const outputDir = mkdtempSync(join(tmpdir(), "mcp-compressor-generated-"));
+    const client = new NativeCompressorClient({
+      servers: { alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] } },
+      compressionLevel: "max",
+    });
+    const proxy = await client.connect();
+    try {
+      const pythonPaths = proxy.writeClient("python", join(outputDir, "py"), { name: "alpha" });
+      const tsPaths = proxy.writeClient("typescript", join(outputDir, "ts"), { name: "alpha" });
+      expect(pythonPaths.some((path) => path.endsWith("alpha.py"))).toBe(true);
+      expect(tsPaths.some((path) => path.endsWith("alpha.ts"))).toBe(true);
+      expect(tsPaths.some((path) => path.endsWith("alpha.d.ts"))).toBe(true);
+    } finally {
+      proxy.close();
+    }
+  });
+
   it("reports invalid high-level native server configs", async () => {
     const client = new NativeCompressorClient({
       servers: { bad: { args: ["unused"] } as unknown as { command: string } },

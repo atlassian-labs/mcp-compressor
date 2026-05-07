@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 _mcp_compressor_core = importlib.import_module("mcp_compressor_rust._mcp_compressor_core")
@@ -134,6 +135,31 @@ def start_compressed_session_from_mcp_config(
         mcp_config_json,
     )
     return CompressedSession(native_session)
+
+
+def generate_client_artifacts(
+    kind: str,
+    *,
+    cli_name: str,
+    bridge_url: str,
+    token: str,
+    tools: list[dict[str, Any]],
+    output_dir: str | Path,
+    session_pid: int = 0,
+) -> list[Path]:
+    config = {
+        "cli_name": cli_name,
+        "bridge_url": bridge_url,
+        "token": token,
+        "tools": tools,
+        "output_dir": str(output_dir),
+        "session_pid": session_pid,
+    }
+    raw = json.loads(_mcp_compressor_core.generate_client_artifacts_json(kind, _json_dumps(config)))
+    if not isinstance(raw, list):
+        msg = "Rust core generate_client_artifacts_json returned non-list JSON"
+        raise TypeError(msg)
+    return [Path(str(path)) for path in raw]
 
 
 def normalize_sdk_servers(servers: dict[str, Any]) -> list[BackendConfig]:

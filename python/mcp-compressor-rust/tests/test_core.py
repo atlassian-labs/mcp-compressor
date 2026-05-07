@@ -97,6 +97,20 @@ def test_high_level_compressor_client_exposes_compressed_tools_and_invocation(mo
         assert proxy.invoke("multiply", {"a": 6, "b": 7}, server="beta") == "42"
 
 
+def test_high_level_compressor_client_writes_generated_clients(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
+    monkeypatch.setenv("PATH", "")
+    with CompressorClient(
+        servers={"alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]}},
+        compression_level="max",
+    ) as proxy:
+        python_paths = proxy.write_client("python", tmp_path / "py", name="alpha")
+        ts_paths = proxy.write_client("typescript", tmp_path / "ts", name="alpha")
+    assert any(path.name == "alpha.py" for path in python_paths)
+    assert any(path.name == "alpha.ts" for path in ts_paths)
+    assert any(path.name == "alpha.d.ts" for path in ts_paths)
+
+
 def test_high_level_compressor_client_reports_invalid_server_config() -> None:
     with pytest.raises(ValueError, match="must define command or url"):
         CompressorClient(servers={"bad": {"args": ["unused"]}}).connect()
