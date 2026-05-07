@@ -6,6 +6,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { NativeCompressorClient, normalizeServers } from "../src/native_client.js";
+
 import {
   compressToolListing,
   formatToolSchemaResponse,
@@ -298,6 +300,72 @@ describe("Rust native core wrapper", () => {
     await expect(
       invokeProxy(info.bridge_url, info.token, invokeTool!.name, "echo", { message: "ts" }),
     ).resolves.toBe("alpha:ts");
+  });
+
+  it("provides a high-level native CompressorClient for compressed tools", async () => {
+    const previousPath = process.env.PATH;
+    const previousBinary = process.env.MCP_COMPRESSOR_CORE_BINARY;
+    process.env.PATH = "";
+    process.env.MCP_COMPRESSOR_CORE_BINARY = "definitely-missing-mcp-compressor-core";
+    try {
+      const fixtureDir = join(
+        process.cwd(),
+        "..",
+        "crates",
+        "mcp-compressor-core",
+        "tests",
+        "fixtures",
+      );
+      const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
+      const client = new NativeCompressorClient({
+        servers: {
+          alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] },
+          beta: { command: python, args: [join(fixtureDir, "beta_server.py")] },
+        },
+        compressionLevel: "max",
+      });
+      const proxy = await client.connect();
+      try {
+        expect(proxy.tools.map((tool) => tool.name)).toContain("alpha_invoke_tool");
+        expect(proxy.schema("echo", { server: "alpha" })).toBeDefined();
+        await expect(proxy.invoke("echo", { message: "sdk" }, { server: "alpha" })).resolves.toBe(
+          "alpha:sdk",
+        );
+        await expect(proxy.invoke("multiply", { a: 6, b: 7 }, { server: "beta" })).resolves.toBe(
+          "42",
+        );
+      } finally {
+        await client.close();
+      }
+    } finally {
+      if (previousPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = previousPath;
+      }
+      if (previousBinary === undefined) {
+        delete process.env.MCP_COMPRESSOR_CORE_BINARY;
+      } else {
+        process.env.MCP_COMPRESSOR_CORE_BINARY = previousBinary;
+      }
+    }
+  });
+
+  it("normalizes high-level native server config", () => {
+    const normalized = normalizeServers({
+      remote: {
+        url: "https://example.test/mcp",
+        headers: { Authorization: "Bearer token" },
+        args: ["--auth", "explicit-headers"],
+      },
+    });
+    expect(normalized).toEqual([
+      {
+        name: "remote",
+        commandOrUrl: "https://example.test/mcp",
+        args: ["-H", "Authorization=Bearer token", "--auth", "explicit-headers"],
+      },
+    ]);
   });
 
   it("lets a TypeScript agent start a compressed multi-server proxy without a compressor subprocess", async () => {
