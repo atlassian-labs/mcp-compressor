@@ -1,4 +1,8 @@
-import { startCompressedSession, startCompressedSessionFromMcpConfig } from "./rust_core.js";
+import {
+  normalizeSdkServers,
+  startCompressedSession,
+  startCompressedSessionFromMcpConfig,
+} from "./rust_core.js";
 import type { BackendConfig as LegacyBackendConfig, JsonConfigServerEntry } from "./types.js";
 import type { CompressedSession, CompressedSessionInfo } from "./rust_core.js";
 
@@ -43,39 +47,13 @@ export function normalizeServers(servers: NativeServersInput): NormalizedBackend
   if (isLegacyBackendConfig(servers)) {
     return [legacyBackendToNative("default", servers)];
   }
-  return Object.entries(servers).map(([name, config]) => normalizeServer(name, config));
+  return normalizeSdkServers(servers);
 }
 
 function isLegacyBackendConfig(value: unknown): value is LegacyBackendConfig {
   return (
     typeof value === "object" && value !== null && "type" in value && typeof value.type === "string"
   );
-}
-
-function normalizeServer(name: string, config: NativeServerConfig): NormalizedBackendConfig {
-  if (typeof config === "string") {
-    return { name, commandOrUrl: config };
-  }
-  if ("type" in config && typeof config.type === "string") {
-    return legacyBackendToNative(name, config);
-  }
-  if ("url" in config && config.url !== undefined) {
-    const args: string[] = [];
-    if (config.headers) {
-      for (const [key, value] of Object.entries(config.headers)) {
-        args.push("-H", `${key}=${value}`);
-      }
-      if (!config.args?.includes("--auth")) {
-        args.push("--auth", "explicit-headers");
-      }
-    }
-    args.push(...(config.args ?? []));
-    return { name, commandOrUrl: String(config.url), args };
-  }
-  if ("command" in config && config.command !== undefined) {
-    return { name, commandOrUrl: config.command, args: config.args ?? [] };
-  }
-  throw new Error(`Unsupported server config for ${name}`);
 }
 
 function legacyBackendToNative(

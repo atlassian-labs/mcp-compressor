@@ -156,6 +156,19 @@ export async function startCompressedSessionFromMcpConfig(
   return new CompressedSession(session);
 }
 
+export function normalizeSdkServers(servers: unknown): BackendConfig[] {
+  const raw = JSON.parse(loadNativeCore().normalizeServersJson(stringify(servers))) as Array<{
+    name: string;
+    command_or_url: string;
+    args?: string[];
+  }>;
+  return raw.map((backend) => ({
+    name: backend.name,
+    commandOrUrl: backend.command_or_url,
+    args: backend.args ?? [],
+  }));
+}
+
 export interface ParsedMcpServer {
   name: string;
   command: string;

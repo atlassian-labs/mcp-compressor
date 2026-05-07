@@ -136,6 +136,19 @@ def start_compressed_session_from_mcp_config(
     return CompressedSession(native_session)
 
 
+def normalize_sdk_servers(servers: dict[str, Any]) -> list[BackendConfig]:
+    raw = json.loads(_mcp_compressor_core.normalize_servers_json(_json_dumps(servers)))
+    if not isinstance(raw, list):
+        msg = "Rust core normalize_servers_json returned non-list JSON"
+        raise TypeError(msg)
+    return [
+        BackendConfig(
+            name=str(item["name"]), command_or_url=str(item["command_or_url"]), args=list(item.get("args", []))
+        )
+        for item in raw
+    ]
+
+
 def parse_mcp_config(config_json: str) -> list[dict[str, Any]]:
     """Parse MCP config JSON through the Rust core topology parser."""
     value = json.loads(_mcp_compressor_core.parse_mcp_config_json(config_json))

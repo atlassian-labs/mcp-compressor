@@ -15,7 +15,8 @@ mod types;
 pub use client_gen::{generate_client_artifacts, FfiClientArtifactKind};
 pub use dto::{
     FfiBackendConfig, FfiCompressedSessionConfig, FfiCompressedSessionInfo,
-    FfiGeneratorConfig, FfiJustBashCommandSpec, FfiJustBashProviderSpec, FfiMcpServer, FfiTool,
+    FfiGeneratorConfig, FfiJustBashCommandSpec, FfiJustBashProviderSpec, FfiMcpServer,
+    FfiSdkServerConfig, FfiSdkServersConfig, FfiTool,
 };
 pub use oauth::{
     clear_oauth_credentials, list_oauth_credentials, oauth_store_path, remember_oauth_backend,
@@ -25,5 +26,6 @@ pub use pure::{
     compress_tool_listing, format_tool_schema_response, parse_mcp_config, parse_tool_argv,
 };
 pub use session::{
+    normalize_sdk_servers,
     start_compressed_session, start_compressed_session_from_mcp_config, FfiCompressedSession,
 };

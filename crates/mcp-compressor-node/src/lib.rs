@@ -6,10 +6,11 @@ use serde_json::Value;
 use mcp_compressor_core::compression::CompressionLevel;
 use mcp_compressor_core::ffi::{
     clear_oauth_credentials, compress_tool_listing, format_tool_schema_response, generate_client_artifacts,
-    list_oauth_credentials, parse_mcp_config, parse_tool_argv, remember_oauth_backend,
-    start_compressed_session,
+    list_oauth_credentials, normalize_sdk_servers, parse_mcp_config, parse_tool_argv,
+    remember_oauth_backend, start_compressed_session,
     start_compressed_session_from_mcp_config, FfiBackendConfig, FfiClientArtifactKind,
-    FfiCompressedSession, FfiCompressedSessionConfig, FfiGeneratorConfig, FfiTool,
+    FfiCompressedSession, FfiCompressedSessionConfig, FfiGeneratorConfig, FfiSdkServersConfig,
+    FfiTool,
 };
 
 fn napi_error(error: impl std::fmt::Display) -> NapiError {
@@ -56,6 +57,13 @@ pub fn generate_client_artifacts_json(kind: String, config_json: String) -> napi
         .map(|path| Value::String(path.to_string_lossy().into_owned()))
         .collect::<Vec<_>>();
     serde_json::to_string(&values).map_err(napi_error)
+}
+
+#[napi]
+pub fn normalize_servers_json(servers_json: String) -> napi::Result<String> {
+    let servers = parse_json::<FfiSdkServersConfig>(&servers_json)?;
+    serde_json::to_string(&normalize_sdk_servers(servers).map_err(napi_error)?)
+        .map_err(napi_error)
 }
 
 #[napi]

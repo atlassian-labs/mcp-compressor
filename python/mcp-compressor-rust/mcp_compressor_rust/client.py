@@ -9,6 +9,7 @@ from mcp_compressor_rust.core import (
     BackendConfig,
     CompressedSession,
     CompressedSessionConfig,
+    normalize_sdk_servers,
     start_compressed_session,
     start_compressed_session_from_mcp_config,
 )
@@ -63,7 +64,7 @@ def _resolve_backends(servers: ServersInput) -> tuple[list[BackendConfig] | None
         return [BackendConfig(name="default", command_or_url=servers)], None
     if isinstance(servers, BackendConfig):
         return [servers], None
-    return [_backend_from_value(name, value) for name, value in servers.items()], None
+    return normalize_sdk_servers(servers), None
 
 
 class CompressorProxy:

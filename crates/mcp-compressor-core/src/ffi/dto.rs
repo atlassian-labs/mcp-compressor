@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -58,6 +60,22 @@ pub struct FfiBackendConfig {
     #[serde(default)]
     pub args: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum FfiSdkServerConfig {
+    CommandOrUrl(String),
+    Structured {
+        command: Option<String>,
+        url: Option<String>,
+        #[serde(default)]
+        args: Vec<String>,
+        #[serde(default)]
+        headers: BTreeMap<String, String>,
+    },
+}
+
+pub type FfiSdkServersConfig = BTreeMap<String, FfiSdkServerConfig>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FfiCompressedSessionConfig {
