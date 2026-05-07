@@ -14,7 +14,7 @@ from mcp_compressor_rust import (
     BackendConfig,
     CompressedSessionConfig,
     CompressorClient,
-    RustTool,
+    ToolSpec,
     compress_tool_listing,
     format_tool_schema_response,
     parse_mcp_config,
@@ -40,8 +40,8 @@ def invoke_proxy(bridge_url: str, token: str, tool: str, tool_name: str, tool_in
         return response.read().decode()
 
 
-def sample_tool() -> RustTool:
-    return RustTool(
+def sample_tool() -> ToolSpec:
+    return ToolSpec(
         name="echo",
         description="Echo a value.",
         input_schema={

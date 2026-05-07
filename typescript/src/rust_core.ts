@@ -1,12 +1,12 @@
-import { loadNativeCore, type NativeCompressedSession, type NativeRustTool } from "./native.js";
+import { loadNativeCore, type NativeCompressedSession, type NativeToolSpec } from "./native.js";
 
-export interface RustTool {
+export interface ToolSpec {
   name: string;
   description?: string | null;
   inputSchema: Record<string, unknown>;
 }
 
-function toNativeTool(tool: RustTool): NativeRustTool {
+function toNativeTool(tool: ToolSpec): NativeToolSpec {
   return {
     name: tool.name,
     description: tool.description ?? null,
@@ -18,15 +18,15 @@ function stringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export function compressToolListing(level: string, tools: RustTool[]): string {
+export function compressToolListing(level: string, tools: ToolSpec[]): string {
   return loadNativeCore().compressToolListingJson(level, stringify(tools.map(toNativeTool)));
 }
 
-export function formatToolSchemaResponse(tool: RustTool): string {
+export function formatToolSchemaResponse(tool: ToolSpec): string {
   return loadNativeCore().formatToolSchemaResponseJson(stringify(toNativeTool(tool)));
 }
 
-export function parseToolArgv(tool: RustTool, argv: string[]): Record<string, unknown> {
+export function parseToolArgv(tool: ToolSpec, argv: string[]): Record<string, unknown> {
   return JSON.parse(
     loadNativeCore().parseToolArgvJson(stringify(toNativeTool(tool)), stringify(argv)),
   ) as Record<string, unknown>;
@@ -38,7 +38,7 @@ export interface ClientGeneratorConfig {
   cliName: string;
   bridgeUrl: string;
   token: string;
-  tools: RustTool[];
+  tools: ToolSpec[];
   sessionPid: number;
   outputDir: string;
 }

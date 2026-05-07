@@ -11,7 +11,7 @@ export type NativeCompressorMode = "compressed" | "cli" | "bash" | "python" | "t
 export type NativeServerConfig = LegacyBackendConfig | JsonConfigServerEntry | string;
 export type NativeServersInput = Record<string, NativeServerConfig> | LegacyBackendConfig | string;
 
-export interface NativeCompressorClientOptions {
+export interface CompressorClientOptions {
   servers: NativeServersInput;
   mode?: NativeCompressorMode;
   compressionLevel?: string;
@@ -83,7 +83,7 @@ function transformMode(mode: NativeCompressorMode): string | null {
   return mode;
 }
 
-export class NativeCompressorProxy {
+export class CompressorProxy {
   private closed = false;
 
   constructor(
@@ -178,17 +178,17 @@ export class NativeCompressorProxy {
   }
 }
 
-export class NativeCompressorClient {
+export class CompressorClient {
   private session: CompressedSession | null = null;
   private readonly mode: NativeCompressorMode;
 
-  constructor(private readonly options: NativeCompressorClientOptions) {
+  constructor(private readonly options: CompressorClientOptions) {
     this.mode = options.mode ?? "compressed";
   }
 
-  async connect(): Promise<NativeCompressorProxy> {
+  async connect(): Promise<CompressorProxy> {
     if (this.session) {
-      return new NativeCompressorProxy(this.session, this.defaultServer());
+      return new CompressorProxy(this.session, this.defaultServer());
     }
     const normalized = normalizeServers(this.options.servers);
     const config = {
@@ -203,7 +203,7 @@ export class NativeCompressorClient {
       typeof normalized === "string"
         ? await startCompressedSessionFromMcpConfig(config, normalized)
         : await startCompressedSession(config, normalized);
-    return new NativeCompressorProxy(this.session, this.defaultServer());
+    return new CompressorProxy(this.session, this.defaultServer());
   }
 
   async close(): Promise<void> {

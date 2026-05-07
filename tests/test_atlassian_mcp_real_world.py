@@ -409,8 +409,8 @@ def test_atlassian_typescript_high_level_compressor_client() -> None:
     subprocess.run(["bun", "run", "build"], cwd=ROOT / "typescript", check=True)
     script = textwrap.dedent(
         f"""
-        import {{ NativeCompressorClient }} from './dist/index.js';
-        const client = new NativeCompressorClient({{
+        import {{ CompressorClient }} from './dist/index.js';
+        const client = new CompressorClient({{
           servers: {{
             atlassian: {{
               url: '{ATLASSIAN_URL}',

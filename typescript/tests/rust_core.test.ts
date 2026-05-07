@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { NativeCompressorClient, normalizeServers } from "../src/native_client.js";
+import { CompressorClient, normalizeServers } from "../src/index.js";
 
 import {
   compressToolListing,
@@ -19,7 +19,7 @@ import {
   startCompressedSessionFromMcpConfig,
   parseMcpConfig,
   parseToolArgv,
-  type RustTool,
+  type ToolSpec,
 } from "../src/rust_core.js";
 
 function invokeProxy(
@@ -178,7 +178,7 @@ async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
   });
 }
 
-const sampleTool: RustTool = {
+const sampleTool: ToolSpec = {
   name: "echo",
   description: "Echo a value.",
   inputSchema: {
@@ -302,7 +302,7 @@ describe("Rust native core wrapper", () => {
     ).resolves.toBe("alpha:ts");
   });
 
-  it("provides a high-level native CompressorClient for compressed tools", async () => {
+  it("provides a high-level CompressorClient for compressed tools", async () => {
     const previousPath = process.env.PATH;
     const previousBinary = process.env.MCP_COMPRESSOR_CORE_BINARY;
     process.env.PATH = "";
@@ -317,7 +317,7 @@ describe("Rust native core wrapper", () => {
         "fixtures",
       );
       const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
-      const client = new NativeCompressorClient({
+      const client = new CompressorClient({
         servers: {
           alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] },
           beta: { command: python, args: [join(fixtureDir, "beta_server.py")] },
@@ -362,7 +362,7 @@ describe("Rust native core wrapper", () => {
     );
     const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
     const outputDir = mkdtempSync(join(tmpdir(), "mcp-compressor-generated-"));
-    const client = new NativeCompressorClient({
+    const client = new CompressorClient({
       servers: { alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] } },
       compressionLevel: "max",
     });
@@ -423,7 +423,7 @@ describe("Rust native core wrapper", () => {
   });
 
   it("reports invalid high-level native server configs", async () => {
-    const client = new NativeCompressorClient({
+    const client = new CompressorClient({
       servers: { bad: { args: ["unused"] } as unknown as { command: string } },
     });
     await expect(client.connect()).rejects.toThrow(/must define command or url/);
@@ -439,7 +439,7 @@ describe("Rust native core wrapper", () => {
       "fixtures",
     );
     const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
-    const client = new NativeCompressorClient({
+    const client = new CompressorClient({
       servers: { alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] } },
       compressionLevel: "max",
     });
@@ -453,7 +453,7 @@ describe("Rust native core wrapper", () => {
     }
   });
 
-  it("makes high-level native CompressorClient lifecycle explicit", async () => {
+  it("makes high-level CompressorClient lifecycle explicit", async () => {
     const fixtureDir = join(
       process.cwd(),
       "..",
@@ -463,7 +463,7 @@ describe("Rust native core wrapper", () => {
       "fixtures",
     );
     const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
-    const client = new NativeCompressorClient({
+    const client = new CompressorClient({
       servers: { alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] } },
       compressionLevel: "max",
     });
@@ -476,7 +476,7 @@ describe("Rust native core wrapper", () => {
     await expect(proxy.invoke("echo", { message: "after-close" })).rejects.toThrow();
   });
 
-  it("defaults single-server native CompressorClient invocation to that server", async () => {
+  it("defaults single-server CompressorClient invocation to that server", async () => {
     const previousPath = process.env.PATH;
     const previousBinary = process.env.MCP_COMPRESSOR_CORE_BINARY;
     process.env.PATH = "";
@@ -491,7 +491,7 @@ describe("Rust native core wrapper", () => {
         "fixtures",
       );
       const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
-      const client = new NativeCompressorClient({
+      const client = new CompressorClient({
         servers: { alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] } },
         compressionLevel: "max",
       });
@@ -520,7 +520,7 @@ describe("Rust native core wrapper", () => {
       "fixtures",
     );
     const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
-    const cliClient = new NativeCompressorClient({
+    const cliClient = new CompressorClient({
       servers: { alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] } },
       mode: "cli",
       compressionLevel: "max",
@@ -532,7 +532,7 @@ describe("Rust native core wrapper", () => {
       await cliClient.close();
     }
 
-    const bashClient = new NativeCompressorClient({
+    const bashClient = new CompressorClient({
       servers: {
         alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] },
         beta: { command: python, args: [join(fixtureDir, "beta_server.py")] },
