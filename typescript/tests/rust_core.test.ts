@@ -351,6 +351,37 @@ describe("Rust native core wrapper", () => {
     }
   });
 
+  it("reports invalid high-level native server configs", async () => {
+    const client = new NativeCompressorClient({
+      servers: { bad: { args: ["unused"] } as unknown as { command: string } },
+    });
+    await expect(client.connect()).rejects.toThrow(/must define command or url/);
+  });
+
+  it("reports missing high-level native wrappers", async () => {
+    const fixtureDir = join(
+      process.cwd(),
+      "..",
+      "crates",
+      "mcp-compressor-core",
+      "tests",
+      "fixtures",
+    );
+    const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
+    const client = new NativeCompressorClient({
+      servers: { alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] } },
+      compressionLevel: "max",
+    });
+    const proxy = await client.connect();
+    try {
+      expect(() => proxy.schema("echo", { server: "missing" })).toThrow(
+        /No compressed invoke wrapper/,
+      );
+    } finally {
+      proxy.close();
+    }
+  });
+
   it("makes high-level native CompressorClient lifecycle explicit", async () => {
     const fixtureDir = join(
       process.cwd(),

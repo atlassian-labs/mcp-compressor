@@ -97,6 +97,24 @@ def test_high_level_compressor_client_exposes_compressed_tools_and_invocation(mo
         assert proxy.invoke("multiply", {"a": 6, "b": 7}, server="beta") == "42"
 
 
+def test_high_level_compressor_client_reports_invalid_server_config() -> None:
+    with pytest.raises(ValueError, match="must define command or url"):
+        CompressorClient(servers={"bad": {"args": ["unused"]}}).connect()
+
+
+def test_high_level_compressor_client_reports_missing_wrapper(monkeypatch) -> None:
+    monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
+    monkeypatch.setenv("PATH", "")
+    with (
+        CompressorClient(
+            servers={"alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]}},
+            compression_level="max",
+        ) as proxy,
+        pytest.raises(KeyError, match="No compressed invoke wrapper"),
+    ):
+        proxy.schema("echo", server="missing")
+
+
 def test_high_level_compressor_client_lifecycle_is_explicit(monkeypatch) -> None:
     monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
     monkeypatch.setenv("PATH", "")
