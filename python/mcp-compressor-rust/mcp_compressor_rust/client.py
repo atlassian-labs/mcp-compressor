@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 from urllib import request
 
@@ -9,6 +10,7 @@ from mcp_compressor_rust.core import (
     BackendConfig,
     CompressedSession,
     CompressedSessionConfig,
+    generate_client_artifacts,
     normalize_sdk_servers,
     start_compressed_session,
     start_compressed_session_from_mcp_config,
@@ -95,6 +97,17 @@ class CompressorProxy:
     def close(self) -> None:
         self._closed = True
         self._session.close()
+
+    def write_client(self, kind: str, output_dir: str | Path, *, name: str | None = None) -> list[Path]:
+        info = self._session.info()
+        return generate_client_artifacts(
+            kind,
+            cli_name=name or self._default_server or "mcp",
+            bridge_url=str(info["bridge_url"]),
+            token=str(info["token"]),
+            tools=list(info.get("backend_tools", info["frontend_tools"])),
+            output_dir=output_dir,
+        )
 
     def invoke_wrapper(self, wrapper_tool: str, tool_input: dict[str, Any]) -> ProxyResponse:
         if self._closed:

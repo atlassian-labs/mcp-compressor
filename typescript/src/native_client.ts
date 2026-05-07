@@ -1,4 +1,5 @@
 import {
+  generateClientArtifacts,
   normalizeSdkServers,
   startCompressedSession,
   startCompressedSessionFromMcpConfig,
@@ -29,6 +30,8 @@ export interface ProxyTool {
 export interface ProxyResponse {
   text: string;
 }
+
+export type GeneratedClientKind = "cli" | "python" | "typescript";
 
 export interface NormalizedBackendConfig {
   name: string;
@@ -152,6 +155,26 @@ export class NativeCompressorProxy {
   close(): void {
     this.closed = true;
     this.session.close();
+  }
+
+  writeClient(
+    kind: GeneratedClientKind,
+    outputDir: string,
+    options: { name?: string } = {},
+  ): string[] {
+    const info = this.info();
+    return generateClientArtifacts(kind, {
+      cliName: options.name ?? this.defaultServer ?? "mcp",
+      bridgeUrl: info.bridge_url,
+      token: info.token,
+      tools: info.backend_tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.input_schema,
+      })),
+      outputDir,
+      sessionPid: 0,
+    });
   }
 }
 

@@ -332,6 +332,52 @@ def test_atlassian_python_high_level_compressor_client() -> None:
         assert proxy.invoke(SAFE_TOOL, {}, server="atlassian_atlassian")
 
 
+def test_atlassian_python_high_level_generated_clients(tmp_path) -> None:
+    sys.path.insert(0, str(ROOT / "python" / "mcp-compressor-rust"))
+    rust_package = cast("Any", importlib.import_module("mcp_compressor_rust"))
+
+    client = rust_package.CompressorClient(
+        servers={
+            "atlassian": {
+                "url": ATLASSIAN_URL,
+                "headers": {"Authorization": f"Basic {_token()}"},
+            }
+        },
+        compression_level="medium",
+        server_name="atlassian",
+        include_tools=[SAFE_TOOL],
+    )
+    with client as proxy:
+        python_paths = proxy.write_client("python", tmp_path / "py", name="atlassian")
+        ts_paths = proxy.write_client("typescript", tmp_path / "ts", name="atlassian")
+        python_module = next(path for path in python_paths if path.name == "atlassian.py")
+        typescript_module = next(path for path in ts_paths if path.name == "atlassian.ts")
+        py_result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                f"import sys; sys.path.insert(0, {str(python_module.parent)!r}); import atlassian; print(atlassian.getAccessibleAtlassianResources())",
+            ],
+            text=True,
+            capture_output=True,
+            check=True,
+            timeout=60,
+        )
+        assert py_result.stdout.strip()
+        ts_result = subprocess.run(
+            [
+                "bun",
+                "--eval",
+                f"import {{ getAccessibleAtlassianResources }} from {json.dumps(str(typescript_module))}; console.log(await getAccessibleAtlassianResources());",
+            ],
+            text=True,
+            capture_output=True,
+            check=True,
+            timeout=60,
+        )
+        assert ts_result.stdout.strip()
+
+
 def test_atlassian_python_native_session() -> None:
     sys.path.insert(0, str(ROOT / "python" / "mcp-compressor-rust"))
     rust_package = cast("Any", importlib.import_module("mcp_compressor_rust"))
