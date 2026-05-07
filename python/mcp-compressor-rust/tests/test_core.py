@@ -133,19 +133,19 @@ def test_high_level_compressor_client_writes_generated_clients(monkeypatch, tmp_
         timeout=30,
     )
     assert py_result.stdout.strip() == "alpha:generated"
-    bun = shutil.which("bun") or "bun"
-    ts_result = subprocess.run(  # noqa: S603 - trusted generated test module
-        [
-            bun,
-            "--eval",
-            f"import {{ echo }} from {json.dumps(str(typescript_module))}; console.log(await echo('generated-ts'));",
-        ],
-        text=True,
-        capture_output=True,
-        check=True,
-        timeout=30,
-    )
-    assert ts_result.stdout.strip() == "alpha:generated-ts"
+    if bun := shutil.which("bun"):
+        ts_result = subprocess.run(  # noqa: S603 - trusted generated test module
+            [
+                bun,
+                "--eval",
+                f"import {{ echo }} from {json.dumps(str(typescript_module))}; console.log(await echo('generated-ts'));",
+            ],
+            text=True,
+            capture_output=True,
+            check=True,
+            timeout=30,
+        )
+        assert ts_result.stdout.strip() == "alpha:generated-ts"
 
 
 def test_high_level_compressor_client_reports_invalid_server_config() -> None:
