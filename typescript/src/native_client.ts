@@ -31,6 +31,20 @@ export interface ProxyResponse {
   text: string;
 }
 
+export interface JustBashCommand {
+  commandName: string;
+  backendToolName: string;
+  description?: string | null;
+  inputSchema: Record<string, unknown>;
+  invokeToolName: string;
+}
+
+export interface JustBashProvider {
+  providerName: string;
+  helpToolName: string;
+  tools: JustBashCommand[];
+}
+
 export type GeneratedClientKind = "cli" | "python" | "typescript";
 
 export interface NormalizedBackendConfig {
@@ -108,6 +122,24 @@ export class CompressorProxy {
       name: tool.name,
       description: tool.description,
       inputSchema: tool.input_schema,
+    }));
+  }
+
+  get justBashProviders(): JustBashProvider[] {
+    return this.info().just_bash_providers.map((provider) => ({
+      providerName: provider.provider_name,
+      helpToolName: provider.help_tool_name,
+      tools: provider.tools.map((command) => ({
+        commandName: command.command_name,
+        backendToolName:
+          command.backendToolName ??
+          command.backend_tool_name ??
+          command.tool_name ??
+          command.command_name,
+        description: command.description,
+        inputSchema: command.input_schema,
+        invokeToolName: command.invoke_tool_name,
+      })),
     }));
   }
 

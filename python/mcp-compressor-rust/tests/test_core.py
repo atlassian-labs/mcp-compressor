@@ -210,6 +210,15 @@ def test_high_level_compressor_client_exposes_cli_and_bash_modes(monkeypatch) ->
         compression_level="max",
     ) as proxy:
         assert {"bash_tool", "alpha_help", "beta_help"}.issubset({tool.name for tool in proxy.tools})
+        providers = {provider.provider_name: provider for provider in proxy.just_bash_providers}
+        assert set(providers) == {"alpha", "beta"}
+        assert providers["alpha"].help_tool_name == "alpha_help"
+        assert any(
+            command.command_name == "echo"
+            and command.backend_tool_name == "echo"
+            and command.invoke_tool_name == "alpha_invoke_tool"
+            for command in providers["alpha"].tools
+        )
 
 
 def test_high_level_compressor_client_supports_remote_config_shape() -> None:
