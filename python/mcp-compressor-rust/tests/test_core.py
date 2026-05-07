@@ -95,6 +95,37 @@ def test_high_level_compressor_client_exposes_compressed_tools_and_invocation(mo
         assert proxy.invoke("multiply", {"a": 6, "b": 7}, server="beta") == "42"
 
 
+def test_high_level_compressor_client_defaults_single_server_wrapper(monkeypatch) -> None:
+    monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
+    monkeypatch.setenv("PATH", "")
+    with CompressorClient(
+        servers={"alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]}},
+        compression_level="max",
+    ) as proxy:
+        assert proxy.invoke("echo", {"message": "default"}) == "alpha:default"
+        assert proxy.schema("echo")
+
+
+def test_high_level_compressor_client_exposes_cli_and_bash_modes(monkeypatch) -> None:
+    monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
+    monkeypatch.setenv("PATH", "")
+    with CompressorClient(
+        servers={"alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]}},
+        mode="cli",
+        compression_level="max",
+    ) as proxy:
+        assert {tool.name for tool in proxy.tools} == {"alpha_help"}
+    with CompressorClient(
+        servers={
+            "alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]},
+            "beta": {"command": PYTHON, "args": [str(FIXTURES / "beta_server.py")]},
+        },
+        mode="bash",
+        compression_level="max",
+    ) as proxy:
+        assert {"bash_tool", "alpha_help", "beta_help"}.issubset({tool.name for tool in proxy.tools})
+
+
 def test_high_level_compressor_client_supports_remote_config_shape() -> None:
     from mcp_compressor_rust import normalize_servers
 

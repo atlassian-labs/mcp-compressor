@@ -351,6 +351,80 @@ describe("Rust native core wrapper", () => {
     }
   });
 
+  it("defaults single-server native CompressorClient invocation to that server", async () => {
+    const previousPath = process.env.PATH;
+    const previousBinary = process.env.MCP_COMPRESSOR_CORE_BINARY;
+    process.env.PATH = "";
+    process.env.MCP_COMPRESSOR_CORE_BINARY = "definitely-missing-mcp-compressor-core";
+    try {
+      const fixtureDir = join(
+        process.cwd(),
+        "..",
+        "crates",
+        "mcp-compressor-core",
+        "tests",
+        "fixtures",
+      );
+      const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
+      const client = new NativeCompressorClient({
+        servers: { alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] } },
+        compressionLevel: "max",
+      });
+      const proxy = await client.connect();
+      try {
+        await expect(proxy.invoke("echo", { message: "default" })).resolves.toBe("alpha:default");
+        expect(proxy.schema("echo")).toBeDefined();
+      } finally {
+        await client.close();
+      }
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+      if (previousBinary === undefined) delete process.env.MCP_COMPRESSOR_CORE_BINARY;
+      else process.env.MCP_COMPRESSOR_CORE_BINARY = previousBinary;
+    }
+  });
+
+  it("exposes high-level native CLI and Bash transform surfaces", async () => {
+    const fixtureDir = join(
+      process.cwd(),
+      "..",
+      "crates",
+      "mcp-compressor-core",
+      "tests",
+      "fixtures",
+    );
+    const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
+    const cliClient = new NativeCompressorClient({
+      servers: { alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] } },
+      mode: "cli",
+      compressionLevel: "max",
+    });
+    const cliProxy = await cliClient.connect();
+    try {
+      expect(cliProxy.tools.map((tool) => tool.name)).toEqual(["alpha_help"]);
+    } finally {
+      await cliClient.close();
+    }
+
+    const bashClient = new NativeCompressorClient({
+      servers: {
+        alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] },
+        beta: { command: python, args: [join(fixtureDir, "beta_server.py")] },
+      },
+      mode: "bash",
+      compressionLevel: "max",
+    });
+    const bashProxy = await bashClient.connect();
+    try {
+      expect(bashProxy.tools.map((tool) => tool.name)).toEqual(
+        expect.arrayContaining(["bash_tool", "alpha_help", "beta_help"]),
+      );
+    } finally {
+      await bashClient.close();
+    }
+  });
+
   it("normalizes high-level native server config", () => {
     const normalized = normalizeServers({
       remote: {
