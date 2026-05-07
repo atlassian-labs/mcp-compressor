@@ -205,6 +205,17 @@ impl CompressedServer {
         Ok(tools)
     }
 
+    /// Return the default backend server name when a single unambiguous default exists.
+    pub fn default_server_name(&self) -> Option<&str> {
+        self.config.server_name.as_deref().or_else(|| {
+            if self.backends.len() == 1 {
+                Some(self.backends[0].public_name.as_str())
+            } else {
+                None
+            }
+        })
+    }
+
     /// Return backend tool metadata for client generation and language bindings.
     pub fn backend_tools(&self) -> Vec<Tool> {
         self.backends
