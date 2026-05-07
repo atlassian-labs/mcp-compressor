@@ -61,6 +61,20 @@ with CompressorClient(servers=servers, compression_level="max") as proxy:
     proxy.write_client("typescript", "./generated-ts", name="atlassian")
 ```
 
+## Packaging smoke test
+
+Build a local wheel and verify it imports from a clean virtualenv:
+
+```bash
+uvx maturin build --release --out dist
+python -m venv /tmp/mcp-compressor-rust-wheel-test
+/tmp/mcp-compressor-rust-wheel-test/bin/python -m pip install "$PWD"/dist/*.whl
+cd /tmp
+/tmp/mcp-compressor-rust-wheel-test/bin/python -c "from mcp_compressor_rust import CompressorClient, ToolSpec"
+```
+
+CI runs the same kind of wheel smoke test before uploading the built wheel as an artifact.
+
 ## Advanced helpers
 
 Low-level helpers such as `compress_tool_listing`, `parse_tool_argv`, and `ToolSpec` remain available for tests and advanced integrations, but the primary SDK entry point is `CompressorClient`.
