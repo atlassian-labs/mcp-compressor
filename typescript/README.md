@@ -244,6 +244,39 @@ for (const runtime of client.runtimes) {
 }
 ```
 
+## Rust-backed native client
+
+The Rust-core migration exposes a high-level native client for applications that want to start compressed MCP proxy sessions in-process, without spawning the `mcp-compressor` CLI as a stdio subprocess.
+
+```ts
+import { NativeCompressorClient } from "@atlassian/mcp-compressor";
+
+const client = new NativeCompressorClient({
+  servers: {
+    atlassian: {
+      url: "https://mcp.atlassian.com/v1/mcp",
+      headers: {
+        Authorization: `Basic ${token}`,
+      },
+    },
+  },
+  compressionLevel: "medium",
+  includeTools: ["getConfluencePage", "updateConfluencePage"],
+  toonify: true,
+});
+
+const proxy = await client.connect();
+try {
+  console.log(proxy.tools.map((tool) => tool.name));
+  const output = await proxy.invoke("getAccessibleAtlassianResources", {}, { server: "atlassian" });
+  console.log(output);
+} finally {
+  await client.close();
+}
+```
+
+The existing `CompressorClient` remains available for compatibility while this native implementation is validated.
+
 ## Development
 
 ### Setup
