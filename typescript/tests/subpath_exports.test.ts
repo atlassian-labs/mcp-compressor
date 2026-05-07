@@ -21,7 +21,6 @@ const pkgJson = JSON.parse(readFileSync(resolve(pkgRoot, "package.json"), "utf8"
 test("package.json exports declares the lightweight sub-paths", () => {
   expect(Object.keys(pkgJson.exports).sort()).toEqual([
     ".",
-    "./bash",
     "./config",
     "./errors",
     "./rust-core",

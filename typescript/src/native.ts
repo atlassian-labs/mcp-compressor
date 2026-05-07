@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 
-export interface NativeRustTool {
+export interface NativeToolSpec {
   name: string;
   description?: string | null;
   input_schema: Record<string, unknown>;

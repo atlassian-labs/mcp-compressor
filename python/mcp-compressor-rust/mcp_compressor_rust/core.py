@@ -67,7 +67,7 @@ class CompressedSession:
 
 
 @dataclass(frozen=True)
-class RustTool:
+class ToolSpec:
     """JSON-serializable tool DTO accepted by the Rust core extension."""
 
     name: str
@@ -86,21 +86,21 @@ def _json_dumps(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"))
 
 
-def _tool_payload(tools: list[RustTool]) -> str:
+def _tool_payload(tools: list[ToolSpec]) -> str:
     return _json_dumps([tool.to_json_dict() for tool in tools])
 
 
-def compress_tool_listing(level: str, tools: list[RustTool]) -> str:
+def compress_tool_listing(level: str, tools: list[ToolSpec]) -> str:
     """Format a Rust-core compressed tool listing."""
     return str(_mcp_compressor_core.compress_tool_listing_json(level, _tool_payload(tools)))
 
 
-def format_tool_schema_response(tool: RustTool) -> str:
+def format_tool_schema_response(tool: ToolSpec) -> str:
     """Format a Rust-core schema response for one tool."""
     return str(_mcp_compressor_core.format_tool_schema_response_json(_json_dumps(tool.to_json_dict())))
 
 
-def parse_tool_argv(tool: RustTool, argv: list[str]) -> dict[str, Any]:
+def parse_tool_argv(tool: ToolSpec, argv: list[str]) -> dict[str, Any]:
     """Parse generated CLI argv for one tool through the Rust core parser."""
     parsed = _mcp_compressor_core.parse_tool_argv_json(
         _json_dumps(tool.to_json_dict()),

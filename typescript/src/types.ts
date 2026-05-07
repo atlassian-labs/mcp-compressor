@@ -1,14 +1,4 @@
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-
 export type CompressionLevel = "low" | "medium" | "high" | "max";
-
-export interface CommonProxyOptions {
-  compressionLevel?: CompressionLevel;
-  includeTools?: string[];
-  excludeTools?: string[];
-  toonify?: boolean;
-  serverName?: string;
-}
 
 export interface StdioBackendConfig {
   type: "stdio";
@@ -47,20 +37,4 @@ export interface JsonConfigServerEntry {
 
 export interface MCPConfigShape {
   mcpServers: Record<string, JsonConfigServerEntry>;
-}
-
-export interface StartOptions {
-  transportType?: "stdio" | "httpStream";
-  httpStream?: {
-    port?: number;
-    endpoint?: string;
-  };
-}
-
-export interface BackendToolClient {
-  connect(): Promise<void>;
-  disconnect(): Promise<void>;
-  listTools(): Promise<Tool[]>;
-  callTool(name: string, args: Record<string, unknown> | undefined): Promise<unknown>;
-  readResource?(uri: string): Promise<unknown>;
 }
