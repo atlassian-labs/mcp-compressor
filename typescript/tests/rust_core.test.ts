@@ -351,6 +351,205 @@ describe("Rust native core wrapper", () => {
     }
   });
 
+  it("writes generated clients from the high-level native proxy", async () => {
+    const fixtureDir = join(
+      process.cwd(),
+      "..",
+      "crates",
+      "mcp-compressor-core",
+      "tests",
+      "fixtures",
+    );
+    const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
+    const outputDir = mkdtempSync(join(tmpdir(), "mcp-compressor-generated-"));
+    const client = new NativeCompressorClient({
+      servers: { alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] } },
+      compressionLevel: "max",
+    });
+    const proxy = await client.connect();
+    try {
+      const cliPaths = proxy.writeClient("cli", join(outputDir, "bin"), { name: "alpha" });
+      const pythonPaths = proxy.writeClient("python", join(outputDir, "py"), { name: "alpha" });
+      const tsPaths = proxy.writeClient("typescript", join(outputDir, "ts"), { name: "alpha" });
+      const cliPath = cliPaths.find((path) => path.endsWith("alpha"));
+      const pythonPath = pythonPaths.find((path) => path.endsWith("alpha.py"));
+      const tsPath = tsPaths.find((path) => path.endsWith("alpha.ts"));
+      expect(cliPath).toBeDefined();
+      expect(pythonPath).toBeDefined();
+      expect(tsPath).toBeDefined();
+      const cliResult = await new Promise<string>((resolve, reject) => {
+        const child = spawn(cliPath!, ["echo", "--message", "generated-cli"]);
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (chunk) => {
+          stdout += String(chunk);
+        });
+        child.stderr.on("data", (chunk) => {
+          stderr += String(chunk);
+        });
+        child.on("error", reject);
+        child.on("exit", (code) => {
+          if (code === 0) resolve(stdout.trim());
+          else reject(new Error(stderr));
+        });
+      });
+      expect(cliResult).toBe("alpha:generated-cli");
+      expect(tsPaths.some((path) => path.endsWith("alpha.d.ts"))).toBe(true);
+      const pyResult = await new Promise<string>((resolve, reject) => {
+        const child = spawn(python, [
+          "-c",
+          `import sys; sys.path.insert(0, ${JSON.stringify(pythonPath!.replace(/\/alpha\.py$/, ""))}); import alpha; print(alpha.echo('generated'))`,
+        ]);
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (chunk) => {
+          stdout += String(chunk);
+        });
+        child.stderr.on("data", (chunk) => {
+          stderr += String(chunk);
+        });
+        child.on("error", reject);
+        child.on("exit", (code) => {
+          if (code === 0) resolve(stdout.trim());
+          else reject(new Error(stderr));
+        });
+      });
+      expect(pyResult).toBe("alpha:generated");
+      const tsResult = await import(tsPath!);
+      await expect(tsResult.echo("generated-ts")).resolves.toBe("alpha:generated-ts");
+    } finally {
+      proxy.close();
+    }
+  });
+
+  it("reports invalid high-level native server configs", async () => {
+    const client = new NativeCompressorClient({
+      servers: { bad: { args: ["unused"] } as unknown as { command: string } },
+    });
+    await expect(client.connect()).rejects.toThrow(/must define command or url/);
+  });
+
+  it("reports missing high-level native wrappers", async () => {
+    const fixtureDir = join(
+      process.cwd(),
+      "..",
+      "crates",
+      "mcp-compressor-core",
+      "tests",
+      "fixtures",
+    );
+    const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
+    const client = new NativeCompressorClient({
+      servers: { alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] } },
+      compressionLevel: "max",
+    });
+    const proxy = await client.connect();
+    try {
+      expect(() => proxy.schema("echo", { server: "missing" })).toThrow(
+        /No compressed invoke wrapper/,
+      );
+    } finally {
+      proxy.close();
+    }
+  });
+
+  it("makes high-level native CompressorClient lifecycle explicit", async () => {
+    const fixtureDir = join(
+      process.cwd(),
+      "..",
+      "crates",
+      "mcp-compressor-core",
+      "tests",
+      "fixtures",
+    );
+    const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
+    const client = new NativeCompressorClient({
+      servers: { alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] } },
+      compressionLevel: "max",
+    });
+    const proxy = await client.connect();
+    await expect(proxy.invoke("echo", { message: "before-close" })).resolves.toBe(
+      "alpha:before-close",
+    );
+    proxy.close();
+    proxy.close();
+    await expect(proxy.invoke("echo", { message: "after-close" })).rejects.toThrow();
+  });
+
+  it("defaults single-server native CompressorClient invocation to that server", async () => {
+    const previousPath = process.env.PATH;
+    const previousBinary = process.env.MCP_COMPRESSOR_CORE_BINARY;
+    process.env.PATH = "";
+    process.env.MCP_COMPRESSOR_CORE_BINARY = "definitely-missing-mcp-compressor-core";
+    try {
+      const fixtureDir = join(
+        process.cwd(),
+        "..",
+        "crates",
+        "mcp-compressor-core",
+        "tests",
+        "fixtures",
+      );
+      const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
+      const client = new NativeCompressorClient({
+        servers: { alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] } },
+        compressionLevel: "max",
+      });
+      const proxy = await client.connect();
+      try {
+        await expect(proxy.invoke("echo", { message: "default" })).resolves.toBe("alpha:default");
+        expect(proxy.schema("echo")).toBeDefined();
+      } finally {
+        await client.close();
+      }
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+      if (previousBinary === undefined) delete process.env.MCP_COMPRESSOR_CORE_BINARY;
+      else process.env.MCP_COMPRESSOR_CORE_BINARY = previousBinary;
+    }
+  });
+
+  it("exposes high-level native CLI and Bash transform surfaces", async () => {
+    const fixtureDir = join(
+      process.cwd(),
+      "..",
+      "crates",
+      "mcp-compressor-core",
+      "tests",
+      "fixtures",
+    );
+    const python = process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python");
+    const cliClient = new NativeCompressorClient({
+      servers: { alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] } },
+      mode: "cli",
+      compressionLevel: "max",
+    });
+    const cliProxy = await cliClient.connect();
+    try {
+      expect(cliProxy.tools.map((tool) => tool.name)).toEqual(["alpha_help"]);
+    } finally {
+      await cliClient.close();
+    }
+
+    const bashClient = new NativeCompressorClient({
+      servers: {
+        alpha: { command: python, args: [join(fixtureDir, "alpha_server.py")] },
+        beta: { command: python, args: [join(fixtureDir, "beta_server.py")] },
+      },
+      mode: "bash",
+      compressionLevel: "max",
+    });
+    const bashProxy = await bashClient.connect();
+    try {
+      expect(bashProxy.tools.map((tool) => tool.name)).toEqual(
+        expect.arrayContaining(["bash_tool", "alpha_help", "beta_help"]),
+      );
+    } finally {
+      await bashClient.close();
+    }
+  });
+
   it("normalizes high-level native server config", () => {
     const normalized = normalizeServers({
       remote: {

@@ -309,6 +309,75 @@ async def test_atlassian_mcp_config_multi_server_and_streamable_http_port() -> N
         _stop(child)
 
 
+def test_atlassian_python_high_level_compressor_client() -> None:
+    sys.path.insert(0, str(ROOT / "python" / "mcp-compressor-rust"))
+    rust_package = cast("Any", importlib.import_module("mcp_compressor_rust"))
+
+    client = rust_package.CompressorClient(
+        servers={
+            "atlassian": {
+                "url": ATLASSIAN_URL,
+                "headers": {"Authorization": f"Basic {_token()}"},
+            }
+        },
+        compression_level="medium",
+        server_name="atlassian",
+        include_tools=[SAFE_TOOL],
+    )
+    with client as proxy:
+        assert {tool.name for tool in proxy.tools} == {
+            "atlassian_atlassian_get_tool_schema",
+            "atlassian_atlassian_invoke_tool",
+        }
+        assert proxy.invoke(SAFE_TOOL, {}, server="atlassian_atlassian")
+
+
+def test_atlassian_python_high_level_generated_clients(tmp_path) -> None:
+    sys.path.insert(0, str(ROOT / "python" / "mcp-compressor-rust"))
+    rust_package = cast("Any", importlib.import_module("mcp_compressor_rust"))
+
+    client = rust_package.CompressorClient(
+        servers={
+            "atlassian": {
+                "url": ATLASSIAN_URL,
+                "headers": {"Authorization": f"Basic {_token()}"},
+            }
+        },
+        compression_level="medium",
+        server_name="atlassian",
+        include_tools=[SAFE_TOOL],
+    )
+    with client as proxy:
+        python_paths = proxy.write_client("python", tmp_path / "py", name="atlassian")
+        ts_paths = proxy.write_client("typescript", tmp_path / "ts", name="atlassian")
+        python_module = next(path for path in python_paths if path.name == "atlassian.py")
+        typescript_module = next(path for path in ts_paths if path.name == "atlassian.ts")
+        py_result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                f"import sys; sys.path.insert(0, {str(python_module.parent)!r}); import atlassian; print(atlassian.getAccessibleAtlassianResources())",
+            ],
+            text=True,
+            capture_output=True,
+            check=True,
+            timeout=60,
+        )
+        assert py_result.stdout.strip()
+        ts_result = subprocess.run(
+            [
+                "bun",
+                "--eval",
+                f"import {{ getAccessibleAtlassianResources }} from {json.dumps(str(typescript_module))}; console.log(await getAccessibleAtlassianResources());",
+            ],
+            text=True,
+            capture_output=True,
+            check=True,
+            timeout=60,
+        )
+        assert ts_result.stdout.strip()
+
+
 def test_atlassian_python_native_session() -> None:
     sys.path.insert(0, str(ROOT / "python" / "mcp-compressor-rust"))
     rust_package = cast("Any", importlib.import_module("mcp_compressor_rust"))
@@ -334,6 +403,46 @@ def test_atlassian_python_native_session() -> None:
         }
     finally:
         session.close()
+
+
+def test_atlassian_typescript_high_level_compressor_client() -> None:
+    subprocess.run(["bun", "run", "build"], cwd=ROOT / "typescript", check=True)
+    script = textwrap.dedent(
+        f"""
+        import {{ NativeCompressorClient }} from './dist/index.js';
+        const client = new NativeCompressorClient({{
+          servers: {{
+            atlassian: {{
+              url: '{ATLASSIAN_URL}',
+              headers: {{ Authorization: `Basic ${{process.env.{TOKEN_ENV}}}` }},
+            }},
+          }},
+          compressionLevel: 'medium',
+          serverName: 'atlassian',
+          includeTools: ['{SAFE_TOOL}'],
+        }});
+        const proxy = await client.connect();
+        try {{
+          const tools = proxy.tools.map((tool) => tool.name).sort();
+          const output = await proxy.invoke('{SAFE_TOOL}', {{}}, {{ server: 'atlassian_atlassian' }});
+          console.log(JSON.stringify({{ tools, output }}));
+        }} finally {{
+          await client.close();
+        }}
+        """
+    )
+    result = subprocess.run(
+        ["bun", "--eval", script],
+        cwd=ROOT / "typescript",
+        env={**os.environ, TOKEN_ENV: _token()},
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=60,
+    )
+    payload: dict[str, Any] = json.loads(result.stdout)
+    assert payload["tools"] == ["atlassian_atlassian_get_tool_schema", "atlassian_atlassian_invoke_tool"]
+    assert payload["output"]
 
 
 def test_atlassian_typescript_native_session() -> None:

@@ -95,6 +95,7 @@ pub struct FfiCompressedSessionInfo {
     pub bridge_url: String,
     pub token: String,
     pub frontend_tools: Vec<FfiTool>,
+    pub backend_tools: Vec<FfiTool>,
     pub just_bash_providers: Vec<FfiJustBashProviderSpec>,
 }
 

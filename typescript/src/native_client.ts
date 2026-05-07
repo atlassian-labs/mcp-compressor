@@ -1,4 +1,5 @@
 import {
+  generateClientArtifacts,
   normalizeSdkServers,
   startCompressedSession,
   startCompressedSessionFromMcpConfig,
@@ -29,6 +30,8 @@ export interface ProxyTool {
 export interface ProxyResponse {
   text: string;
 }
+
+export type GeneratedClientKind = "cli" | "python" | "typescript";
 
 export interface NormalizedBackendConfig {
   name: string;
@@ -81,6 +84,8 @@ function transformMode(mode: NativeCompressorMode): string | null {
 }
 
 export class NativeCompressorProxy {
+  private closed = false;
+
   constructor(
     private readonly session: CompressedSession,
     private readonly defaultServer: string | null,
@@ -110,6 +115,9 @@ export class NativeCompressorProxy {
     wrapperTool: string,
     toolInput: Record<string, unknown>,
   ): Promise<ProxyResponse> {
+    if (this.closed) {
+      throw new Error("Compressor proxy is closed");
+    }
     const response = await fetch(`${this.bridgeUrl}/exec`, {
       method: "POST",
       headers: {
@@ -145,7 +153,28 @@ export class NativeCompressorProxy {
   }
 
   close(): void {
+    this.closed = true;
     this.session.close();
+  }
+
+  writeClient(
+    kind: GeneratedClientKind,
+    outputDir: string,
+    options: { name?: string } = {},
+  ): string[] {
+    const info = this.info();
+    return generateClientArtifacts(kind, {
+      cliName: options.name ?? this.defaultServer ?? "mcp",
+      bridgeUrl: info.bridge_url,
+      token: info.token,
+      tools: info.backend_tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.input_schema,
+      })),
+      outputDir,
+      sessionPid: 0,
+    });
   }
 }
 
