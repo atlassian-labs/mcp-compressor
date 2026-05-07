@@ -370,9 +370,33 @@ describe("Rust native core wrapper", () => {
     try {
       const pythonPaths = proxy.writeClient("python", join(outputDir, "py"), { name: "alpha" });
       const tsPaths = proxy.writeClient("typescript", join(outputDir, "ts"), { name: "alpha" });
-      expect(pythonPaths.some((path) => path.endsWith("alpha.py"))).toBe(true);
-      expect(tsPaths.some((path) => path.endsWith("alpha.ts"))).toBe(true);
+      const pythonPath = pythonPaths.find((path) => path.endsWith("alpha.py"));
+      const tsPath = tsPaths.find((path) => path.endsWith("alpha.ts"));
+      expect(pythonPath).toBeDefined();
+      expect(tsPath).toBeDefined();
       expect(tsPaths.some((path) => path.endsWith("alpha.d.ts"))).toBe(true);
+      const pyResult = await new Promise<string>((resolve, reject) => {
+        const child = spawn(python, [
+          "-c",
+          `import sys; sys.path.insert(0, ${JSON.stringify(pythonPath!.replace(/\/alpha\.py$/, ""))}); import alpha; print(alpha.echo('generated'))`,
+        ]);
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (chunk) => {
+          stdout += String(chunk);
+        });
+        child.stderr.on("data", (chunk) => {
+          stderr += String(chunk);
+        });
+        child.on("error", reject);
+        child.on("exit", (code) => {
+          if (code === 0) resolve(stdout.trim());
+          else reject(new Error(stderr));
+        });
+      });
+      expect(pyResult).toBe("alpha:generated");
+      const tsResult = await import(tsPath!);
+      await expect(tsResult.echo("generated-ts")).resolves.toBe("alpha:generated-ts");
     } finally {
       proxy.close();
     }

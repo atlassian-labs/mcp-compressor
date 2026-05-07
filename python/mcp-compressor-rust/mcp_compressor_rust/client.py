@@ -105,7 +105,7 @@ class CompressorProxy:
             cli_name=name or self._default_server or "mcp",
             bridge_url=str(info["bridge_url"]),
             token=str(info["token"]),
-            tools=list(info["frontend_tools"]),
+            tools=list(info.get("backend_tools", info["frontend_tools"])),
             output_dir=output_dir,
         )
 

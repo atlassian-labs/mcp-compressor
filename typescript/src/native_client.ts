@@ -167,7 +167,7 @@ export class NativeCompressorProxy {
       cliName: options.name ?? this.defaultServer ?? "mcp",
       bridgeUrl: info.bridge_url,
       token: info.token,
-      tools: info.frontend_tools.map((tool) => ({
+      tools: info.backend_tools.map((tool) => ({
         name: tool.name,
         description: tool.description,
         inputSchema: tool.input_schema,
