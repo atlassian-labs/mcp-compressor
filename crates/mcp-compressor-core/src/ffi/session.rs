@@ -3,8 +3,57 @@ use crate::server::{CompressedServer, CompressedServerConfig, ProxyTransformMode
 use crate::Error;
 
 use super::dto::{
-    FfiBackendConfig, FfiCompressedSessionConfig, FfiCompressedSessionInfo, FfiTool,
+    FfiBackendConfig, FfiCompressedSessionConfig, FfiCompressedSessionInfo, FfiSdkServerConfig,
+    FfiSdkServersConfig, FfiTool,
 };
+
+pub fn normalize_sdk_servers(servers: FfiSdkServersConfig) -> Result<Vec<FfiBackendConfig>, Error> {
+    servers
+        .into_iter()
+        .map(|(name, config)| normalize_sdk_server(name, config))
+        .collect()
+}
+
+fn normalize_sdk_server(
+    name: String,
+    config: FfiSdkServerConfig,
+) -> Result<FfiBackendConfig, Error> {
+    match config {
+        FfiSdkServerConfig::CommandOrUrl(command_or_url) => Ok(FfiBackendConfig {
+            name,
+            command_or_url,
+            args: Vec::new(),
+        }),
+        FfiSdkServerConfig::Structured {
+            command,
+            url,
+            mut args,
+            headers,
+        } => {
+            let command_or_url = url
+                .or(command)
+                .ok_or_else(|| Error::Config(format!("server {name} must define command or url")))?;
+            if !headers.is_empty() {
+                let mut header_args = Vec::new();
+                for (key, value) in headers {
+                    header_args.push("-H".to_string());
+                    header_args.push(format!("{key}={value}"));
+                }
+                if !args.iter().any(|arg| arg == "--auth") {
+                    header_args.push("--auth".to_string());
+                    header_args.push("explicit-headers".to_string());
+                }
+                header_args.extend(args);
+                args = header_args;
+            }
+            Ok(FfiBackendConfig {
+                name,
+                command_or_url,
+                args,
+            })
+        }
+    }
+}
 
 pub struct FfiCompressedSession {
     info: FfiCompressedSessionInfo,
@@ -45,6 +94,7 @@ async fn compressed_session_from_server(
         .into_iter()
         .map(FfiTool::from)
         .collect();
+    let backend_tools = server.backend_tools().into_iter().map(FfiTool::from).collect();
     let just_bash_providers = server
         .just_bash_provider_specs()
         .into_iter()
@@ -56,6 +106,7 @@ async fn compressed_session_from_server(
             bridge_url: proxy.bridge_url().to_string(),
             token: proxy.token_value().to_string(),
             frontend_tools,
+            backend_tools,
             just_bash_providers,
         },
         _proxy: proxy,

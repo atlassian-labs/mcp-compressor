@@ -1,4 +1,9 @@
-import { startCompressedSession, startCompressedSessionFromMcpConfig } from "./rust_core.js";
+import {
+  generateClientArtifacts,
+  normalizeSdkServers,
+  startCompressedSession,
+  startCompressedSessionFromMcpConfig,
+} from "./rust_core.js";
 import type { BackendConfig as LegacyBackendConfig, JsonConfigServerEntry } from "./types.js";
 import type { CompressedSession, CompressedSessionInfo } from "./rust_core.js";
 
@@ -26,6 +31,8 @@ export interface ProxyResponse {
   text: string;
 }
 
+export type GeneratedClientKind = "cli" | "python" | "typescript";
+
 export interface NormalizedBackendConfig {
   name: string;
   commandOrUrl: string;
@@ -43,39 +50,13 @@ export function normalizeServers(servers: NativeServersInput): NormalizedBackend
   if (isLegacyBackendConfig(servers)) {
     return [legacyBackendToNative("default", servers)];
   }
-  return Object.entries(servers).map(([name, config]) => normalizeServer(name, config));
+  return normalizeSdkServers(servers);
 }
 
 function isLegacyBackendConfig(value: unknown): value is LegacyBackendConfig {
   return (
     typeof value === "object" && value !== null && "type" in value && typeof value.type === "string"
   );
-}
-
-function normalizeServer(name: string, config: NativeServerConfig): NormalizedBackendConfig {
-  if (typeof config === "string") {
-    return { name, commandOrUrl: config };
-  }
-  if ("type" in config && typeof config.type === "string") {
-    return legacyBackendToNative(name, config);
-  }
-  if ("url" in config && config.url !== undefined) {
-    const args: string[] = [];
-    if (config.headers) {
-      for (const [key, value] of Object.entries(config.headers)) {
-        args.push("-H", `${key}=${value}`);
-      }
-      if (!config.args?.includes("--auth")) {
-        args.push("--auth", "explicit-headers");
-      }
-    }
-    args.push(...(config.args ?? []));
-    return { name, commandOrUrl: String(config.url), args };
-  }
-  if ("command" in config && config.command !== undefined) {
-    return { name, commandOrUrl: config.command, args: config.args ?? [] };
-  }
-  throw new Error(`Unsupported server config for ${name}`);
 }
 
 function legacyBackendToNative(
@@ -103,6 +84,8 @@ function transformMode(mode: NativeCompressorMode): string | null {
 }
 
 export class NativeCompressorProxy {
+  private closed = false;
+
   constructor(
     private readonly session: CompressedSession,
     private readonly defaultServer: string | null,
@@ -132,6 +115,9 @@ export class NativeCompressorProxy {
     wrapperTool: string,
     toolInput: Record<string, unknown>,
   ): Promise<ProxyResponse> {
+    if (this.closed) {
+      throw new Error("Compressor proxy is closed");
+    }
     const response = await fetch(`${this.bridgeUrl}/exec`, {
       method: "POST",
       headers: {
@@ -167,7 +153,28 @@ export class NativeCompressorProxy {
   }
 
   close(): void {
+    this.closed = true;
     this.session.close();
+  }
+
+  writeClient(
+    kind: GeneratedClientKind,
+    outputDir: string,
+    options: { name?: string } = {},
+  ): string[] {
+    const info = this.info();
+    return generateClientArtifacts(kind, {
+      cliName: options.name ?? this.defaultServer ?? "mcp",
+      bridgeUrl: info.bridge_url,
+      token: info.token,
+      tools: info.backend_tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.input_schema,
+      })),
+      outputDir,
+      sessionPid: 0,
+    });
   }
 }
 

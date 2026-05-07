@@ -5,10 +5,11 @@ use serde_json::Value;
 
 use mcp_compressor_core::compression::CompressionLevel;
 use mcp_compressor_core::ffi::{
-    clear_oauth_credentials, compress_tool_listing, format_tool_schema_response, list_oauth_credentials,
-    parse_mcp_config, parse_tool_argv, start_compressed_session,
-    start_compressed_session_from_mcp_config, FfiBackendConfig, FfiCompressedSession,
-    FfiCompressedSessionConfig, FfiTool,
+    clear_oauth_credentials, compress_tool_listing, format_tool_schema_response,
+    generate_client_artifacts, list_oauth_credentials, normalize_sdk_servers, parse_mcp_config,
+    parse_tool_argv, start_compressed_session, start_compressed_session_from_mcp_config,
+    FfiBackendConfig, FfiClientArtifactKind, FfiCompressedSession, FfiCompressedSessionConfig,
+    FfiGeneratorConfig, FfiSdkServersConfig, FfiTool,
 };
 
 fn py_value_error(error: impl std::fmt::Display) -> PyErr {
@@ -38,6 +39,27 @@ fn parse_tool_argv_json(tool_json: &str, argv_json: &str) -> PyResult<String> {
     let argv = parse_json::<Vec<String>>(argv_json)?;
     let parsed = parse_tool_argv(tool, argv).map_err(py_value_error)?;
     serde_json::to_string(&parsed).map_err(py_value_error)
+}
+
+#[pyfunction]
+fn generate_client_artifacts_json(kind: &str, config_json: &str) -> PyResult<String> {
+    let kind = match kind {
+        "cli" => FfiClientArtifactKind::Cli,
+        "python" => FfiClientArtifactKind::Python,
+        "typescript" => FfiClientArtifactKind::TypeScript,
+        other => return Err(py_value_error(format!("unsupported client artifact kind: {other}"))),
+    };
+    let config = parse_json::<FfiGeneratorConfig>(config_json)?;
+    let paths = generate_client_artifacts(kind, config).map_err(py_value_error)?;
+    serde_json::to_string(&paths.iter().map(|path| path.to_string_lossy().to_string()).collect::<Vec<_>>())
+        .map_err(py_value_error)
+}
+
+#[pyfunction]
+fn normalize_servers_json(servers_json: &str) -> PyResult<String> {
+    let servers: FfiSdkServersConfig = serde_json::from_str(servers_json).map_err(py_value_error)?;
+    serde_json::to_string(&normalize_sdk_servers(servers).map_err(py_value_error)?)
+        .map_err(py_value_error)
 }
 
 #[pyfunction]
@@ -113,6 +135,8 @@ fn _mcp_compressor_core(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(compress_tool_listing_json, module)?)?;
     module.add_function(wrap_pyfunction!(format_tool_schema_response_json, module)?)?;
     module.add_function(wrap_pyfunction!(parse_tool_argv_json, module)?)?;
+    module.add_function(wrap_pyfunction!(generate_client_artifacts_json, module)?)?;
+    module.add_function(wrap_pyfunction!(normalize_servers_json, module)?)?;
     module.add_function(wrap_pyfunction!(parse_mcp_config_json, module)?)?;
     module.add_function(wrap_pyfunction!(start_compressed_session_json, module)?)?;
     module.add_function(wrap_pyfunction!(start_compressed_session_from_mcp_config_json, module)?)?;

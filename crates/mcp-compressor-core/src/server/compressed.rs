@@ -205,6 +205,14 @@ impl CompressedServer {
         Ok(tools)
     }
 
+    /// Return backend tool metadata for client generation and language bindings.
+    pub fn backend_tools(&self) -> Vec<Tool> {
+        self.backends
+            .iter()
+            .flat_map(|backend| backend.tools.iter().cloned())
+            .collect()
+    }
+
     /// Return the full backend schema for a tool via the compressed wrapper API.
     pub async fn get_tool_schema(
         &self,

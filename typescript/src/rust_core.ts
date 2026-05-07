@@ -100,6 +100,11 @@ export interface CompressedSessionInfo {
     description?: string | null;
     input_schema: Record<string, unknown>;
   }>;
+  backend_tools: Array<{
+    name: string;
+    description?: string | null;
+    input_schema: Record<string, unknown>;
+  }>;
   just_bash_providers: JustBashProviderSpec[];
 }
 
@@ -154,6 +159,19 @@ export async function startCompressedSessionFromMcpConfig(
     mcpConfigJson,
   );
   return new CompressedSession(session);
+}
+
+export function normalizeSdkServers(servers: unknown): BackendConfig[] {
+  const raw = JSON.parse(loadNativeCore().normalizeServersJson(stringify(servers))) as Array<{
+    name: string;
+    command_or_url: string;
+    args?: string[];
+  }>;
+  return raw.map((backend) => ({
+    name: backend.name,
+    commandOrUrl: backend.command_or_url,
+    args: backend.args ?? [],
+  }));
 }
 
 export interface ParsedMcpServer {

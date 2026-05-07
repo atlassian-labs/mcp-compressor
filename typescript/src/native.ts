@@ -11,6 +11,7 @@ export interface NativeCore {
   formatToolSchemaResponseJson(toolJson: string): string;
   parseToolArgvJson(toolJson: string, argvJson: string): string;
   generateClientArtifactsJson(kind: string, configJson: string): string;
+  normalizeServersJson(serversJson: string): string;
   parseMcpConfigJson(configJson: string): string;
   rememberOauthBackendJson(backendUri: string, backendName: string, storeDir: string): void;
   listOauthCredentialsJson(): string;
