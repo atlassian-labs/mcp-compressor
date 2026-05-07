@@ -311,6 +311,24 @@ bun run build         # compile to dist/
 bun cli               # run the CLI directly from source
 ```
 
+### Packaging smoke test
+
+Build and test the npm package from a clean temporary project:
+
+```bash
+bun install
+bun run build
+bun run build:native
+bun pm pack --filename /tmp/mcp-compressor-ts-package.tgz
+mkdir -p /tmp/mcp-compressor-ts-package-test
+cd /tmp/mcp-compressor-ts-package-test
+bun init -y
+bun add --registry https://registry.npmjs.org /tmp/mcp-compressor-ts-package.tgz
+bun --eval 'import { CompressorClient, compressToolListing } from "@atlassian/mcp-compressor"; console.log(typeof CompressorClient, compressToolListing("high", [{ name: "echo", inputSchema: { type: "object", properties: {} } }]))'
+```
+
+CI runs the same package smoke test and uploads the packed tarball as an artifact.
+
 ### Toolchain
 
 | Tool | Purpose |
