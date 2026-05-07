@@ -277,6 +277,22 @@ try {
 
 The package root now exposes the Rust-backed `CompressorClient` as the primary SDK surface on the migration trunk.
 
+Just Bash mode exposes typed provider metadata so language hosts can register backend MCP tools as Just Bash commands while Rust owns compression/proxy routing:
+
+```ts
+const proxy = await new CompressorClient({ servers, mode: "bash" }).connect();
+try {
+  for (const provider of proxy.justBashProviders) {
+    console.log(provider.providerName, provider.helpToolName);
+    for (const command of provider.tools) {
+      console.log(command.commandName, command.backendToolName, command.invokeToolName);
+    }
+  }
+} finally {
+  proxy.close();
+}
+```
+
 Connected proxies can also write shell, Python, or TypeScript clients that call the live Rust proxy:
 
 ```ts

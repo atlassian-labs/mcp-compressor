@@ -50,6 +50,18 @@ with CompressorClient(
 - `bash` — expose Just Bash provider metadata through the Rust core session.
 Generated Python and TypeScript clients are produced with `proxy.write_client(...)` rather than by selecting a long-lived session mode.
 
+## Just Bash metadata
+
+Just Bash mode exposes the compressed proxy bridge plus typed provider metadata. Language hosts can use this metadata to register backend MCP tools as Just Bash commands without the Rust core executing shell commands itself:
+
+```python
+with CompressorClient(servers=servers, mode="bash") as proxy:
+    for provider in proxy.just_bash_providers:
+        print(provider.provider_name, provider.help_tool_name)
+        for command in provider.tools:
+            print(command.command_name, command.backend_tool_name, command.invoke_tool_name)
+```
+
 ## Generated clients
 
 A connected proxy can write shell, Python, or TypeScript clients that call the live Rust proxy:

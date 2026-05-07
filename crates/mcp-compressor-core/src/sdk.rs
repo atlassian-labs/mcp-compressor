@@ -182,6 +182,7 @@ pub struct CompressorProxy {
     default_server: Option<String>,
     frontend_tools: Vec<Tool>,
     backend_tools: Vec<Tool>,
+    just_bash_providers: Vec<crate::server::JustBashProviderSpec>,
     proxy: RunningToolProxy,
 }
 
@@ -190,11 +191,13 @@ impl CompressorProxy {
         let default_server = server.default_server_name().map(str::to_string);
         let frontend_tools = server.list_frontend_tools().await?;
         let backend_tools = server.backend_tools();
+        let just_bash_providers = server.just_bash_provider_specs();
         let proxy = ToolProxyServer::start(server).await?;
         Ok(Self {
             default_server,
             frontend_tools,
             backend_tools,
+            just_bash_providers,
             proxy,
         })
     }
@@ -213,6 +216,10 @@ impl CompressorProxy {
 
     pub fn backend_tools(&self) -> &[Tool] {
         &self.backend_tools
+    }
+
+    pub fn just_bash_providers(&self) -> &[crate::server::JustBashProviderSpec] {
+        &self.just_bash_providers
     }
 
     pub async fn invoke(&self, tool_name: &str, input: Value) -> Result<String, Error> {
@@ -407,5 +414,16 @@ mod tests {
             .unwrap();
         assert!(bash.tools().iter().any(|tool| tool.name == "bash_tool"));
         assert!(bash.tools().iter().any(|tool| tool.name == "alpha_help"));
+        let provider = bash
+            .just_bash_providers()
+            .iter()
+            .find(|provider| provider.provider_name == "alpha")
+            .unwrap();
+        assert_eq!(provider.help_tool_name, "alpha_help");
+        assert!(provider.tools.iter().any(|command| {
+            command.command_name == "echo"
+                && command.backend_tool_name == "echo"
+                && command.invoke_tool_name == "alpha_invoke_tool"
+        }));
     }
 }

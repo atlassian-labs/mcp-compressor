@@ -545,6 +545,17 @@ describe("Rust native core wrapper", () => {
       expect(bashProxy.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining(["bash_tool", "alpha_help", "beta_help"]),
       );
+      const alphaProvider = bashProxy.justBashProviders.find(
+        (provider) => provider.providerName === "alpha",
+      );
+      expect(alphaProvider?.helpToolName).toBe("alpha_help");
+      expect(alphaProvider?.tools).toContainEqual(
+        expect.objectContaining({
+          commandName: "echo",
+          backendToolName: "echo",
+          invokeToolName: "alpha_invoke_tool",
+        }),
+      );
     } finally {
       await bashClient.close();
     }

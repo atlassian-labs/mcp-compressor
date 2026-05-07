@@ -33,6 +33,22 @@ class ProxyResponse:
     text: str
 
 
+@dataclass(frozen=True)
+class JustBashCommand:
+    command_name: str
+    backend_tool_name: str
+    description: str | None
+    input_schema: dict[str, Any]
+    invoke_tool_name: str
+
+
+@dataclass(frozen=True)
+class JustBashProvider:
+    provider_name: str
+    help_tool_name: str
+    tools: list[JustBashCommand]
+
+
 def _backend_from_value(name: str, value: ServerConfig) -> BackendConfig:
     if isinstance(value, BackendConfig):
         return value
@@ -82,6 +98,27 @@ class CompressorProxy:
     @property
     def token(self) -> str:
         return str(self._session.info()["token"])
+
+    @property
+    def just_bash_providers(self) -> list[JustBashProvider]:
+        providers = self._session.info().get("just_bash_providers", [])
+        return [
+            JustBashProvider(
+                provider_name=str(provider["provider_name"]),
+                help_tool_name=str(provider["help_tool_name"]),
+                tools=[
+                    JustBashCommand(
+                        command_name=str(command["command_name"]),
+                        backend_tool_name=str(command["backend_tool_name"]),
+                        description=command.get("description"),
+                        input_schema=dict(command["input_schema"]),
+                        invoke_tool_name=str(command["invoke_tool_name"]),
+                    )
+                    for command in provider["tools"]
+                ],
+            )
+            for provider in providers
+        ]
 
     @property
     def tools(self) -> list[ProxyTool]:

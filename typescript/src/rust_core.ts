@@ -80,7 +80,9 @@ export interface CompressedSessionConfig {
 
 export interface JustBashCommandSpec {
   command_name: string;
-  tool_name: string;
+  tool_name?: string;
+  backend_tool_name?: string;
+  backendToolName?: string;
   description?: string | null;
   input_schema: Record<string, unknown>;
   invoke_tool_name: string;

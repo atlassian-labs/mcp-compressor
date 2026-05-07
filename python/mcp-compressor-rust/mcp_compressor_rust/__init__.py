@@ -1,6 +1,14 @@
-"""Rust-backed experimental Python API for mcp-compressor."""
+"""Rust-backed Python API for mcp-compressor."""
 
-from mcp_compressor_rust.client import CompressorClient, CompressorProxy, ProxyResponse, ProxyTool, normalize_servers
+from mcp_compressor_rust.client import (
+    CompressorClient,
+    CompressorProxy,
+    JustBashCommand,
+    JustBashProvider,
+    ProxyResponse,
+    ProxyTool,
+    normalize_servers,
+)
 from mcp_compressor_rust.core import (
     BackendConfig,
     CompressedSession,
@@ -22,6 +30,8 @@ __all__ = [
     "CompressedSessionConfig",
     "CompressorClient",
     "CompressorProxy",
+    "JustBashCommand",
+    "JustBashProvider",
     "ProxyResponse",
     "ProxyTool",
     "ToolSpec",
