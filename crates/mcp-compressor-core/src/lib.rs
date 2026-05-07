@@ -21,6 +21,7 @@ pub mod error;
 pub mod ffi;
 pub mod oauth;
 pub mod proxy;
+pub mod sdk;
 pub mod server;
 
 pub use error::Error;
