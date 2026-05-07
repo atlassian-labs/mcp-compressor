@@ -368,12 +368,32 @@ describe("Rust native core wrapper", () => {
     });
     const proxy = await client.connect();
     try {
+      const cliPaths = proxy.writeClient("cli", join(outputDir, "bin"), { name: "alpha" });
       const pythonPaths = proxy.writeClient("python", join(outputDir, "py"), { name: "alpha" });
       const tsPaths = proxy.writeClient("typescript", join(outputDir, "ts"), { name: "alpha" });
+      const cliPath = cliPaths.find((path) => path.endsWith("alpha"));
       const pythonPath = pythonPaths.find((path) => path.endsWith("alpha.py"));
       const tsPath = tsPaths.find((path) => path.endsWith("alpha.ts"));
+      expect(cliPath).toBeDefined();
       expect(pythonPath).toBeDefined();
       expect(tsPath).toBeDefined();
+      const cliResult = await new Promise<string>((resolve, reject) => {
+        const child = spawn(cliPath!, ["echo", "--message", "generated-cli"]);
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (chunk) => {
+          stdout += String(chunk);
+        });
+        child.stderr.on("data", (chunk) => {
+          stderr += String(chunk);
+        });
+        child.on("error", reject);
+        child.on("exit", (code) => {
+          if (code === 0) resolve(stdout.trim());
+          else reject(new Error(stderr));
+        });
+      });
+      expect(cliResult).toBe("alpha:generated-cli");
       expect(tsPaths.some((path) => path.endsWith("alpha.d.ts"))).toBe(true);
       const pyResult = await new Promise<string>((resolve, reject) => {
         const child = spawn(python, [
