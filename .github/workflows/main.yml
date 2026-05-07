@@ -139,6 +139,61 @@ jobs:
           uv run ruff check mcp_compressor_rust tests
           uv run ty check --project . --python .venv mcp_compressor_rust tests
 
+  python-rust-wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Build Rust-backed Python wheel
+        working-directory: python/mcp-compressor-rust
+        run: uvx maturin build --release --out dist
+
+      - name: Install wheel into clean venv and smoke test
+        run: |
+          python -m venv /tmp/mcp-compressor-rust-wheel-test
+          /tmp/mcp-compressor-rust-wheel-test/bin/python -m pip install --upgrade pip
+          /tmp/mcp-compressor-rust-wheel-test/bin/python -m pip install "${{ github.workspace }}"/python/mcp-compressor-rust/dist/*.whl
+          cd /tmp
+          /tmp/mcp-compressor-rust-wheel-test/bin/python - <<'PY'
+          from mcp_compressor_rust import ToolSpec, compress_tool_listing
+
+          listing = compress_tool_listing(
+              "high",
+              [
+                  ToolSpec(
+                      name="echo",
+                      description="Echo a message.",
+                      input_schema={
+                          "type": "object",
+                          "properties": {"message": {"type": "string"}},
+                          "required": ["message"],
+                      },
+                  )
+              ],
+          )
+          assert "echo" in listing
+          assert "message" in listing
+          print("Rust-backed Python wheel import smoke test passed")
+          PY
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-compressor-rust-wheel
+          path: python/mcp-compressor-rust/dist/*.whl
+
   check-docs:
     runs-on: ubuntu-latest
     steps:
