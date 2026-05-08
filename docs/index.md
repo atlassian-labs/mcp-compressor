@@ -63,7 +63,7 @@ The SDK starts the Rust proxy in-process. Generated clients call that proxy usin
 - [Compressed MCP proxy](usage/cli.md#standard-mcp-proxy) for existing MCP clients.
 - [Compression levels](concepts/how-it-works.md#compression-levels): `low`, `medium`, `high`, `max`.
 - [Python, TypeScript, and Rust SDKs](usage/sdks.md) with aligned `CompressorClient` APIs.
-- [Generated shell, Python, and TypeScript clients](usage/generated-clients.md).
+- [CLI Mode and Code Mode generated clients](usage/generated-clients.md): shell commands plus Python/TypeScript functions.
 - [Just Bash integration](usage/just-bash.md) for command-oriented agents.
 - [Remote streamable HTTP MCP backends](usage/auth-and-remote.md).
 - [OAuth support](usage/auth-and-remote.md#native-oauth) for providers that support browser authorization.
