@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -68,6 +69,43 @@ def test_public_code_modes_default_to_dist(tmp_path: Path) -> None:
         )
         assert "code client ready" in result.stdout
         assert (tmp_path / "dist" / expected).exists()
+
+
+async def test_public_multiserver_mcp_config_exposes_expected_wrapper_tools(tmp_path: Path) -> None:
+    from fastmcp import Client
+
+    _ensure_binary()
+    config = tmp_path / "mcp.json"
+    config.write_text(
+        json.dumps({
+            "mcpServers": {
+                "alpha": {"command": PYTHON, "args": [str(FIXTURE)]},
+                "beta": {
+                    "command": PYTHON,
+                    "args": [str(ROOT / "crates" / "mcp-compressor-core" / "tests" / "fixtures" / "beta_server.py")],
+                },
+            }
+        })
+    )
+
+    async with Client({
+        "mcpServers": {
+            "rust": {
+                "command": str(BINARY),
+                "args": ["--compression", "max", "--server-name", "suite", "--config", str(config)],
+            }
+        }
+    }) as client:
+        tool_names = {tool.name for tool in await client.list_tools()}
+
+    assert {
+        "suite_alpha_get_tool_schema",
+        "suite_alpha_invoke_tool",
+        "suite_alpha_list_tools",
+        "suite_beta_get_tool_schema",
+        "suite_beta_invoke_tool",
+        "suite_beta_list_tools",
+    }.issubset(tool_names)
 
 
 def test_public_backend_options_belong_after_separator(tmp_path: Path) -> None:

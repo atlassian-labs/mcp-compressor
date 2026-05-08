@@ -190,6 +190,31 @@ const sampleTool: ToolSpec = {
 };
 
 describe("Public TypeScript SDK workflow", () => {
+  it("supports schema lookup with multi-server disambiguation", async () => {
+    const client = new CompressorClient({
+      servers: {
+        alpha: {
+          command: process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python"),
+          args: [fixturePath("alpha_server.py")],
+        },
+        beta: {
+          command: process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python"),
+          args: [fixturePath("beta_server.py")],
+        },
+      },
+      compressionLevel: "max",
+    });
+
+    const proxy = await client.connect();
+    try {
+      expect(proxy.schema("echo", { server: "alpha" }).properties).toHaveProperty("message");
+      expect(() => proxy.schema("echo")).toThrow(/Multiple backend tools/);
+    } finally {
+      proxy.close();
+      client.close();
+    }
+  });
+
   it("matches the documented CompressorClient quickstart", async () => {
     const client = new CompressorClient({
       servers: {
@@ -205,6 +230,8 @@ describe("Public TypeScript SDK workflow", () => {
     try {
       expect(proxy.tools.map((tool) => tool.name)).toContain("alpha_get_tool_schema");
       expect(proxy.tools.map((tool) => tool.name)).toContain("alpha_invoke_tool");
+      const schema = proxy.schema("echo");
+      expect(schema.properties).toHaveProperty("message");
       const response = await proxy.invoke("echo", { message: "public-ts" });
       expect(response).toBe("alpha:public-ts");
     } finally {

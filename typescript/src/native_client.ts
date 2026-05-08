@@ -164,14 +164,20 @@ export class CompressorProxy {
     return { text: await response.text() };
   }
 
-  schema(_tool: string, options: { server?: string } = {}): Record<string, unknown> {
+  schema(tool: string, options: { server?: string } = {}): Record<string, unknown> {
     const server = options.server ?? this.defaultServer;
-    const invokeTool = `${server ? `${server}_` : ""}invoke_tool`;
-    const wrapper = this.tools.find((tool) => tool.name === invokeTool);
-    if (!wrapper) {
-      throw new Error(`No compressed invoke wrapper found for ${server ?? "default"}`);
+    const matches = this.info().backend_tools_by_server.filter(
+      (item) =>
+        item.tool.name === tool &&
+        (server === null || server === undefined || item.server_name === server),
+    );
+    if (matches.length === 1) {
+      return matches[0]?.tool.input_schema ?? {};
     }
-    return wrapper.inputSchema;
+    if (matches.length === 0) {
+      throw new Error(`Backend tool not found: ${tool}`);
+    }
+    throw new Error("Multiple backend tools matched; specify a server");
   }
 
   async invoke(

@@ -44,6 +44,12 @@ pub struct FfiJustBashCommandSpec {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FfiBackendTool {
+    pub server_name: String,
+    pub tool: FfiTool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FfiGeneratorConfig {
     pub cli_name: String,
     pub bridge_url: String,
@@ -96,6 +102,7 @@ pub struct FfiCompressedSessionInfo {
     pub token: String,
     pub frontend_tools: Vec<FfiTool>,
     pub backend_tools: Vec<FfiTool>,
+    pub backend_tools_by_server: Vec<FfiBackendTool>,
     pub just_bash_providers: Vec<FfiJustBashProviderSpec>,
 }
 

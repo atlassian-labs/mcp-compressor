@@ -257,6 +257,20 @@ impl CompressedServer {
             .collect()
     }
 
+    /// Return backend tool metadata grouped by public backend server name.
+    pub fn backend_tools_by_server(&self) -> Vec<(String, Tool)> {
+        self.backends
+            .iter()
+            .flat_map(|backend| {
+                backend
+                    .tools
+                    .iter()
+                    .cloned()
+                    .map(|tool| (backend.public_name.clone(), tool))
+            })
+            .collect()
+    }
+
     /// Return the full backend schema for a tool via the compressed wrapper API.
     pub async fn get_tool_schema(
         &self,

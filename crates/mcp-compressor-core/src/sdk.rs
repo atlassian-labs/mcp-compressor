@@ -182,6 +182,7 @@ pub struct CompressorProxy {
     default_server: Option<String>,
     frontend_tools: Vec<Tool>,
     backend_tools: Vec<Tool>,
+    backend_tools_by_server: Vec<(String, Tool)>,
     just_bash_providers: Vec<crate::server::JustBashProviderSpec>,
     proxy: RunningToolProxy,
 }
@@ -191,12 +192,14 @@ impl CompressorProxy {
         let default_server = server.default_server_name().map(str::to_string);
         let frontend_tools = server.list_frontend_tools().await?;
         let backend_tools = server.backend_tools();
+        let backend_tools_by_server = server.backend_tools_by_server();
         let just_bash_providers = server.just_bash_provider_specs();
         let proxy = ToolProxyServer::start(server).await?;
         Ok(Self {
             default_server,
             frontend_tools,
             backend_tools,
+            backend_tools_by_server,
             just_bash_providers,
             proxy,
         })
@@ -220,6 +223,27 @@ impl CompressorProxy {
 
     pub fn just_bash_providers(&self) -> &[crate::server::JustBashProviderSpec] {
         &self.just_bash_providers
+    }
+
+    pub fn schema(&self, tool_name: &str) -> Result<Value, Error> {
+        self.schema_on(self.default_server.as_deref(), tool_name)
+    }
+
+    pub fn schema_on(&self, server: Option<&str>, tool_name: &str) -> Result<Value, Error> {
+        let matches = self
+            .backend_tools_by_server
+            .iter()
+            .filter(|(server_name, tool)| {
+                tool.name == tool_name && server.map(|server| server == server_name).unwrap_or(true)
+            })
+            .collect::<Vec<_>>();
+        match matches.as_slice() {
+            [(_, tool)] => Ok(tool.input_schema.clone()),
+            [] => Err(Error::ToolNotFound(tool_name.to_string())),
+            _ => Err(Error::Config(
+                "Multiple backend tools matched; specify a server".to_string(),
+            )),
+        }
     }
 
     pub async fn invoke(&self, tool_name: &str, input: Value) -> Result<String, Error> {
