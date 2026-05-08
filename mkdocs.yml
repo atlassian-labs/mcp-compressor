@@ -30,6 +30,7 @@ nav:
       - API modules: modules.md
   - Development:
       - Rust migration: development/rust-migration.md
+      - CLI parity report: development/cli-parity-report.md
       - Rust core design: rust-core-design.md
 plugins:
   - search
