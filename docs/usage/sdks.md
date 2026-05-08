@@ -1,19 +1,26 @@
 # SDK usage
 
-The SDKs let applications start compressed proxy sessions directly, without spawning the `mcp-compressor` stdio CLI.
+The SDKs are for applications that want to use compressed MCP tools directly without launching `mcp-compressor` as a stdio subprocess.
+
+Each SDK follows the same model:
+
+1. Create a `CompressorClient` with one or more MCP backend servers.
+2. Connect to get a `CompressorProxy`.
+3. Inspect compressed frontend tools or invoke backend tools through the proxy.
+4. Close/drop the proxy when finished.
 
 ## Create a compressed proxy
 
 === "Python"
 
     ```python
-    from mcp_compressor_rust import CompressorClient
+    from mcp_compressor import CompressorClient
 
     with CompressorClient(
         servers={"alpha": {"command": "python", "args": ["server.py"]}},
         compression_level="medium",
     ) as proxy:
-        print(proxy.tools)
+        print([tool.name for tool in proxy.tools])
         print(proxy.invoke("echo", {"message": "hello"}))
     ```
 
@@ -29,7 +36,7 @@ The SDKs let applications start compressed proxy sessions directly, without spaw
 
     const proxy = await client.connect();
     try {
-      console.log(proxy.tools);
+      console.log(proxy.tools.map((tool) => tool.name));
       console.log(await proxy.invoke("echo", { message: "hello" }));
     } finally {
       proxy.close();
@@ -39,8 +46,8 @@ The SDKs let applications start compressed proxy sessions directly, without spaw
 === "Rust"
 
     ```rust
-    use mcp_compressor_core::compression::CompressionLevel;
-    use mcp_compressor_core::sdk::{CompressorClient, ServerConfig};
+    use mcp_compressor::compression::CompressionLevel;
+    use mcp_compressor::sdk::{CompressorClient, ServerConfig};
     use serde_json::json;
 
     let proxy = CompressorClient::builder()
@@ -54,6 +61,8 @@ The SDKs let applications start compressed proxy sessions directly, without spaw
     ```
 
 ## Multi-server routing
+
+When more than one backend server is configured, specify the server when invoking a backend tool.
 
 === "Python"
 
@@ -75,7 +84,11 @@ The SDKs let applications start compressed proxy sessions directly, without spaw
       },
     }).connect();
 
-    await proxy.invoke("echo", { message: "hi" }, { server: "alpha" });
+    try {
+      await proxy.invoke("echo", { message: "hi" }, { server: "alpha" });
+    } finally {
+      proxy.close();
+    }
     ```
 
 === "Rust"
@@ -86,9 +99,76 @@ The SDKs let applications start compressed proxy sessions directly, without spaw
         .await?;
     ```
 
-## Lifecycle
+## Compression options
 
-Python context managers close sessions automatically. TypeScript and Rust proxies expose explicit close/drop behavior.
+The SDKs expose the same main compression options as the CLI.
+
+=== "Python"
+
+    ```python
+    CompressorClient(
+        servers=servers,
+        compression_level="high",
+        include_tools=["search", "getPage"],
+        exclude_tools=["dangerousDelete"],
+        toonify=True,
+    )
+    ```
+
+=== "TypeScript"
+
+    ```ts
+    new CompressorClient({
+      servers,
+      compressionLevel: "high",
+      includeTools: ["search", "getPage"],
+      excludeTools: ["dangerousDelete"],
+      toonify: true,
+    });
+    ```
+
+=== "Rust"
+
+    ```rust
+    CompressorClient::builder()
+        .compression_level(CompressionLevel::High)
+        .include_tools(["search", "getPage"])
+        .exclude_tools(["dangerousDelete"])
+        .toonify(true)
+        .build();
+    ```
+
+## Modes
+
+| Mode | Purpose |
+|---|---|
+| `compressed` | Standard `get_tool_schema` / `invoke_tool` compressed surface. |
+| `cli` | Help-tool-oriented surface for generated shell command usage. |
+| `bash` | Just Bash provider metadata plus proxy routing. |
+
+=== "Python"
+
+    ```python
+    CompressorClient(servers=servers, mode="bash")
+    ```
+
+=== "TypeScript"
+
+    ```ts
+    new CompressorClient({ servers, mode: "bash" });
+    ```
+
+=== "Rust"
+
+    ```rust
+    use mcp_compressor::sdk::CompressorMode;
+
+    CompressorClient::builder()
+        .mode(CompressorMode::JustBash)
+        .build();
+    ```
+
+## Lifecycle
 
 === "Python"
 

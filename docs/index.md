@@ -1,53 +1,95 @@
 # mcp-compressor
 
-`mcp-compressor` lets agents use large MCP servers without paying the full token cost of every tool description on every request.
+`mcp-compressor` helps agents use large MCP servers without spending huge amounts of context on tool descriptions and schemas.
 
-Instead of exposing every backend tool directly, it exposes a small compressed interface:
+It can run as a CLI MCP proxy, or be embedded directly from Python, TypeScript, or Rust.
 
-- `get_tool_schema` — fetch the full schema only when needed.
-- `invoke_tool` — invoke the backend tool after selecting it.
-- `list_tools` — optional discovery helper at `max` compression.
+## The problem
 
-It works as:
+A powerful MCP server can expose dozens or hundreds of tools. Each tool has a name, description, input schema, and sometimes large nested JSON Schema details. Sending all of that to a model up front can waste thousands of tokens before the agent has done any useful work.
 
-- a **CLI** that runs as an MCP proxy,
-- a **Rust SDK**,
-- a **Python SDK**,
-- a **TypeScript SDK**,
-- generated shell/Python/TypeScript clients,
-- a Just Bash integration surface.
+`mcp-compressor` changes the interaction pattern: the model sees a small compressed surface first, asks for the full schema only for the selected tool, and then invokes that tool.
 
-## Why use it?
+## Pattern 1: compressed MCP proxy
 
-MCP servers can expose dozens or hundreds of tools. Tool descriptions and JSON schemas can quickly consume thousands of tokens before the model has done any useful work.
+Use this when you want any MCP client to see a smaller tool surface.
 
-`mcp-compressor` keeps tool discovery cheap and lets the model ask for full schemas only when it has selected a tool.
+```mermaid
+sequenceDiagram
+    participant Client as MCP client / agent
+    participant Proxy as mcp-compressor
+    participant Backend as Backend MCP server
 
-## Common use cases
+    Client->>Proxy: tools/list
+    Proxy->>Backend: tools/list
+    Backend-->>Proxy: all backend tools and schemas
+    Proxy-->>Client: compact wrapper tools
+    Client->>Proxy: get_tool_schema(tool_name)
+    Proxy-->>Client: full schema for selected tool
+    Client->>Proxy: invoke_tool(tool_name, input)
+    Proxy->>Backend: tools/call selected backend tool
+    Backend-->>Proxy: tool result
+    Proxy-->>Client: result
+```
 
-- Add several MCP servers to a coding agent without overwhelming context.
-- Put a compressed MCP proxy in front of remote servers such as Atlassian MCP.
-- Give agents shell-style or code-style access to MCP tools.
-- Embed compression directly in Rust, Python, or TypeScript applications without spawning a compressor subprocess.
+The frontend usually exposes only:
 
-## Choose your path
+- `get_tool_schema`
+- `invoke_tool`
+- optionally `list_tools` at `max` compression
+
+## Pattern 2: local proxy for generated clients and SDKs
+
+Use this when your application wants to embed compression directly and call tools from code or shell commands.
+
+```mermaid
+flowchart LR
+    App[Python / TypeScript / Rust app]
+    SDK[CompressorClient]
+    Proxy[Local Rust proxy\n/token auth]
+    Generated[Generated CLI / Python / TS clients]
+    Backend[MCP backend servers]
+
+    App --> SDK
+    SDK --> Proxy
+    Generated --> Proxy
+    Proxy --> Backend
+```
+
+The SDK starts the Rust proxy in-process. Generated clients call that proxy using a session token. Your app does **not** need to spawn a `mcp-compressor` stdio subprocess.
+
+## Features
+
+- [Compressed MCP proxy](usage/cli.md#standard-mcp-proxy) for existing MCP clients.
+- [Compression levels](concepts/how-it-works.md#compression-levels): `low`, `medium`, `high`, `max`.
+- [Python, TypeScript, and Rust SDKs](usage/sdks.md) with aligned `CompressorClient` APIs.
+- [Generated shell, Python, and TypeScript clients](usage/generated-clients.md).
+- [Just Bash integration](usage/just-bash.md) for command-oriented agents.
+- [Remote streamable HTTP MCP backends](usage/auth-and-remote.md).
+- [OAuth support](usage/auth-and-remote.md#native-oauth) for providers that support browser authorization.
+- [Tool filters and TOON output](concepts/configuration.md#filters) to further reduce context.
+- [Atlassian MCP example](examples/atlassian.md) with OAuth-first usage.
+- [CLI reference](reference/cli.md) and [SDK reference overview](reference/sdk.md).
+
+## Quick example
 
 === "CLI"
 
     ```bash
-    mcp-compressor -c medium -- python my_mcp_server.py
+    mcp-compressor -c medium -- python server.py
     ```
 
 === "Python"
 
     ```python
-    from mcp_compressor_rust import CompressorClient
+    from mcp_compressor import CompressorClient
 
     with CompressorClient(
         servers={"alpha": {"command": "python", "args": ["server.py"]}},
         compression_level="medium",
     ) as proxy:
         print([tool.name for tool in proxy.tools])
+        print(proxy.invoke("echo", {"message": "hello"}))
     ```
 
 === "TypeScript"
@@ -62,6 +104,7 @@ MCP servers can expose dozens or hundreds of tools. Tool descriptions and JSON s
 
     try {
       console.log(proxy.tools.map((tool) => tool.name));
+      console.log(await proxy.invoke("echo", { message: "hello" }));
     } finally {
       proxy.close();
     }
@@ -70,8 +113,9 @@ MCP servers can expose dozens or hundreds of tools. Tool descriptions and JSON s
 === "Rust"
 
     ```rust
-    use mcp_compressor_core::compression::CompressionLevel;
-    use mcp_compressor_core::sdk::{CompressorClient, ServerConfig};
+    use mcp_compressor::compression::CompressionLevel;
+    use mcp_compressor::sdk::{CompressorClient, ServerConfig};
+    use serde_json::json;
 
     let proxy = CompressorClient::builder()
         .server("alpha", ServerConfig::command("python").arg("server.py"))
@@ -79,8 +123,13 @@ MCP servers can expose dozens or hundreds of tools. Tool descriptions and JSON s
         .build()
         .connect()
         .await?;
+
+    let result = proxy.invoke("echo", json!({ "message": "hello" })).await?;
     ```
 
-## Next
+## Where to go next
 
-Start with [Installation](getting-started/installation.md), then run the [Quickstart](getting-started/quickstart.md).
+1. [Install the package you need](getting-started/installation.md).
+2. Run the [quickstart](getting-started/quickstart.md).
+3. Read [how compression works](concepts/how-it-works.md).
+4. Choose between [CLI usage](usage/cli.md), [SDK usage](usage/sdks.md), [generated clients](usage/generated-clients.md), and [Just Bash](usage/just-bash.md).

@@ -20,9 +20,10 @@ mcp-compressor -c max -- python server.py
 ## Custom server name
 
 ```bash
-mcp-compressor -c medium --server-name atlassian -- https://mcp.atlassian.com/v1/mcp \
-  -H "Authorization=Basic ${ATLASSIAN_MCP_BASIC_TOKEN}"
+mcp-compressor -c medium --server-name atlassian -- https://mcp.atlassian.com/v1/mcp
 ```
+
+The first run opens a browser for OAuth if no stored credentials exist.
 
 ## Streamable HTTP frontend
 
@@ -35,8 +36,7 @@ mcp-compressor -c medium --transport streamable-http --port 9000 -- python serve
 CLI mode writes a shell script that calls a local Rust proxy.
 
 ```bash
-mcp-compressor --cli-mode --server-name atlassian -- https://mcp.atlassian.com/v1/mcp \
-  -H "Authorization=Basic ${ATLASSIAN_MCP_BASIC_TOKEN}"
+mcp-compressor --cli-mode --server-name atlassian -- https://mcp.atlassian.com/v1/mcp
 ```
 
 Then run commands through the generated script:
@@ -55,18 +55,15 @@ mcp-compressor --cli-mode --server-name alpha --output-dir ./bin -- python serve
 ## Generated Python and TypeScript clients
 
 ```bash
-mcp-compressor --python-mode --server-name atlassian --output-dir ./generated-py -- https://mcp.atlassian.com/v1/mcp \
-  -H "Authorization=Basic ${ATLASSIAN_MCP_BASIC_TOKEN}"
+mcp-compressor --python-mode --server-name atlassian --output-dir ./generated-py -- https://mcp.atlassian.com/v1/mcp
 
-mcp-compressor --typescript-mode --server-name atlassian --output-dir ./generated-ts -- https://mcp.atlassian.com/v1/mcp \
-  -H "Authorization=Basic ${ATLASSIAN_MCP_BASIC_TOKEN}"
+mcp-compressor --typescript-mode --server-name atlassian --output-dir ./generated-ts -- https://mcp.atlassian.com/v1/mcp
 ```
 
 ## Just Bash mode
 
 ```bash
-mcp-compressor --just-bash-mode --server-name atlassian -- https://mcp.atlassian.com/v1/mcp \
-  -H "Authorization=Basic ${ATLASSIAN_MCP_BASIC_TOKEN}"
+mcp-compressor --just-bash-mode --server-name atlassian -- https://mcp.atlassian.com/v1/mcp
 ```
 
 Just Bash mode exposes provider metadata for language hosts to register commands. See [Just Bash](just-bash.md).

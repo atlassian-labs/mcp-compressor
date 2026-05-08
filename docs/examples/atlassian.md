@@ -6,17 +6,17 @@ This example uses the Atlassian remote MCP server:
 https://mcp.atlassian.com/v1/mcp
 ```
 
-The examples below assume you have a token available as:
+Atlassian MCP supports OAuth. The examples below intentionally use OAuth-first configuration and do not include explicit `Authorization` headers.
+
+!!! note "Automated tests"
+    CI may use explicit Basic headers for non-interactive real-world tests, but end-user documentation should prefer OAuth.
+
+## CLI compression with OAuth
+
+The first run opens a browser to authorize the backend. Subsequent runs reuse stored OAuth credentials.
 
 ```bash
-export ATLASSIAN_MCP_BASIC_TOKEN="..."
-```
-
-## CLI compression
-
-```bash
-mcp-compressor -c medium --server-name atlassian -- https://mcp.atlassian.com/v1/mcp \
-  -H "Authorization=Basic ${ATLASSIAN_MCP_BASIC_TOKEN}"
+mcp-compressor -c medium --server-name atlassian -- https://mcp.atlassian.com/v1/mcp
 ```
 
 ## Tool filters
@@ -25,59 +25,109 @@ mcp-compressor -c medium --server-name atlassian -- https://mcp.atlassian.com/v1
 mcp-compressor -c medium \
   --server-name atlassian \
   --include-tools getAccessibleAtlassianResources,getConfluencePage \
-  -- https://mcp.atlassian.com/v1/mcp \
-  -H "Authorization=Basic ${ATLASSIAN_MCP_BASIC_TOKEN}"
+  -- https://mcp.atlassian.com/v1/mcp
 ```
 
-## Python SDK
+## SDK usage
 
-```python
-from mcp_compressor_rust import CompressorClient
+=== "Python"
 
-with CompressorClient(
-    servers={
-        "atlassian": {
-            "url": "https://mcp.atlassian.com/v1/mcp",
-            "headers": {"Authorization": f"Basic {token}"},
-        }
-    },
-    compression_level="medium",
-    server_name="atlassian",
-    include_tools=["getAccessibleAtlassianResources"],
-) as proxy:
-    print(proxy.invoke("getAccessibleAtlassianResources"))
-```
+    ```python
+    from mcp_compressor import CompressorClient
 
-## TypeScript SDK
+    with CompressorClient(
+        servers={
+            "atlassian": {
+                "url": "https://mcp.atlassian.com/v1/mcp",
+            }
+        },
+        compression_level="medium",
+        server_name="atlassian",
+        include_tools=["getAccessibleAtlassianResources"],
+    ) as proxy:
+        print(proxy.invoke("getAccessibleAtlassianResources"))
+    ```
 
-```ts
-import { CompressorClient } from "@atlassian/mcp-compressor";
+=== "TypeScript"
 
-const proxy = await new CompressorClient({
-  servers: {
-    atlassian: {
-      url: "https://mcp.atlassian.com/v1/mcp",
-      headers: { Authorization: `Basic ${process.env.ATLASSIAN_MCP_BASIC_TOKEN}` },
-    },
-  },
-  compressionLevel: "medium",
-  serverName: "atlassian",
-  includeTools: ["getAccessibleAtlassianResources"],
-}).connect();
+    ```ts
+    import { CompressorClient } from "@atlassian/mcp-compressor";
 
-try {
-  console.log(await proxy.invoke("getAccessibleAtlassianResources"));
-} finally {
-  proxy.close();
-}
-```
+    const proxy = await new CompressorClient({
+      servers: {
+        atlassian: {
+          url: "https://mcp.atlassian.com/v1/mcp",
+        },
+      },
+      compressionLevel: "medium",
+      serverName: "atlassian",
+      includeTools: ["getAccessibleAtlassianResources"],
+    }).connect();
+
+    try {
+      console.log(await proxy.invoke("getAccessibleAtlassianResources"));
+    } finally {
+      proxy.close();
+    }
+    ```
+
+=== "Rust"
+
+    ```rust
+    use mcp_compressor::compression::CompressionLevel;
+    use mcp_compressor::sdk::{CompressorClient, ServerConfig};
+    use serde_json::json;
+
+    let proxy = CompressorClient::builder()
+        .server("atlassian", ServerConfig::url("https://mcp.atlassian.com/v1/mcp"))
+        .server_name("atlassian")
+        .compression_level(CompressionLevel::Medium)
+        .include_tools(["getAccessibleAtlassianResources"])
+        .build()
+        .connect()
+        .await?;
+
+    let output = proxy
+        .invoke("getAccessibleAtlassianResources", json!({}))
+        .await?;
+    ```
 
 ## Generated clients
 
-```python
-with CompressorClient(servers=servers, server_name="atlassian") as proxy:
-    proxy.write_client("python", "./generated-py", name="atlassian")
-    proxy.write_client("typescript", "./generated-ts", name="atlassian")
-```
+=== "Python"
 
-The generated clients call the live Rust proxy, so the proxy session must remain alive while they are used.
+    ```python
+    with CompressorClient(
+        servers={"atlassian": {"url": "https://mcp.atlassian.com/v1/mcp"}},
+        server_name="atlassian",
+    ) as proxy:
+        proxy.write_client("cli", "./bin", name="atlassian")
+        proxy.write_client("python", "./generated-py", name="atlassian")
+        proxy.write_client("typescript", "./generated-ts", name="atlassian")
+    ```
+
+=== "TypeScript"
+
+    ```ts
+    const proxy = await new CompressorClient({
+      servers: { atlassian: { url: "https://mcp.atlassian.com/v1/mcp" } },
+      serverName: "atlassian",
+    }).connect();
+
+    try {
+      proxy.writeClient("cli", "./bin", { name: "atlassian" });
+      proxy.writeClient("python", "./generated-py", { name: "atlassian" });
+      proxy.writeClient("typescript", "./generated-ts", { name: "atlassian" });
+    } finally {
+      proxy.close();
+    }
+    ```
+
+Generated clients call the live Rust proxy, so keep the proxy session alive while they are used.
+
+## Clear OAuth credentials
+
+```bash
+mcp-compressor clear-oauth atlassian
+mcp-compressor clear-oauth https://mcp.atlassian.com/v1/mcp
+```

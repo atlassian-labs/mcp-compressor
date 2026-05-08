@@ -15,10 +15,7 @@ You can configure backends directly or with MCP config JSON.
     ```python
     servers = {
         "alpha": {"command": "python", "args": ["alpha_server.py"]},
-        "atlassian": {
-            "url": "https://mcp.atlassian.com/v1/mcp",
-            "headers": {"Authorization": f"Basic {token}"},
-        },
+        "atlassian": {"url": "https://mcp.atlassian.com/v1/mcp"},
     }
     ```
 
@@ -27,10 +24,7 @@ You can configure backends directly or with MCP config JSON.
     ```ts
     const servers = {
       alpha: { command: "python", args: ["alpha_server.py"] },
-      atlassian: {
-        url: "https://mcp.atlassian.com/v1/mcp",
-        headers: { Authorization: `Basic ${token}` },
-      },
+      atlassian: { url: "https://mcp.atlassian.com/v1/mcp" },
     };
     ```
 
@@ -39,11 +33,7 @@ You can configure backends directly or with MCP config JSON.
     ```rust
     let client = CompressorClient::builder()
         .server("alpha", ServerConfig::command("python").arg("alpha_server.py"))
-        .server(
-            "atlassian",
-            ServerConfig::url("https://mcp.atlassian.com/v1/mcp")
-                .header("Authorization", format!("Basic {token}")),
-        )
+        .server("atlassian", ServerConfig::url("https://mcp.atlassian.com/v1/mcp"))
         .build();
     ```
 
@@ -58,6 +48,18 @@ MCP config JSON is the easiest way to describe multiple backends.
       "command": "python",
       "args": ["alpha_server.py"]
     },
+    "remote": {
+      "url": "https://mcp.example.com/v1/mcp"
+    }
+  }
+}
+```
+
+For providers that require OAuth, the URL-only form triggers native OAuth. For non-interactive CI or static-token providers, add explicit headers:
+
+```json
+{
+  "mcpServers": {
     "remote": {
       "url": "https://mcp.example.com/v1/mcp",
       "headers": {
