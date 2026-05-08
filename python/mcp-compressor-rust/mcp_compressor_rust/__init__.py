@@ -23,6 +23,7 @@ from mcp_compressor_rust.core import (
     start_compressed_session,
     start_compressed_session_from_mcp_config,
 )
+from mcp_compressor_rust.just_bash_host import JustBashCallableCommand, create_just_bash_commands
 
 __all__ = [
     "BackendConfig",
@@ -30,6 +31,7 @@ __all__ = [
     "CompressedSessionConfig",
     "CompressorClient",
     "CompressorProxy",
+    "JustBashCallableCommand",
     "JustBashCommand",
     "JustBashProvider",
     "ProxyResponse",
@@ -37,6 +39,7 @@ __all__ = [
     "ToolSpec",
     "clear_oauth_credentials",
     "compress_tool_listing",
+    "create_just_bash_commands",
     "format_tool_schema_response",
     "list_oauth_credentials",
     "normalize_servers",

@@ -16,6 +16,7 @@ from mcp_compressor_rust import (
     CompressorClient,
     ToolSpec,
     compress_tool_listing,
+    create_just_bash_commands,
     format_tool_schema_response,
     parse_mcp_config,
     parse_tool_argv,
@@ -219,6 +220,9 @@ def test_high_level_compressor_client_exposes_cli_and_bash_modes(monkeypatch) ->
             and command.invoke_tool_name == "alpha_invoke_tool"
             for command in providers["alpha"].tools
         )
+        commands = {command.command_name: command for command in create_just_bash_commands(proxy)}
+        assert {"alpha_echo", "beta_echo"}.issubset(commands)
+        assert commands["alpha_echo"](["--message", "via-python-bash"]) == "alpha:via-python-bash"
 
 
 def test_high_level_compressor_client_supports_remote_config_shape() -> None:
