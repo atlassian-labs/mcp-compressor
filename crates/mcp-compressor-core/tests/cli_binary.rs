@@ -125,6 +125,97 @@ fn rust_cli_contract_multi_server_json_config() {
 }
 
 #[test]
+fn rust_cli_code_mode_python_generates_python_client() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let output_dir = tempdir.path().join("generated-py");
+
+    let mut cmd = core_cmd();
+    cmd.env("MCP_COMPRESSOR_EXIT_AFTER_READY", "1")
+        .args([
+            "--code-mode",
+            "python",
+            "--server-name",
+            "alpha",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--",
+            &common::python_command(),
+            common::fixture_path("alpha_server.py").to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Python code client ready"))
+        .stdout(predicate::str::contains("Generated files:"));
+
+    assert!(output_dir.join("alpha.py").exists());
+}
+
+#[test]
+fn rust_cli_code_mode_typescript_generates_typescript_client() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let output_dir = tempdir.path().join("generated-ts");
+
+    let mut cmd = core_cmd();
+    cmd.env("MCP_COMPRESSOR_EXIT_AFTER_READY", "1")
+        .args([
+            "--code-mode",
+            "typescript",
+            "--server-name",
+            "alpha",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--",
+            &common::python_command(),
+            common::fixture_path("alpha_server.py").to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("TypeScript code client ready"))
+        .stdout(predicate::str::contains("Generated files:"));
+
+    assert!(output_dir.join("alpha.ts").exists());
+    assert!(output_dir.join("alpha.d.ts").exists());
+}
+
+#[test]
+fn rust_cli_code_mode_rejects_conflicting_mode_aliases() {
+    let mut cmd = core_cmd();
+    cmd.args([
+        "--code-mode",
+        "python",
+        "--typescript-mode",
+        "--server-name",
+        "alpha",
+        "--",
+        &common::python_command(),
+        common::fixture_path("alpha_server.py").to_str().unwrap(),
+    ])
+    .assert()
+    .failure()
+    .code(2)
+    .stderr(predicate::str::contains("choose only one code mode"));
+}
+
+#[test]
+fn rust_cli_code_mode_rejects_conflicting_runtime_modes() {
+    let mut cmd = core_cmd();
+    cmd.args([
+        "--code-mode",
+        "python",
+        "--cli-mode",
+        "--server-name",
+        "alpha",
+        "--",
+        &common::python_command(),
+        common::fixture_path("alpha_server.py").to_str().unwrap(),
+    ])
+    .assert()
+    .failure()
+    .code(2)
+    .stderr(predicate::str::contains("choose only one of --cli-mode"));
+}
+
+#[test]
 fn rust_cli_contract_cli_transform_mode() {
     let mut cmd = core_cmd();
     cmd.env("MCP_COMPRESSOR_EXIT_AFTER_READY", "1");

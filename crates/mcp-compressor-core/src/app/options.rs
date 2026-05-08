@@ -46,12 +46,16 @@ pub struct CliOptions {
     #[arg(long = "just-bash-mode", action = ArgAction::SetTrue)]
     just_bash_mode: bool,
 
-    /// Generate a Python client module that talks to the local proxy.
-    #[arg(long = "python-mode", action = ArgAction::SetTrue)]
+    /// Generate a Python or TypeScript code client that talks to the local proxy.
+    #[arg(long = "code-mode", value_enum, value_name = "LANGUAGE")]
+    code_mode: Option<CodeModeArg>,
+
+    /// Deprecated alias for --code-mode python.
+    #[arg(long = "python-mode", action = ArgAction::SetTrue, hide = true)]
     python_mode: bool,
 
-    /// Generate a TypeScript client module that talks to the local proxy.
-    #[arg(long = "typescript-mode", action = ArgAction::SetTrue)]
+    /// Deprecated alias for --code-mode typescript.
+    #[arg(long = "typescript-mode", action = ArgAction::SetTrue, hide = true)]
     typescript_mode: bool,
 
     /// Comma-separated backend tool names to include.
@@ -88,6 +92,38 @@ pub struct CliOptions {
 }
 
 impl CliOptions {
+    pub fn validate(&self) -> Result<(), String> {
+        let mode_aliases = [
+            self.cli_mode,
+            self.just_bash || self.just_bash_mode,
+            self.code_mode.is_some() || self.python_mode || self.typescript_mode,
+        ]
+        .into_iter()
+        .filter(|enabled| *enabled)
+        .count();
+        if mode_aliases > 1 {
+            return Err(
+                "choose only one of --cli-mode, --just-bash-mode, or --code-mode".to_string(),
+            );
+        }
+
+        let code_mode_aliases = [
+            self.code_mode.is_some(),
+            self.python_mode,
+            self.typescript_mode,
+        ]
+        .into_iter()
+        .filter(|enabled| *enabled)
+        .count();
+        if code_mode_aliases > 1 {
+            return Err(
+                "choose only one code mode: --code-mode python or --code-mode typescript"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+
     pub fn compression(&self) -> CompressionLevel {
         self.compression.into()
     }
@@ -95,7 +131,11 @@ impl CliOptions {
     pub fn transform_mode(&self) -> ProxyTransformMode {
         if self.just_bash || self.just_bash_mode {
             ProxyTransformMode::JustBash
-        } else if self.cli_mode || self.python_mode || self.typescript_mode {
+        } else if self.cli_mode
+            || self.python_mode
+            || self.typescript_mode
+            || self.code_mode.is_some()
+        {
             ProxyTransformMode::Cli
         } else {
             self.transform_mode.into()
@@ -103,6 +143,9 @@ impl CliOptions {
     }
 
     pub fn client_artifact_kind(&self) -> Option<FfiClientArtifactKind> {
+        if let Some(code_mode) = self.code_mode {
+            return Some(code_mode.into());
+        }
         if self.python_mode {
             Some(FfiClientArtifactKind::Python)
         } else if self.typescript_mode {
@@ -189,6 +232,22 @@ impl From<CompressionLevelArg> for CompressionLevel {
             CompressionLevelArg::Medium => CompressionLevel::Medium,
             CompressionLevelArg::High => CompressionLevel::High,
             CompressionLevelArg::Max => CompressionLevel::Max,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum CodeModeArg {
+    Python,
+    #[value(name = "typescript")]
+    TypeScript,
+}
+
+impl From<CodeModeArg> for FfiClientArtifactKind {
+    fn from(value: CodeModeArg) -> Self {
+        match value {
+            CodeModeArg::Python => FfiClientArtifactKind::Python,
+            CodeModeArg::TypeScript => FfiClientArtifactKind::TypeScript,
         }
     }
 }

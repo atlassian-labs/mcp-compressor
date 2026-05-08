@@ -37,6 +37,7 @@ fn run() -> Result<(), CliError> {
 }
 
 async fn run_async(cli: CliOptions) -> Result<(), CliError> {
+    cli.validate().map_err(CliError::Usage)?;
     if let Some(command) = &cli.command_kind {
         return run_command(command);
     }
