@@ -260,9 +260,9 @@ jobs:
           PACKAGE_TGZ=$(bun pm pack --filename /tmp/mcp-compressor-ts-package.tgz)
           mkdir -p /tmp/mcp-compressor-ts-package-test
           cd /tmp/mcp-compressor-ts-package-test
-          bun init -y >/dev/null
-          bun add --registry https://registry.npmjs.org /tmp/mcp-compressor-ts-package.tgz
-          bun --eval 'import { CompressorClient, compressToolListing } from "@atlassian/mcp-compressor"; if (typeof CompressorClient !== "function") throw new Error("CompressorClient missing"); const listing = compressToolListing("high", [{ name: "echo", description: "Echo", inputSchema: { type: "object", properties: { message: { type: "string" } }, required: ["message"] } }]); if (!listing.includes("echo") || !listing.includes("message")) throw new Error(`bad listing: ${listing}`); console.log("Rust-backed TypeScript package smoke test passed");'
+          printf '{"type":"module"}\n' > package.json
+          npm install --registry https://registry.npmjs.org /tmp/mcp-compressor-ts-package.tgz
+          node --input-type=module -e 'import { CompressorClient, compressToolListing } from "@atlassian/mcp-compressor"; if (typeof CompressorClient !== "function") throw new Error("CompressorClient missing"); const listing = compressToolListing("high", [{ name: "echo", description: "Echo", inputSchema: { type: "object", properties: { message: { type: "string" } }, required: ["message"] } }]); if (!listing.includes("echo") || !listing.includes("message")) throw new Error(`bad listing: ${listing}`); console.log("Rust-backed TypeScript package smoke test passed");'
 
       - name: Upload npm package artifact
         uses: actions/upload-artifact@v4
