@@ -12,6 +12,8 @@ check: ## Run code quality tools.
 	@uv run pre-commit run -a
 	@echo "🚀 Static type checking: Running ty"
 	@uv run ty check
+	@echo "🚀 Checking public API names"
+	@uv run python scripts/check_public_api_names.py
 	@echo "🚀 Checking for obsolete dependencies: Running deptry"
 	@uv run deptry .
 

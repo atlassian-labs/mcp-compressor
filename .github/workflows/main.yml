@@ -37,6 +37,9 @@ jobs:
       - name: Set up the Python environment
         uses: ./.github/actions/setup-python-env
 
+      - name: Check public Rust SDK crate
+        run: cargo check -p mcp-compressor
+
       - name: Check Rust core library
         run: cargo check -p mcp-compressor-core
 
@@ -45,6 +48,11 @@ jobs:
 
       - name: Check Rust-backed Node extension crate
         run: cargo check -p mcp-compressor-node
+
+      - name: Run public Rust SDK import smoke test
+        env:
+          PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: cargo test -p mcp-compressor --test public_api -- --nocapture
 
       - name: Run Rust core library tests
         env:
