@@ -228,8 +228,24 @@ fn rust_cli_supports_version_flag() {
 fn rust_cli_rejects_invalid_timeout() {
     let mut cmd = core_cmd();
     cmd.args([
+        "--",
+        &common::python_command(),
+        common::fixture_path("alpha_server.py").to_str().unwrap(),
         "--timeout",
         "0",
+    ])
+    .assert()
+    .failure()
+    .code(2)
+    .stderr(predicate::str::contains("unexpected argument '--timeout'"));
+}
+
+#[test]
+fn rust_cli_rejects_backend_options_before_separator() {
+    let mut cmd = core_cmd();
+    cmd.args([
+        "--cwd",
+        "/tmp",
         "--",
         &common::python_command(),
         common::fixture_path("alpha_server.py").to_str().unwrap(),
@@ -237,7 +253,7 @@ fn rust_cli_rejects_invalid_timeout() {
     .assert()
     .failure()
     .code(2)
-    .stderr(predicate::str::contains("--timeout must be a positive"));
+    .stderr(predicate::str::contains("unexpected argument '--cwd'"));
 }
 
 #[test]
@@ -250,15 +266,15 @@ fn rust_cli_applies_cwd_and_env_to_backend() {
             "--cli-mode",
             "--server-name",
             "alpha",
-            "--cwd",
-            tempdir.path().to_str().unwrap(),
-            "--env",
-            "MCP_COMPRESSOR_TEST_ENV=enabled",
             "--output-dir",
             output_dir.to_str().unwrap(),
             "--",
             &common::python_command(),
             common::fixture_path("alpha_server.py").to_str().unwrap(),
+            "--cwd",
+            tempdir.path().to_str().unwrap(),
+            "--env",
+            "MCP_COMPRESSOR_TEST_ENV=enabled",
         ])
         .assert()
         .success()

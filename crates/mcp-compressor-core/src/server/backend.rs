@@ -28,6 +28,12 @@ pub enum BackendAuthMode {
     OAuth,
 }
 
+impl Default for BackendAuthMode {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
 /// Configuration for one upstream MCP server.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackendServerConfig {
@@ -55,21 +61,17 @@ impl BackendServerConfig {
             BackendTransport::Stdio
         };
         let raw_args = args.into_iter().map(Into::into).collect::<Vec<_>>();
-        let (args, headers, auth_mode) = if transport == BackendTransport::StreamableHttp {
-            parse_http_backend_args(raw_args)
-        } else {
-            (raw_args, HashMap::new(), BackendAuthMode::Auto)
-        };
+        let parsed_args = parse_backend_args(raw_args, transport);
         Self {
             name: name.into(),
             command,
-            args,
-            env: HashMap::new(),
-            cwd: None,
-            timeout: None,
+            args: parsed_args.args,
+            env: parsed_args.env,
+            cwd: parsed_args.cwd,
+            timeout: parsed_args.timeout,
             transport,
-            headers,
-            auth_mode,
+            headers: parsed_args.headers,
+            auth_mode: parsed_args.auth_mode,
         }
     }
 
@@ -141,74 +143,155 @@ pub fn backend_http_headers(
         .collect()
 }
 
-fn parse_http_backend_args(
+#[derive(Debug, Default)]
+struct ParsedBackendArgs {
     args: Vec<String>,
-) -> (Vec<String>, HashMap<String, String>, BackendAuthMode) {
-    let mut remaining = Vec::new();
-    let mut headers = HashMap::new();
-    let mut auth_mode = BackendAuthMode::Auto;
+    env: HashMap<String, String>,
+    cwd: Option<PathBuf>,
+    timeout: Option<Duration>,
+    headers: HashMap<String, String>,
+    auth_mode: BackendAuthMode,
+}
+
+fn parse_backend_args(args: Vec<String>, transport: BackendTransport) -> ParsedBackendArgs {
+    let mut parsed = ParsedBackendArgs {
+        auth_mode: BackendAuthMode::Auto,
+        ..Default::default()
+    };
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
         if arg == "-H" || arg == "--header" {
             if let Some(header) = args.get(index + 1) {
-                if let Some((name, value)) = parse_header_arg(header) {
-                    headers.insert(name, value);
+                if transport == BackendTransport::StreamableHttp {
+                    if let Some((name, value)) = parse_header_arg(header) {
+                        parsed.headers.insert(name, value);
+                    } else {
+                        parsed.args.push(arg.clone());
+                        parsed.args.push(header.clone());
+                    }
                 } else {
-                    remaining.push(arg.clone());
-                    remaining.push(header.clone());
+                    parsed.args.push(arg.clone());
+                    parsed.args.push(header.clone());
                 }
                 index += 2;
             } else {
-                remaining.push(arg.clone());
-                index += 1;
-            }
-        } else if let Some(mode) = arg.strip_prefix("--auth=") {
-            match mode {
-                "explicit-headers" | "headers" | "none" => {
-                    auth_mode = BackendAuthMode::ExplicitHeaders;
-                }
-                "oauth" => {
-                    auth_mode = BackendAuthMode::OAuth;
-                }
-                _ => remaining.push(arg.clone()),
-            }
-            index += 1;
-        } else if arg == "--auth" {
-            if let Some(mode) = args.get(index + 1) {
-                match mode.as_str() {
-                    "explicit-headers" | "headers" | "none" => {
-                        auth_mode = BackendAuthMode::ExplicitHeaders;
-                    }
-                    "oauth" => {
-                        auth_mode = BackendAuthMode::OAuth;
-                    }
-                    _ => {
-                        remaining.push(arg.clone());
-                        remaining.push(mode.clone());
-                    }
-                }
-                index += 2;
-            } else {
-                remaining.push(arg.clone());
+                parsed.args.push(arg.clone());
                 index += 1;
             }
         } else if let Some(header) = arg
             .strip_prefix("-H=")
             .or_else(|| arg.strip_prefix("--header="))
         {
-            if let Some((name, value)) = parse_header_arg(header) {
-                headers.insert(name, value);
+            if transport == BackendTransport::StreamableHttp {
+                if let Some((name, value)) = parse_header_arg(header) {
+                    parsed.headers.insert(name, value);
+                } else {
+                    parsed.args.push(arg.clone());
+                }
             } else {
-                remaining.push(arg.clone());
+                parsed.args.push(arg.clone());
             }
             index += 1;
+        } else if let Some(cwd) = arg.strip_prefix("--cwd=") {
+            parsed.cwd = Some(PathBuf::from(cwd));
+            index += 1;
+        } else if arg == "--cwd" {
+            if let Some(cwd) = args.get(index + 1) {
+                parsed.cwd = Some(PathBuf::from(cwd));
+                index += 2;
+            } else {
+                parsed.args.push(arg.clone());
+                index += 1;
+            }
+        } else if arg == "-e" || arg == "--env" {
+            if let Some(env) = args.get(index + 1) {
+                if let Some((key, value)) = parse_key_value_arg(env) {
+                    parsed.env.insert(key, interpolate_env(&value));
+                } else {
+                    parsed.args.push(arg.clone());
+                    parsed.args.push(env.clone());
+                }
+                index += 2;
+            } else {
+                parsed.args.push(arg.clone());
+                index += 1;
+            }
+        } else if let Some(env) = arg.strip_prefix("-e=").or_else(|| arg.strip_prefix("--env=")) {
+            if let Some((key, value)) = parse_key_value_arg(env) {
+                parsed.env.insert(key, interpolate_env(&value));
+            } else {
+                parsed.args.push(arg.clone());
+            }
+            index += 1;
+        } else if arg == "-t" || arg == "--timeout" {
+            if let Some(timeout) = args.get(index + 1) {
+                if let Ok(seconds) = timeout.parse::<f64>() {
+                    if seconds.is_finite() && seconds > 0.0 {
+                        parsed.timeout = Some(Duration::from_secs_f64(seconds));
+                    } else {
+                        parsed.args.push(arg.clone());
+                        parsed.args.push(timeout.clone());
+                    }
+                } else {
+                    parsed.args.push(arg.clone());
+                    parsed.args.push(timeout.clone());
+                }
+                index += 2;
+            } else {
+                parsed.args.push(arg.clone());
+                index += 1;
+            }
+        } else if let Some(timeout) = arg
+            .strip_prefix("-t=")
+            .or_else(|| arg.strip_prefix("--timeout="))
+        {
+            if let Ok(seconds) = timeout.parse::<f64>() {
+                if seconds.is_finite() && seconds > 0.0 {
+                    parsed.timeout = Some(Duration::from_secs_f64(seconds));
+                } else {
+                    parsed.args.push(arg.clone());
+                }
+            } else {
+                parsed.args.push(arg.clone());
+            }
+            index += 1;
+        } else if let Some(mode) = arg.strip_prefix("--auth=") {
+            match mode {
+                "explicit-headers" | "headers" | "none" => {
+                    parsed.auth_mode = BackendAuthMode::ExplicitHeaders;
+                }
+                "oauth" => {
+                    parsed.auth_mode = BackendAuthMode::OAuth;
+                }
+                _ => parsed.args.push(arg.clone()),
+            }
+            index += 1;
+        } else if arg == "--auth" {
+            if let Some(mode) = args.get(index + 1) {
+                match mode.as_str() {
+                    "explicit-headers" | "headers" | "none" => {
+                        parsed.auth_mode = BackendAuthMode::ExplicitHeaders;
+                    }
+                    "oauth" => {
+                        parsed.auth_mode = BackendAuthMode::OAuth;
+                    }
+                    _ => {
+                        parsed.args.push(arg.clone());
+                        parsed.args.push(mode.clone());
+                    }
+                }
+                index += 2;
+            } else {
+                parsed.args.push(arg.clone());
+                index += 1;
+            }
         } else {
-            remaining.push(arg.clone());
+            parsed.args.push(arg.clone());
             index += 1;
         }
     }
-    (remaining, headers, auth_mode)
+    parsed
 }
 
 fn parse_header_arg(header: &str) -> Option<(String, String)> {
@@ -219,6 +302,15 @@ fn parse_header_arg(header: &str) -> Option<(String, String)> {
         return None;
     }
     Some((name.to_string(), interpolate_env(value)))
+}
+
+fn parse_key_value_arg(value: &str) -> Option<(String, String)> {
+    let (key, value) = value.split_once('=')?;
+    let key = key.trim();
+    if key.is_empty() {
+        return None;
+    }
+    Some((key.to_string(), value.to_string()))
 }
 
 fn interpolate_env(value: &str) -> String {
@@ -357,14 +449,46 @@ mod tests {
     }
 
     #[test]
+    fn backend_args_parse_cwd_env_and_timeout_after_separator() {
+        let backend = BackendServerConfig::new(
+            "local",
+            "python",
+            [
+                "server.py",
+                "--cwd",
+                "/tmp/example",
+                "-e",
+                "FOO=bar",
+                "--env=EMPTY=",
+                "-t",
+                "2.5",
+            ],
+        );
+
+        assert_eq!(backend.args, ["server.py"]);
+        assert_eq!(backend.cwd.as_deref(), Some(std::path::Path::new("/tmp/example")));
+        assert_eq!(backend.env["FOO"], "bar");
+        assert_eq!(backend.env["EMPTY"], "");
+        assert_eq!(backend.timeout, Some(Duration::from_secs_f64(2.5)));
+    }
+
+    #[test]
+    fn backend_args_preserve_invalid_timeout_for_backend_validation() {
+        let backend = BackendServerConfig::new("local", "python", ["server.py", "--timeout", "0"]);
+
+        assert_eq!(backend.args, ["server.py", "--timeout", "0"]);
+        assert_eq!(backend.timeout, None);
+    }
+
+    #[test]
     fn http_backend_url_preserves_unrecognized_args_for_validation() {
         let backend = BackendServerConfig::new(
             "remote",
             "https://example.test/mcp",
-            ["--timeout", "30", "-H"],
+            ["--unknown", "value", "-H"],
         );
 
-        assert_eq!(backend.args, ["--timeout", "30", "-H"]);
+        assert_eq!(backend.args, ["--unknown", "value", "-H"]);
         assert!(backend.headers.is_empty());
     }
 }

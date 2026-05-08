@@ -82,7 +82,6 @@ async fn build_server(cli: &CliOptions) -> Result<CompressedServer, CliError> {
                     .iter()
                     .cloned()
                     .map(MultiServerArg::into_backend)
-                    .map(|backend| cli.apply_backend_options(backend))
                     .collect(),
             )
             .await
@@ -98,11 +97,7 @@ async fn build_server(cli: &CliOptions) -> Result<CompressedServer, CliError> {
             .unwrap_or_else(|| "server".to_string());
         CompressedServer::connect_stdio(
             config,
-            cli.apply_backend_options(BackendServerConfig::new(
-                backend_name,
-                command.clone(),
-                args.to_vec(),
-            )),
+            BackendServerConfig::new(backend_name, command.clone(), args.to_vec()),
         )
         .await
         .map_err(|error| CliError::Runtime(error.to_string()))
