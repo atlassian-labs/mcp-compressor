@@ -130,19 +130,19 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Build native extension in editable mode
-        working-directory: python/mcp-compressor-rust
+        working-directory: python/mcp-compressor
         run: |
           uv sync --frozen --group dev
           uv run maturin develop
 
       - name: Run rust-backed Python package tests
-        working-directory: python/mcp-compressor-rust
+        working-directory: python/mcp-compressor
         env:
           PYTHON: ${{ github.workspace }}/.venv/bin/python
         run: uv run pytest -q tests
 
       - name: Run rust-backed Python package lint and type checks
-        working-directory: python/mcp-compressor-rust
+        working-directory: python/mcp-compressor
         run: |
           uv run ruff check mcp_compressor tests
           uv run ty check --project . --python .venv mcp_compressor tests
@@ -175,9 +175,9 @@ jobs:
           MCP_COMPRESSOR_EXIT_AFTER_READY=1 "$BIN" \
             --cli-mode \
             --server-name alpha \
-            --output-dir /tmp/mcp-compressor-rust-bin-smoke \
+            --output-dir /tmp/mcp-compressor-bin-smoke \
             -- "$PYTHON" crates/mcp-compressor-core/tests/fixtures/alpha_server.py
-          test -x /tmp/mcp-compressor-rust-bin-smoke/alpha
+          test -x /tmp/mcp-compressor-bin-smoke/alpha
 
       - name: Upload Rust CLI binary artifact
         uses: actions/upload-artifact@v4
@@ -203,16 +203,16 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Build Rust-backed Python wheel
-        working-directory: python/mcp-compressor-rust
+        working-directory: python/mcp-compressor
         run: uvx maturin build --release --out dist
 
       - name: Install wheel into clean venv and smoke test
         run: |
-          python -m venv /tmp/mcp-compressor-rust-wheel-test
-          /tmp/mcp-compressor-rust-wheel-test/bin/python -m pip install --upgrade pip
-          /tmp/mcp-compressor-rust-wheel-test/bin/python -m pip install "${{ github.workspace }}"/python/mcp-compressor-rust/dist/*.whl
+          python -m venv /tmp/mcp-compressor-wheel-test
+          /tmp/mcp-compressor-wheel-test/bin/python -m pip install --upgrade pip
+          /tmp/mcp-compressor-wheel-test/bin/python -m pip install "${{ github.workspace }}"/python/mcp-compressor/dist/*.whl
           cd /tmp
-          /tmp/mcp-compressor-rust-wheel-test/bin/python - <<'PY'
+          /tmp/mcp-compressor-wheel-test/bin/python - <<'PY'
           from mcp_compressor import ToolSpec, compress_tool_listing
 
           listing = compress_tool_listing(
@@ -238,7 +238,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mcp-compressor-rust-wheel
-          path: python/mcp-compressor-rust/dist/*.whl
+          path: python/mcp-compressor/dist/*.whl
 
   typescript-native-package:
     runs-on: ubuntu-latest
