@@ -63,7 +63,9 @@ def _wait_http(url: str, token: str, timeout: float = 20.0) -> None:
 
 
 def _start_proxy_mode(
-    *extra_args: str, script_name: str | None = "atlassian"
+    *extra_args: str,
+    script_name: str | None = "atlassian",
+    mode_args: tuple[str, ...] = ("--cli-mode",),
 ) -> tuple[subprocess.Popen[str], str, str, str | None]:
     env = os.environ.copy()
     explicit_output_dir = next(
@@ -74,7 +76,7 @@ def _start_proxy_mode(
     child = subprocess.Popen(
         [
             str(CORE_BIN),
-            "--cli-mode",
+            *mode_args,
             "--server-name",
             "atlassian",
             *extra_args,
@@ -195,13 +197,18 @@ def test_atlassian_cli_mode_creates_usable_cli() -> None:
         _stop(child)
 
 
-@pytest.mark.parametrize(("flag", "expected"), [("--python-mode", ".py"), ("--typescript-mode", ".ts")])
-def test_atlassian_code_modes_generate_clients(flag: str, expected: str) -> None:
+@pytest.mark.parametrize(("language", "expected"), [("python", ".py"), ("typescript", ".ts")])
+def test_atlassian_code_modes_generate_clients(language: str, expected: str) -> None:
     output_dir = tempfile.mkdtemp(prefix="mcp-compressor-code-")
-    child, _script_dir, _bridge, _token_value = _start_proxy_mode(flag, "--output-dir", output_dir, script_name=None)
+    child, _script_dir, _bridge, _token_value = _start_proxy_mode(
+        "--output-dir",
+        output_dir,
+        script_name=None,
+        mode_args=("--code-mode", language),
+    )
     try:
         assert any(path.suffix == expected for path in Path(output_dir).iterdir())
-        if flag == "--python-mode":
+        if language == "python":
             result = subprocess.run(
                 [
                     sys.executable,
