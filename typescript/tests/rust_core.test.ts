@@ -498,9 +498,7 @@ describe("Rust native core wrapper", () => {
     });
     const proxy = await client.connect();
     try {
-      expect(() => proxy.schema("echo", { server: "missing" })).toThrow(
-        /No compressed invoke wrapper/,
-      );
+      expect(() => proxy.schema("echo", { server: "missing" })).toThrow(/Backend tool not found/);
     } finally {
       proxy.close();
     }

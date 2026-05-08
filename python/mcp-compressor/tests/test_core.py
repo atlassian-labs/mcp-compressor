@@ -163,7 +163,7 @@ def test_high_level_compressor_client_reports_missing_wrapper(monkeypatch) -> No
             servers={"alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]}},
             compression_level="max",
         ) as proxy,
-        pytest.raises(KeyError, match="No compressed invoke wrapper"),
+        pytest.raises(KeyError, match="Backend tool not found"),
     ):
         proxy.schema("echo", server="missing")
 
