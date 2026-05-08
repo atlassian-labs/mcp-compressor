@@ -5,6 +5,7 @@
 
 use std::env;
 use std::fs;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
@@ -129,11 +130,32 @@ fn write_json<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), AuthErr
     let json = serde_json::to_string_pretty(value).map_err(|error| {
         AuthError::InternalError(format!("failed to serialize OAuth store: {error}"))
     })?;
-    fs::write(path, json).map_err(|error| {
+    atomic_write(path, json.as_bytes()).map_err(|error| {
         AuthError::InternalError(format!(
             "failed to write OAuth store {}: {error}",
             path.display()
         ))
+    })
+}
+
+fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), std::io::Error> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("store.json");
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let tmp_path = parent.join(format!(".{file_name}.{nonce}.tmp"));
+    fs::write(&tmp_path, contents)?;
+    fs::rename(&tmp_path, path).or_else(|error| {
+        let _ = fs::remove_file(&tmp_path);
+        Err(error)
     })
 }
 
@@ -382,10 +404,7 @@ pub fn remember_oauth_store(uri: &str, name: &str, store_dir: &Path) -> Result<(
         store_dir,
     });
     entries.sort_by(|left, right| left.name.cmp(&right.name).then(left.uri.cmp(&right.uri)));
-    fs::write(
-        index_path,
-        serde_json::to_string_pretty(&entries).unwrap_or_default(),
-    )
+    write_oauth_index(&index_path, &entries)
 }
 
 pub fn list_oauth_stores() -> Result<Vec<OAuthStoreIndexEntry>, std::io::Error> {
@@ -415,10 +434,7 @@ pub fn clear_oauth_store(target: Option<&str>) -> Result<Vec<PathBuf>, std::io::
             .into_iter()
             .filter(|entry| entry.name != target && entry.uri != target)
             .collect::<Vec<_>>();
-        fs::write(
-            index_path,
-            serde_json::to_string_pretty(&remaining).unwrap_or_default(),
-        )?;
+        write_oauth_index(&index_path, &remaining)?;
     } else {
         fs::remove_dir_all(&root)?;
         removed.push(root);
@@ -428,10 +444,28 @@ pub fn clear_oauth_store(target: Option<&str>) -> Result<Vec<PathBuf>, std::io::
 
 fn read_oauth_store_index_from(path: &Path) -> Result<Vec<OAuthStoreIndexEntry>, std::io::Error> {
     match fs::read_to_string(path) {
-        Ok(contents) => Ok(serde_json::from_str(&contents).unwrap_or_default()),
+        Ok(contents) => serde_json::from_str(&contents).map_err(|error| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("failed to parse OAuth store index {}: {error}", path.display()),
+            )
+        }),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
         Err(error) => Err(error),
     }
+}
+
+fn write_oauth_index(
+    path: &Path,
+    entries: &[OAuthStoreIndexEntry],
+) -> Result<(), std::io::Error> {
+    let json = serde_json::to_string_pretty(entries).map_err(|error| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("failed to serialize OAuth store index {}: {error}", path.display()),
+        )
+    })?;
+    atomic_write(path, json.as_bytes())
 }
 
 fn sanitize_file_component(value: &str) -> String {
@@ -495,6 +529,37 @@ mod tests {
         let entries = read_oauth_store_index_from(&index_path).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "alpha");
+    }
+
+    #[test]
+    fn oauth_index_corruption_is_reported() {
+        let root = tempfile::tempdir().unwrap();
+        let index_path = root.path().join("index.json");
+        std::fs::write(&index_path, "not json").unwrap();
+
+        let error = read_oauth_store_index_from(&index_path).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("failed to parse OAuth store index"));
+    }
+
+    #[test]
+    fn oauth_index_writes_are_atomic_and_do_not_leave_temp_files() {
+        let root = tempfile::tempdir().unwrap();
+        let index_path = root.path().join("index.json");
+        let entries = vec![OAuthStoreIndexEntry {
+            name: "alpha".to_string(),
+            uri: "https://example.test/mcp".to_string(),
+            store_dir: root.path().join("store").to_string_lossy().into_owned(),
+        }];
+
+        write_oauth_index(&index_path, &entries).unwrap();
+        assert_eq!(read_oauth_store_index_from(&index_path).unwrap(), entries);
+        let temp_files = std::fs::read_dir(root.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().contains(".tmp"))
+            .collect::<Vec<_>>();
+        assert!(temp_files.is_empty());
     }
 
     #[test]
