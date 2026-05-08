@@ -14,10 +14,7 @@
 === "Python"
 
     ```bash
-    # Local development from this repository
-    cd python/mcp-compressor
-    uv sync --group dev
-    uv run maturin develop
+    pip install mcp-compressor-rust
     ```
 
     Then import:
@@ -26,15 +23,12 @@
     from mcp_compressor import CompressorClient
     ```
 
-    The temporary distribution/script name is `mcp-compressor-rust`, but users import `mcp_compressor`.
+    The temporary distribution name is `mcp-compressor-rust`, but users import `mcp_compressor`.
 
 === "TypeScript"
 
     ```bash
-    cd typescript
-    bun install
-    bun run build
-    bun run build:native
+    npm install @atlassian/mcp-compressor
     ```
 
     Then import:
@@ -45,10 +39,10 @@
 
 === "Rust"
 
-    Add the public Rust crate in your workspace:
+    Add the public Rust crate to your project:
 
     ```toml
-    mcp-compressor = { path = "crates/mcp-compressor" }
+    mcp-compressor = "0.1"
     ```
 
     Then import:
@@ -59,7 +53,15 @@
 
 ## Install the CLI
 
-=== "Rust binary from source"
+=== "Rust binary"
+
+    Download a release artifact named for your platform, place it on `PATH`, and verify:
+
+    ```bash
+    mcp-compressor --help
+    ```
+
+    From source:
 
     ```bash
     cargo build -p mcp-compressor-core --release
@@ -69,10 +71,8 @@
 === "Python wrapper"
 
     ```bash
-    cd python/mcp-compressor
-    uv sync --group dev
-    uv run maturin develop
-    uv run mcp-compressor-rust --help
+    pip install mcp-compressor-rust
+    mcp-compressor-rust --help
     ```
 
     The wrapper delegates to the Rust binary. Set `MCP_COMPRESSOR_BINARY` if the binary is not on `PATH`.
@@ -80,14 +80,43 @@
 === "TypeScript wrapper"
 
     ```bash
+    npm install -g @atlassian/mcp-compressor
+    mcp-compressor --help
+    ```
+
+    The wrapper also delegates to the Rust binary. Set `MCP_COMPRESSOR_BINARY` to override binary discovery.
+
+## Development from source
+
+Use these commands when working on this repository.
+
+=== "Python"
+
+    ```bash
+    cd python/mcp-compressor
+    uv sync --group dev
+    uv run maturin develop
+    uv run pytest -q tests
+    ```
+
+    The `dev` group is only needed for contributor tooling such as `maturin`, `pytest`, `ruff`, and `ty`.
+
+=== "TypeScript"
+
+    ```bash
     cd typescript
     bun install
     bun run build
     bun run build:native
-    bun run mcp-compressor -- --help
+    bun run check
     ```
 
-    The wrapper also delegates to the Rust binary. Set `MCP_COMPRESSOR_BINARY` to override binary discovery.
+=== "Rust"
+
+    ```bash
+    cargo check -p mcp-compressor
+    cargo test -p mcp-compressor-core --tests --no-run
+    ```
 
 ## Verify installation
 
