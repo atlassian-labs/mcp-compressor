@@ -14,7 +14,7 @@ CLI Mode is the same idea for shell commands: it generates an executable command
 | Python Code Mode | Python module with functions | Python agents or notebooks. |
 | TypeScript Code Mode | ESM module with functions and `.d.ts` declarations | TypeScript/JavaScript agents. |
 
-All generated clients require the proxy session to stay alive while they are used.
+All generated clients require the proxy session to stay alive while they are used. CLI Mode installs scripts on `PATH` by default; Code Mode writes Python/TypeScript files to `./dist` in the current working directory by default. Use `--output-dir` to override either behavior.
 
 ## Generate from the CLI
 
@@ -38,14 +38,13 @@ All generated clients require the proxy session to stay alive while they are use
     ```bash
     mcp-compressor --code-mode python \
       --server-name atlassian \
-      --output-dir ./generated-py \
       -- https://mcp.atlassian.com/v1/mcp
     ```
 
     This writes a module such as:
 
     ```text
-    ./generated-py/atlassian.py
+    ./dist/atlassian.py
     ```
 
 === "TypeScript Code Mode"
@@ -53,15 +52,14 @@ All generated clients require the proxy session to stay alive while they are use
     ```bash
     mcp-compressor --code-mode typescript \
       --server-name atlassian \
-      --output-dir ./generated-ts \
       -- https://mcp.atlassian.com/v1/mcp
     ```
 
     This writes files such as:
 
     ```text
-    ./generated-ts/atlassian.ts
-    ./generated-ts/atlassian.d.ts
+    ./dist/atlassian.ts
+    ./dist/atlassian.d.ts
     ```
 
 The Atlassian examples use OAuth. The first run opens a browser if no stored credentials exist.

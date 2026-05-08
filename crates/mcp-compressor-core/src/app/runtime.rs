@@ -84,11 +84,14 @@ pub async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(
     let proxy = ToolProxyServer::start(server)
         .await
         .map_err(|error| error.to_string())?;
+    let client_artifact_kind = cli.client_artifact_kind();
     let (output_dir, on_path) = if let Some(output_dir) = cli.output_dir.clone() {
         let on_path = std::env::var_os("PATH")
             .map(|paths| std::env::split_paths(&paths).any(|path| path == output_dir))
             .unwrap_or(false);
         (output_dir, on_path)
+    } else if client_artifact_kind.is_some() {
+        (std::env::current_dir().map_err(|error| error.to_string())?.join("dist"), false)
     } else {
         cli_output_dir().map_err(|error| error.to_string())?
     };
@@ -101,7 +104,7 @@ pub async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(
         session_pid: std::process::id(),
         output_dir,
     };
-    let paths = if let Some(kind) = cli.client_artifact_kind() {
+    let paths = if let Some(kind) = client_artifact_kind {
         let ffi_config = FfiGeneratorConfig {
             cli_name: config.cli_name.clone(),
             bridge_url: config.bridge_url.clone(),
@@ -121,7 +124,7 @@ pub async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(
         .find(|path| path.file_name().and_then(|name| name.to_str()) == Some(cli_name.as_str()))
         .unwrap_or(&paths[0]);
 
-    if let Some(kind) = cli.client_artifact_kind() {
+    if let Some(kind) = client_artifact_kind {
         println!("{} code client ready", client_artifact_label(kind));
         println!("Generated files:");
         for path in &paths {

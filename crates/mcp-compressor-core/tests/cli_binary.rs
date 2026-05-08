@@ -153,6 +153,31 @@ fn rust_cli_code_mode_python_generates_python_client() {
 }
 
 #[test]
+fn rust_cli_code_mode_defaults_to_dist_directory() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let dist = tempdir.path().join("dist");
+
+    let mut cmd = core_cmd();
+    cmd.current_dir(tempdir.path())
+        .env("MCP_COMPRESSOR_EXIT_AFTER_READY", "1")
+        .args([
+            "--code-mode",
+            "python",
+            "--server-name",
+            "alpha",
+            "--",
+            &common::python_command(),
+            common::fixture_path("alpha_server.py").to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Python code client ready"))
+        .stdout(predicate::str::contains("dist/alpha.py"));
+
+    assert!(dist.join("alpha.py").exists());
+}
+
+#[test]
 fn rust_cli_code_mode_typescript_generates_typescript_client() {
     let tempdir = tempfile::tempdir().unwrap();
     let output_dir = tempdir.path().join("generated-ts");
