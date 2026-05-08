@@ -25,3 +25,7 @@ tempfile = "3"
 # binary e2e contract tests
 assert_cmd = "2"
 predicates = "3"
+
+[[bin]]
+name = "mcp-compressor"
+path = "src/main.rs"

@@ -101,7 +101,7 @@ async function startRemoteAlphaUpstream(): Promise<{
     root,
     "target",
     "debug",
-    process.platform === "win32" ? "mcp-compressor-core.exe" : "mcp-compressor-core",
+    process.platform === "win32" ? "mcp-compressor.exe" : "mcp-compressor",
   );
   const child = spawn(
     binary,
@@ -305,9 +305,9 @@ describe("Rust native core wrapper", () => {
 
   it("provides a high-level CompressorClient for compressed tools", async () => {
     const previousPath = process.env.PATH;
-    const previousBinary = process.env.MCP_COMPRESSOR_CORE_BINARY;
+    const previousBinary = process.env.MCP_COMPRESSOR_BINARY;
     process.env.PATH = "";
-    process.env.MCP_COMPRESSOR_CORE_BINARY = "definitely-missing-mcp-compressor-core";
+    process.env.MCP_COMPRESSOR_BINARY = "definitely-missing-mcp-compressor";
     try {
       const fixtureDir = join(
         process.cwd(),
@@ -345,9 +345,9 @@ describe("Rust native core wrapper", () => {
         process.env.PATH = previousPath;
       }
       if (previousBinary === undefined) {
-        delete process.env.MCP_COMPRESSOR_CORE_BINARY;
+        delete process.env.MCP_COMPRESSOR_BINARY;
       } else {
-        process.env.MCP_COMPRESSOR_CORE_BINARY = previousBinary;
+        process.env.MCP_COMPRESSOR_BINARY = previousBinary;
       }
     }
   });
@@ -479,9 +479,9 @@ describe("Rust native core wrapper", () => {
 
   it("defaults single-server CompressorClient invocation to that server", async () => {
     const previousPath = process.env.PATH;
-    const previousBinary = process.env.MCP_COMPRESSOR_CORE_BINARY;
+    const previousBinary = process.env.MCP_COMPRESSOR_BINARY;
     process.env.PATH = "";
-    process.env.MCP_COMPRESSOR_CORE_BINARY = "definitely-missing-mcp-compressor-core";
+    process.env.MCP_COMPRESSOR_BINARY = "definitely-missing-mcp-compressor";
     try {
       const fixtureDir = join(
         process.cwd(),
@@ -506,8 +506,8 @@ describe("Rust native core wrapper", () => {
     } finally {
       if (previousPath === undefined) delete process.env.PATH;
       else process.env.PATH = previousPath;
-      if (previousBinary === undefined) delete process.env.MCP_COMPRESSOR_CORE_BINARY;
-      else process.env.MCP_COMPRESSOR_CORE_BINARY = previousBinary;
+      if (previousBinary === undefined) delete process.env.MCP_COMPRESSOR_BINARY;
+      else process.env.MCP_COMPRESSOR_BINARY = previousBinary;
     }
   });
 
@@ -591,9 +591,9 @@ describe("Rust native core wrapper", () => {
 
   it("lets a TypeScript agent start a compressed multi-server proxy without a compressor subprocess", async () => {
     const previousPath = process.env.PATH;
-    const previousBinary = process.env.MCP_COMPRESSOR_CORE_BINARY;
+    const previousBinary = process.env.MCP_COMPRESSOR_BINARY;
     process.env.PATH = "";
-    process.env.MCP_COMPRESSOR_CORE_BINARY = "definitely-missing-mcp-compressor-core";
+    process.env.MCP_COMPRESSOR_BINARY = "definitely-missing-mcp-compressor";
     try {
       const fixtureDir = join(
         process.cwd(),
@@ -635,9 +635,9 @@ describe("Rust native core wrapper", () => {
         process.env.PATH = previousPath;
       }
       if (previousBinary === undefined) {
-        delete process.env.MCP_COMPRESSOR_CORE_BINARY;
+        delete process.env.MCP_COMPRESSOR_BINARY;
       } else {
-        process.env.MCP_COMPRESSOR_CORE_BINARY = previousBinary;
+        process.env.MCP_COMPRESSOR_BINARY = previousBinary;
       }
     }
   });

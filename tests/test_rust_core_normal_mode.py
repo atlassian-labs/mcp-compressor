@@ -16,6 +16,8 @@ def rust_core_command(*args: str) -> list[str]:
         "-q",
         "-p",
         "mcp-compressor-core",
+        "--bin",
+        "mcp-compressor",
         "--",
         *args,
     ]

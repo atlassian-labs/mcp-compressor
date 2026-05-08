@@ -166,7 +166,7 @@ jobs:
         env:
           PYTHON: ${{ github.workspace }}/.venv/bin/python
         run: |
-          BIN=target/release/mcp-compressor-core
+          BIN=target/release/mcp-compressor
           "$BIN" --help
           if "$BIN" --compression invalid -- "$PYTHON" crates/mcp-compressor-core/tests/fixtures/alpha_server.py; then
             echo "Expected invalid compression level to fail" >&2
@@ -182,8 +182,8 @@ jobs:
       - name: Upload Rust CLI binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mcp-compressor-core-linux-x86_64
-          path: target/release/mcp-compressor-core
+          name: mcp-compressor-linux-x86_64
+          path: target/release/mcp-compressor
 
   python-rust-wheel:
     runs-on: ubuntu-latest
