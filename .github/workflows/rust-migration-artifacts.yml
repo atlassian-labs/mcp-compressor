@@ -69,13 +69,10 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact-suffix: linux-x86_64
-            venv-python: /tmp/mcp-compressor-rust-wheel-test/bin/python
           - os: macos-latest
             artifact-suffix: macos-arm64
-            venv-python: /tmp/mcp-compressor-rust-wheel-test/bin/python
           - os: windows-latest
             artifact-suffix: windows-x86_64
-            venv-python: C:/mcp-compressor-rust-wheel-test/Scripts/python.exe
     steps:
       - name: Check out
         uses: actions/checkout@v6
@@ -92,18 +89,23 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Build Rust-backed Python wheel
-        working-directory: python/mcp-compressor-rust
+        working-directory: python/mcp-compressor
         run: uvx maturin build --release --out dist
 
       - name: Smoke-test wheel from clean directory
         shell: bash
         run: |
-          python -m venv "$(dirname '${{ matrix.venv-python }}')"
-          "${{ matrix.venv-python }}" -m pip install --upgrade pip
-          "${{ matrix.venv-python }}" -m pip install "${{ github.workspace }}"/python/mcp-compressor-rust/dist/*.whl
+          python -m venv /tmp/mcp-compressor-wheel-test
+          if [ -x /tmp/mcp-compressor-wheel-test/Scripts/python.exe ]; then
+            VENV_PYTHON=/tmp/mcp-compressor-wheel-test/Scripts/python.exe
+          else
+            VENV_PYTHON=/tmp/mcp-compressor-wheel-test/bin/python
+          fi
+          "$VENV_PYTHON" -m pip install --upgrade pip
+          "$VENV_PYTHON" -m pip install "${{ github.workspace }}"/python/mcp-compressor/dist/*.whl
           mkdir -p /tmp/mcp-compressor-wheel-import-test
           cd /tmp/mcp-compressor-wheel-import-test
-          "${{ matrix.venv-python }}" - <<'PY'
+          "$VENV_PYTHON" - <<'PY'
           from mcp_compressor import CompressorClient, ToolSpec, compress_tool_listing
           listing = compress_tool_listing(
               "high",
@@ -117,7 +119,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: python-wheel-${{ matrix.artifact-suffix }}
-          path: python/mcp-compressor-rust/dist/*.whl
+          path: python/mcp-compressor/dist/*.whl
 
   typescript-package:
     name: TypeScript package (${{ matrix.os }})
