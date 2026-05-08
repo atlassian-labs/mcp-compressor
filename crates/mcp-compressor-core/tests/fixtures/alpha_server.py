@@ -26,6 +26,17 @@ def structured_data() -> dict[str, Any]:
     return {"server": "alpha", "values": [1, 2], "nested": {"ok": True}}
 
 
+@mcp.tool
+def summarize_payload(items: list[str], metadata: dict[str, Any]) -> dict[str, Any]:
+    """Summarize structured list and object arguments."""
+    return {
+        "item_count": len(items),
+        "items": items,
+        "metadata": metadata,
+        "metadata_keys": sorted(metadata.keys()),
+    }
+
+
 @mcp.resource("fixture://alpha-resource")
 def alpha_resource() -> str:
     """Return a static alpha resource."""

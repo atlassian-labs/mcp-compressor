@@ -189,6 +189,7 @@ struct ToolOption {
     required: bool,
     description: Option<String>,
     default: Option<String>,
+    enum_values: Vec<String>,
 }
 
 fn tool_options(tool: &crate::compression::engine::Tool) -> Vec<ToolOption> {
@@ -219,6 +220,11 @@ fn tool_options(tool: &crate::compression::engine::Tool) -> Vec<ToolOption> {
                         .and_then(|value| value.as_str())
                         .map(str::to_string),
                     default: schema.get("default").map(default_value_label),
+                    enum_values: schema
+                        .get("enum")
+                        .and_then(|value| value.as_array())
+                        .map(|values| values.iter().map(default_value_label).collect())
+                        .unwrap_or_default(),
                 })
                 .collect()
         })
@@ -236,6 +242,9 @@ fn format_tool_option_help(option: &ToolOption) -> String {
     let mut details = Vec::new();
     if let Some(description) = &option.description {
         details.push(first_line(description).to_string());
+    }
+    if !option.enum_values.is_empty() {
+        details.push(format!("values: {}", option.enum_values.join(", ")));
     }
     if let Some(default) = &option.default {
         details.push(format!("default: {default}"));
@@ -460,6 +469,8 @@ mod tests {
         assert!(content.contains("<string>  required — URL to fetch."));
         assert!(content.contains("--timeout"));
         assert!(content.contains("<integer>  optional — Timeout in seconds.; default: 30"));
+        assert!(content.contains("--method"));
+        assert!(content.contains("values: GET, POST"));
     }
 
     /// On Unix the generated script is executable.

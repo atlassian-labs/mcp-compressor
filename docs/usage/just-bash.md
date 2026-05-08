@@ -20,12 +20,12 @@ The language host owns:
 
 ```ts
 import { Bash } from "just-bash";
-import { CompressorClient, createJustBashCommands } from "@atlassian/mcp-compressor";
+import { CompressorClient, installJustBashCommands } from "@atlassian/mcp-compressor";
 
 const proxy = await new CompressorClient({ servers, mode: "bash" }).connect();
 try {
-  const registrations = createJustBashCommands(proxy);
-  const bash = new Bash({ customCommands: registrations.map((item) => item.command) });
+  const bash = new Bash({ customCommands: [] });
+  const registrations = installJustBashCommands(bash, proxy);
 
   const result = await bash.exec("alpha_echo --message hello");
   console.log(result.stdout);
@@ -37,11 +37,16 @@ try {
 ## Python host helper
 
 ```python
-from mcp_compressor import CompressorClient, create_just_bash_commands
+from mcp_compressor import CompressorClient, install_just_bash_commands
+
+class BashHost:
+    def __init__(self) -> None:
+        self.custom_commands = {}
 
 with CompressorClient(servers=servers, mode="bash") as proxy:
-    commands = {command.command_name: command for command in create_just_bash_commands(proxy)}
-    print(commands["alpha_echo"](["--message", "hello"]))
+    bash = BashHost()
+    install_just_bash_commands(bash, proxy)
+    print(bash.custom_commands["alpha_echo"](["--message", "hello"]))
 ```
 
 ## Command names and collisions

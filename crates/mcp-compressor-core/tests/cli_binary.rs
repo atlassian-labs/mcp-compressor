@@ -17,6 +17,8 @@ fn rust_cli_help_describes_supported_modes() {
     cmd.arg("--help")
         .assert()
         .success()
+        .stdout(predicate::str::contains("<URL_OR_COMMAND>"))
+        .stdout(predicate::str::contains("Backend URL or command plus backend arguments"))
         .stdout(predicate::str::contains("--compression <COMPRESSION>"))
         .stdout(predicate::str::contains("--config <CONFIG_PATH>"))
         .stdout(predicate::str::contains(
@@ -213,6 +215,56 @@ fn rust_cli_code_mode_rejects_conflicting_runtime_modes() {
     .failure()
     .code(2)
     .stderr(predicate::str::contains("choose only one of --cli-mode"));
+}
+
+#[test]
+fn rust_cli_supports_version_flag() {
+    let mut cmd = core_cmd();
+    cmd.arg("--version")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("mcp-compressor"));
+}
+
+#[test]
+fn rust_cli_rejects_backend_options_before_separator() {
+    let mut cmd = core_cmd();
+    cmd.args([
+        "--cwd",
+        "/tmp",
+        "--",
+        &common::python_command(),
+        common::fixture_path("alpha_server.py").to_str().unwrap(),
+    ])
+    .assert()
+    .failure()
+    .code(2)
+    .stderr(predicate::str::contains("unexpected argument '--cwd'"));
+}
+
+#[test]
+fn rust_cli_applies_cwd_and_env_to_backend() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let output_dir = tempdir.path().join("bin");
+    let mut cmd = core_cmd();
+    cmd.env("MCP_COMPRESSOR_EXIT_AFTER_READY", "1")
+        .args([
+            "--cli-mode",
+            "--server-name",
+            "alpha",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--",
+            &common::python_command(),
+            common::fixture_path("alpha_server.py").to_str().unwrap(),
+            "--cwd",
+            tempdir.path().to_str().unwrap(),
+            "--env",
+            "MCP_COMPRESSOR_TEST_ENV=enabled",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("CLI ready"));
 }
 
 #[test]

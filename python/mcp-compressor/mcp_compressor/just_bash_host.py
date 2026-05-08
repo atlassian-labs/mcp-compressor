@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,6 +35,27 @@ class JustBashCallableCommand:
             self.parse(args or []),
             server=self.provider_name,
         )
+
+
+def install_just_bash_commands(bash: Any, proxy: CompressorProxy) -> list[JustBashCallableCommand]:
+    """Install compressor commands into a pre-created Python Just Bash host when possible.
+
+    The Python Just Bash ecosystem is less standardized than the TypeScript
+    package, so this helper supports the common mutable shapes used by hosts:
+    `custom_commands` or `commands` as either a mapping or a list. It returns the
+    generated command objects in all cases so callers can adapt custom hosts.
+    """
+    commands = create_just_bash_commands(proxy)
+    for attribute in ("custom_commands", "commands"):
+        target = getattr(bash, attribute, None)
+        if isinstance(target, MutableMapping):
+            target.update({command.command_name: command for command in commands})
+            return commands
+        if isinstance(target, list):
+            target.extend(commands)
+            return commands
+    bash.custom_commands = {command.command_name: command for command in commands}
+    return commands
 
 
 def create_just_bash_commands(proxy: CompressorProxy) -> list[JustBashCallableCommand]:

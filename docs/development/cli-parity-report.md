@@ -1,211 +1,182 @@
-# CLI parity report: legacy Python vs Rust migration CLIs
+# CLI parity report
 
-Date: 2026-05-08
+This report compares the current Rust migration CLIs with the published legacy Python CLI.
 
-This report compares:
+Compared surfaces:
 
-1. the current published legacy Python CLI, run with `uvx mcp-compressor`,
-2. the Rust binary, `target/debug/mcp-compressor`,
-3. the Rust-backed Python wrapper, `uv run mcp-compressor-rust`,
-4. the Rust-backed TypeScript wrapper, `bun dist/cli.js`.
+| Surface | Command used |
+|---|---|
+| Legacy Python CLI | `uvx mcp-compressor` |
+| Rust CLI binary | `target/debug/mcp-compressor` |
+| Python package CLI wrapper | `python/mcp-compressor` → `uv run mcp-compressor-rust` |
+| TypeScript package CLI wrapper | `typescript` → `bun dist/cli.js` |
 
-The goal is to identify user-visible parity gaps before the Rust migration branch becomes the main implementation.
+The current Python and TypeScript CLIs are thin wrappers around the Rust binary, so their behavior should match the Rust CLI apart from wrapper-level process handling.
 
-## Test setup
-
-### Deterministic local backend
-
-Most comparisons used the checked-in FastMCP fixture server:
-
-```text
-crates/mcp-compressor-core/tests/fixtures/alpha_server.py
-```
-
-It exposes:
-
-- `echo(message)`
-- `add(a, b)`
-- `structured_data()`
-- one resource
-- one prompt
-
-### Real-world remote backend
-
-The Atlassian MCP server is already covered by the real-world test suite:
-
-```text
-https://mcp.atlassian.com/v1/mcp
-```
-
-The parity report did not paste credentials or secret-derived output. Current user-facing examples should prefer OAuth; CI may use explicit headers for non-interactive testing.
-
-### Captured artifacts
-
-Temporary captures were written to:
-
-```text
-/tmp/mcp-compressor-parity
-```
-
-They included top-level `--help`, generated CLI `--help`, generated subcommand help, MCP tool lists, and `get_tool_schema` / `invoke_tool` results.
+---
 
 ## Executive summary
 
-| Area | Parity status | Notes |
-|---|---|---|
-| Rust/Python/TypeScript migration CLIs | Good | All three current CLIs delegate to the same Rust binary behavior. |
-| Standard compressed MCP schema output | Good | Rust and legacy produce the same tool schema text for the local fixture. |
-| Wrapper tool names by compression level | Mostly good | `medium` exposes `get_tool_schema` / `invoke_tool`; `max` adds `list_tools`, matching intended Rust design. |
-| Generated CLI help UX | Good and likely better than legacy | Rust-generated CLI has clear top-level and subcommand help. |
-| Top-level CLI options | Partial parity | Rust is missing several legacy convenience options: `--cwd`, `--env`, `--timeout`, `--log-level`, shell completion flags. Rust adds newer `--code-mode`, `--transport`, `--config`, `clear-oauth`. |
-| Wrapper tool descriptions | Parity gap | Legacy `get_tool_schema` description embeds the available compressed backend tool list; Rust description is generic. |
-| MCP structured content | Parity gap | Legacy `get_tool_schema` result includes `structured_content`; Rust currently returns text content only. |
-| Code Mode naming | Improved in Rust | Rust has `--code-mode python/typescript`; legacy has no equivalent unified term. |
-| OAuth | Rust better aligned with target UX | Rust supports native OAuth; legacy public docs historically emphasized explicit headers. |
+The current Rust migration CLI is now close to the legacy Python CLI for the core flows:
 
-## Top-level CLI help comparison
+- standard compressed MCP proxy over stdio,
+- `low` / `medium` / `high` / `max` compression levels,
+- remote streamable HTTP backends with native OAuth or explicit backend headers,
+- CLI Mode,
+- Code Mode for Python and TypeScript generated clients,
+- Just Bash metadata mode,
+- generated CLI help.
+
+The most important parity fix is now implemented: the `get_tool_schema` wrapper description includes a compression-level-specific list of backend tools. This is critical because it gives the LLM compressed tool-selection context before it asks for a full schema.
+
+Remaining non-P0 parity gaps are mostly polish:
+
+- structured MCP `structuredContent` parity for some wrapper responses,
+- shell completion generation,
+- optional async Python generated clients,
+- deeper generated CLI argument help for complex schemas such as nested objects and arrays.
+
+---
+
+## Top-level help comparison
 
 ### Legacy Python CLI
 
-Command:
+```text
+Usage: mcp-compressor [OPTIONS] -- <command> [args]...
 
-```bash
-uvx mcp-compressor --help
+Options include compression level, include/exclude filters, CLI mode, Python mode,
+TypeScript mode, Just Bash mode, cwd/env/header/timeout backend controls, logging,
+and shell completion helpers.
 ```
 
-Key characteristics:
+### Current Rust / Python wrapper / TypeScript wrapper CLI
 
-- Typer/Rich formatted help.
-- Required positional `COMMAND_OR_URL`.
-- Options include:
-  - `--cwd`
-  - `--env` / `-e`
-  - `--header` / `-H`
-  - `--timeout` / `-t`
-  - `--compression-level` / `-c`
-  - `--server-name` / `-n`
-  - `--log-level` / `-l`
-  - `--toonify`
-  - `--cli-mode`
-  - `--just-bash`
-  - `--cli-port`
-  - `--include-tools`
-  - `--exclude-tools`
-  - shell completion flags
-  - `--version`
+```text
+Usage: mcp-compressor [OPTIONS] [COMMAND] -- <COMMAND>...
 
-Strengths:
-
-- Very descriptive help strings.
-- Explicitly documents stdio, HTTP, SSE, and MCP config JSON input.
-- Documents backend headers/env/cwd/timeouts in the top-level CLI.
-
-Weaknesses relative to Rust migration:
-
-- No unified `Code Mode` terminology.
-- No native OAuth command surface.
-- No streamable HTTP frontend option.
-
-### Rust binary
-
-Command:
-
-```bash
-mcp-compressor --help
+Options:
+  -c, --compression <COMPRESSION>
+  -n, --server-name <SERVER_NAME>
+      --transform-mode <TRANSFORM_MODE>
+      --cli-mode
+      --code-mode <LANGUAGE>
+      --just-bash-mode
+      --include-tools <INCLUDE_TOOLS>
+      --exclude-tools <EXCLUDE_TOOLS>
+      --toonify
+      --output-dir <OUTPUT_DIR>
+      --transport <TRANSPORT>
+      --port <PORT>
+  -V, --version
+  -h, --help
 ```
 
-Key characteristics:
-
-- Clap formatted help.
-- Backend arguments are explicitly placed after `--`.
-- Options include:
-  - `--compression` / `-c`
-  - `--config`
-  - `--server-name`
-  - `--transform-mode`
-  - `--cli-mode`
-  - `--just-bash`
-  - `--just-bash-mode`
-  - `--code-mode <python|typescript>`
-  - `--include-tools`
-  - `--exclude-tools`
-  - `--toonify`
-  - `--output-dir`
-  - `--multi-server`
-  - `--transport`
-  - `--port`
-  - `clear-oauth`
-
-Strengths:
-
-- Public binary name is now correct: `mcp-compressor`.
-- Code Mode has a unified option.
-- Supports frontend `stdio` and `streamable-http` transports.
-- Supports OAuth clearing.
-- Backend arguments after `--` avoid ambiguity between compressor options and backend options.
-
-Gaps versus legacy:
-
-- Missing `--cwd` for stdio backend working directory.
-- Missing `--env/-e` for stdio backend env injection.
-- Missing `--timeout/-t` for backend connect/request timeout.
-- Missing `--log-level/-l`.
-- Missing `--version`.
-- Missing completion generation/install flags.
-- No short aliases for some legacy options:
-  - `--server-name` lacks `-n`.
-  - `--header` is only parsed after backend URL, not top-level.
-
-### Python and TypeScript wrappers
-
-The current Python and TypeScript CLIs delegate to the Rust binary. Their help output is intentionally identical to the Rust binary after wrapper startup noise is removed.
-
-Python wrapper command:
+The Rust CLI intentionally separates frontend compressor options from backend server options. Backend options belong after `--`.
 
 ```bash
-mcp-compressor-rust --help
+mcp-compressor [frontend options] -- <backend command or URL> [backend args]
 ```
 
-TypeScript wrapper command:
+Examples:
 
 ```bash
-mcp-compressor --help
+# Remote backend header after --
+mcp-compressor -c medium -- https://mcp.example.com/v1/mcp -H "Authorization=Bearer ${TOKEN}"
+
+# Local stdio backend cwd/env/timeout after --
+mcp-compressor -c medium -- python server.py --cwd ./repo -e FOO=bar -t 30
 ```
 
-Observations:
+This matches the separation-of-concerns model already used for `-H` and avoids mixing frontend compression controls with backend process/transport controls.
 
-- Good: wrappers do not maintain separate CLI behavior.
-- Good: parity across current Rust/Python/TypeScript surfaces is strong.
-- Watch item: the Python wrapper still has temporary distribution/script name `mcp-compressor-rust` until final Python package cutover.
+---
 
-## Compressed MCP tool surface comparison
+## Backend argument placement
 
-### Medium compression, local fixture
+| Backend concern | Legacy Python CLI | Current Rust CLI |
+|---|---|---|
+| HTTP headers | after `--` via `-H KEY=VALUE` | after `--` via `-H KEY=VALUE` |
+| working directory | after `--` via `--cwd PATH` | after `--` via `--cwd PATH` |
+| environment | after `--` via `-e KEY=VALUE` / `--env KEY=VALUE` | after `--` via `-e KEY=VALUE` / `--env KEY=VALUE` |
+| timeout | after `--` via `-t SECONDS` / `--timeout SECONDS` | after `--` via `-t SECONDS` / `--timeout SECONDS` |
 
-Legacy Python and Rust both expose:
+Top-level backend flags such as `mcp-compressor --cwd ./repo -- python server.py` are rejected in the Rust CLI. Use `mcp-compressor -- python server.py --cwd ./repo`.
+
+---
+
+## Compressed wrapper tool descriptions
+
+The wrapper descriptions are the most important compression surface. The model sees these before it decides whether to call `get_tool_schema`.
+
+### Low compression
+
+```text
+alpha_get_tool_schema
+
+Get the input schema for a specific tool from the alpha toolset.
+
+Available tools are:
+<tool>echo(message): Echo a message from alpha.</tool>
+<tool>add(a,b): Add two integers on alpha.</tool>
+<tool>structured_data: Return structured alpha data.</tool>
+```
+
+### Medium compression
+
+```text
+alpha_get_tool_schema
+
+Get the input schema for a specific tool from the alpha toolset.
+
+Available tools are:
+<tool>echo(message): Echo a message from alpha</tool>
+<tool>add(a,b): Add two integers on alpha</tool>
+<tool>structured_data: Return structured alpha data</tool>
+```
+
+### High compression
+
+```text
+alpha_get_tool_schema
+
+Get the input schema for a specific tool from the alpha toolset.
+
+Available tools are:
+<tool>echo(message)</tool>
+<tool>add(a,b)</tool>
+<tool>structured_data</tool>
+```
+
+### Max compression
+
+```text
+alpha_get_tool_schema
+
+Get the input schema for a specific tool from the alpha toolset.
+
+Available tools are:
+<tool>echo</tool>
+<tool>add</tool>
+<tool>structured_data</tool>
+```
+
+The level-specific listing is generated by the same compression engine that formats backend listings elsewhere, with a name-only fallback for `max`.
+
+---
+
+## MCP tool surface examples
+
+Using the alpha fixture backend with server name `alpha`:
+
+### Medium
 
 ```text
 alpha_get_tool_schema
 alpha_invoke_tool
 ```
 
-Rust `medium` output:
-
-```text
-alpha_get_tool_schema
-alpha_invoke_tool
-```
-
-Legacy `medium` output:
-
-```text
-alpha_get_tool_schema
-alpha_invoke_tool
-```
-
-### Max compression, local fixture
-
-Rust exposes:
+### Max
 
 ```text
 alpha_get_tool_schema
@@ -213,78 +184,61 @@ alpha_invoke_tool
 alpha_list_tools
 ```
 
-This matches the current Rust design, where `max` includes a separate `list_tools` wrapper.
+This matches the intended architecture: lower compression levels expose schema and invocation wrappers; `max` additionally exposes `list_tools` because the wrapper descriptions are name-only.
 
-## Wrapper tool descriptions
-
-### Legacy behavior
-
-Legacy `alpha_get_tool_schema` description includes the available compressed backend tool list inline, e.g.:
-
-```text
-Get the input schema for a specific tool from the alpha toolset.
-
-Available tools are:
-<tool>echo(message): Echo a message from alpha.</tool>
-...
-```
-
-This is useful because the model can see candidate backend tool names inside the wrapper description.
-
-### Rust behavior
-
-Rust currently uses generic descriptions:
-
-```text
-Return the full schema for a backend tool.
-Invoke a backend tool by name.
-```
-
-### Recommendation
-
-Bring Rust wrapper descriptions closer to legacy:
-
-- include toolset/server name,
-- include compressed backend tool listing in `get_tool_schema` description,
-- mention expected `tool_name` values,
-- keep descriptions concise by compression level.
-
-This is likely the most important user/model-behavior parity gap found in the report.
+---
 
 ## Schema response comparison
 
-For `echo(message)`, Rust and legacy returned the same human-visible schema text:
+Calling:
+
+```json
+{
+  "tool_name": "echo"
+}
+```
+
+through `alpha_get_tool_schema` returns the full backend schema.
+
+### Current Rust output shape
 
 ```text
 <tool>echo(message): Echo a message from alpha.</tool>
 
 {
-  "additionalProperties": false,
+  "type": "object",
   "properties": {
     "message": {
       "type": "string"
     }
   },
-  "required": [
-    "message"
-  ],
-  "type": "object"
+  "required": ["message"]
 }
 ```
 
-Difference:
+### Legacy Python output shape
 
-- Legacy includes `structured_content` containing the same result.
-- Rust currently returns text content only.
+```text
+<tool>echo(message): Echo a message from alpha.</tool>
 
-Recommendation:
+{
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string"
+    }
+  },
+  "required": ["message"]
+}
+```
 
-- Consider setting structured content for wrapper tool calls where supported by `rmcp`.
-- This is lower priority than wrapper descriptions, but useful for clients that prefer structured responses.
+The text response is now materially aligned for tool-selection and schema-fetch behavior. Legacy may still include structured MCP metadata in some responses; that remains a P1 parity item.
+
+---
 
 ## Generated CLI help comparison
 
-Rust generated CLI top-level help for the local fixture:
+Generated CLI top-level help now follows the legacy style.
 
 ```text
 alpha - the alpha toolset
@@ -295,176 +249,155 @@ USAGE:
   alpha <subcommand> [options]
 
 SUBCOMMANDS:
-  echo                                Echo a message from alpha.
-  add                                 Add two integers on alpha.
-  structured-data                     Return structured alpha data.
+  add                                 Add two integers on alpha
+  echo                                Echo a message from alpha
+  structured-data                     Return structured alpha data
 
 Run 'alpha <subcommand> --help' for subcommand usage.
 ```
 
-Rust generated subcommand help:
+Generated subcommand help includes required/optional status, type, description, defaults, and enum values when present.
 
 ```text
-alpha echo
+alpha fetch
 
-Echo a message from alpha.
+Fetch a URL.
 
 USAGE:
-  alpha echo --message <value>
+  alpha fetch --url <value> --timeout <value> --method <value>
 
 OPTIONS:
-  --message                    <string>  required
+  --url                        <string>   required — URL to fetch.
+  --timeout                    <integer>  optional — Timeout in seconds.; default: 30
+  --method                     <string>   optional — HTTP method to use.; values: GET, POST; default: GET
 ```
 
-Observations:
+Remaining generated CLI polish:
 
-- This is strong and close to the desired legacy UX.
-- The TOON note is present.
-- Kebab-case subcommand names are correct.
-- Required argument status is visible.
+- richer display for nested object properties,
+- array item details,
+- min/max/pattern constraints,
+- examples if schemas provide them.
 
-Potential improvements:
+---
 
-- Include schema descriptions for individual arguments where available.
-- Show defaults/enums for JSON Schema fields when available.
-- Consider supporting `-h` as an alias for generated subcommand help if not already supported.
+## Code Mode comparison
 
-## Generated Code Mode clients
-
-The current Rust migration branch supports:
+The Rust CLI now uses the public umbrella term **Code Mode**:
 
 ```bash
-mcp-compressor --code-mode python ...
-mcp-compressor --code-mode typescript ...
+mcp-compressor --code-mode python --server-name atlassian --output-dir ./generated-py -- https://mcp.atlassian.com/v1/mcp
+mcp-compressor --code-mode typescript --server-name atlassian --output-dir ./generated-ts -- https://mcp.atlassian.com/v1/mcp
 ```
 
-The legacy Python CLI does not have the same unified Code Mode terminology.
+Deprecated aliases still work:
 
-Parity status:
+```bash
+--python-mode
+--typescript-mode
+```
 
-- Rust behavior is the intended future-facing API.
-- Legacy parity is not required here; this is an improvement.
+Generated clients call the local Rust proxy and expose backend tools directly, for example:
 
-Important current behavior:
+=== "Python"
 
-- Generated Python functions are synchronous.
-- Generated TypeScript functions are async.
+    ```python
+    import atlassian
 
-Open design question:
+    resources = atlassian.getAccessibleAtlassianResources()
+    page = atlassian.getConfluencePage(page_id="123")
+    ```
 
-- Should generated Python Code Mode also support async functions?
+=== "TypeScript"
 
-Recommendation:
+    ```ts
+    import { getAccessibleAtlassianResources, getConfluencePage } from "./atlassian";
 
-- Keep sync Python generation as the default for simple agent/script use.
-- Add async Python generation as an explicit option later, rather than silently changing the default.
+    const resources = await getAccessibleAtlassianResources();
+    const page = await getConfluencePage("123");
+    ```
+
+Real-world Atlassian Code Mode tests import and execute generated Python and TypeScript clients against `https://mcp.atlassian.com/v1/mcp`.
+
+---
+
+## CLI Mode comparison
+
+CLI Mode generates shell commands that hit the local proxy.
+
+```bash
+mcp-compressor --cli-mode --server-name atlassian -- https://mcp.atlassian.com/v1/mcp
+```
+
+Generated CLI usage:
+
+```bash
+atlassian --help
+atlassian get-accessible-atlassian-resources
+atlassian get-confluence-page --page-id 123
+```
+
+The current Rust generated CLI help is close to the legacy Python output and now includes more schema-derived argument detail.
+
+---
 
 ## Just Bash comparison
 
-Legacy Python supports `--just-bash` directly.
+The Rust core does not execute shell commands itself. Instead, it exposes Just Bash provider metadata to Python and TypeScript host libraries. Language hosts convert that metadata into Just Bash commands.
 
-Rust migration supports:
-
-- `--just-bash`
-- `--just-bash-mode`
-- SDK provider metadata for Python and TypeScript hosts.
+This is intentional: Rust owns compression/proxy routing; language hosts own Just Bash runtime integration.
 
 Parity status:
 
-- CLI startup and provider metadata are implemented.
-- Language-host helpers exist for Python and TypeScript.
-- Rust intentionally does not execute shell commands itself; hosts consume provider metadata and register commands.
+- TypeScript helper: `createJustBashCommands(proxy)` implemented and tested.
+- Python helper: `create_just_bash_commands(proxy)` implemented and tested.
+- Rust CLI `--just-bash-mode` exposes the expected proxy/help surface.
 
-Recommendation:
+---
 
-- Add a dedicated real-world Just Bash parity report/test once the host integration contract is final.
+## Atlassian MCP real-world parity
 
-## Remote Atlassian MCP notes
+The real-world test suite covers:
 
-Current user-facing Rust docs prefer OAuth:
+- standard CLI compression levels against Atlassian MCP,
+- custom server name,
+- include filters,
+- TOON output,
+- CLI Mode,
+- Code Mode Python and TypeScript,
+- Just Bash mode surface,
+- multi-server JSON config,
+- port configuration,
+- high-level Python SDK,
+- high-level TypeScript SDK,
+- generated Python/TypeScript clients.
+
+Atlassian examples should prefer native OAuth:
 
 ```bash
 mcp-compressor -c medium --server-name atlassian -- https://mcp.atlassian.com/v1/mcp
 ```
 
-CI real-world tests may use explicit Basic auth headers for non-interactive execution.
+Explicit headers remain supported for CI/service-account cases and belong after `--`:
 
-Parity status:
+```bash
+mcp-compressor -c medium --server-name atlassian -- https://mcp.atlassian.com/v1/mcp -H "Authorization=Basic ${ATLASSIAN_MCP_BASIC_TOKEN}"
+```
 
-- Rust has stronger native OAuth direction than legacy.
-- Legacy explicit-header behavior remains available through backend args.
+---
 
-## Current CLI parity table
+## Remaining parity gaps
 
-| Capability | Legacy Python CLI | Rust CLI | Python wrapper | TypeScript wrapper | Notes |
-|---|---:|---:|---:|---:|---|
-| Standard stdio compression | ✅ | ✅ | ✅ | ✅ | Rust/Python/TS wrappers share Rust behavior. |
-| Remote HTTP backend | ✅ | ✅ | ✅ | ✅ | Rust supports streamable HTTP and native TLS. |
-| OAuth remote backend | ❌ / limited | ✅ | ✅ | ✅ | Rust has native OAuth flow. |
-| Explicit headers | ✅ top-level `-H` | ✅ backend arg `-H` after `--` | ✅ | ✅ | Different placement by design. |
-| `--cwd` | ✅ | ❌ | ❌ | ❌ | Missing parity item. |
-| `--env/-e` | ✅ | ❌ | ❌ | ❌ | Missing parity item. |
-| `--timeout/-t` | ✅ | ❌ | ❌ | ❌ | Missing parity item. |
-| `--log-level/-l` | ✅ | ❌ | ❌ | ❌ | Missing parity item. |
-| `--version` | ✅ | ❌ | ❌ | ❌ | Should add before release. |
-| shell completion flags | ✅ | ❌ | ❌ | ❌ | Nice-to-have. |
-| CLI Mode generated shell client | ✅ | ✅ | ✅ | ✅ | Rust generated help is good. |
-| Code Mode Python client | ❌ / not same concept | ✅ | ✅ | ✅ | Rust migration improvement. |
-| Code Mode TypeScript client | ❌ / not same concept | ✅ | ✅ | ✅ | Rust migration improvement. |
-| Just Bash mode | ✅ | ✅ partial | ✅ partial | ✅ partial | Host integration exists; final parity should be tested. |
-| Tool filters | ✅ | ✅ | ✅ | ✅ | Covered in tests. |
-| TOON output | ✅ | ✅ | ✅ | ✅ | Covered in tests. |
-| Streamable HTTP frontend | ❌ | ✅ | ✅ | ✅ | Rust migration improvement. |
-| Public SDK imports | N/A | ✅ `mcp_compressor` crate | ✅ `mcp_compressor` | ✅ `@atlassian/mcp-compressor` | Guarded by tests. |
+### P1
 
-## Recommended follow-up work
+1. Add structured MCP `structuredContent` parity where legacy emits it.
+2. Add shell completion support if still valuable.
+3. Add richer generated CLI help for nested schemas and constraints.
+4. Consider opt-in async Python Code Mode.
+5. Expand Just Bash host parity tests to more real-world schemas.
 
-### P0 before final cutover
+### P2
 
-1. **Improve Rust wrapper tool descriptions**
-
-   Match legacy behavior by including the compressed backend tool list in `get_tool_schema` descriptions.
-
-2. **Add missing high-value legacy CLI options**
-
-   Add:
-
-   - `--cwd`
-   - `--env/-e`
-   - `--timeout/-t`
-   - `--version`
-
-   These are practical user-facing options.
-
-3. **Decide top-level header placement**
-
-   Rust currently accepts headers after backend URL:
-
-   ```bash
-   mcp-compressor -- https://server/mcp -H "Authorization=Bearer ..."
-   ```
-
-   Legacy accepts top-level `-H`. Keeping backend args after `--` is cleaner, but docs should call this out clearly.
-
-4. **Add generated CLI argument descriptions**
-
-   Generated CLI already shows required/type. Add JSON Schema field descriptions/defaults/enums where available.
-
-### P1 polish
-
-1. Add `--log-level/-l`.
-2. Add shell completion support if Clap makes it straightforward.
-3. Add structured content to Rust wrapper responses.
-4. Add async Python Code Mode as an opt-in generator variant.
-5. Add a dedicated Just Bash host parity test against a real agent host.
-
-## Bottom line
-
-The Rust migration CLIs are already behaviorally aligned across Rust, Python, and TypeScript because both language wrappers delegate to the same Rust binary.
-
-Compared with the production legacy Python CLI, the Rust migration has stronger SDK, Code Mode, OAuth, and release-artifact direction. The main parity gaps are now concentrated in:
-
-- descriptive wrapper tool text,
-- a handful of legacy top-level CLI convenience flags,
-- generated CLI argument detail,
-- structured MCP result metadata.
+1. Further compare exact logging output and log-level behavior.
+2. Compare edge-case schema formatting for unions, `oneOf`, `anyOf`, and arrays.
+3. Compare timeout semantics once request timeout enforcement is fully wired through remote and stdio paths.

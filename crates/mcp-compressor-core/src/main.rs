@@ -3,10 +3,8 @@
 use std::process::ExitCode;
 
 use clap::Parser;
-use mcp_compressor_core::app::options::{CliCommand, CliOptions};
-use mcp_compressor_core::app::runtime::{
-    run_cli_mode, run_compressed_server, run_just_bash_mode,
-};
+use mcp_compressor_core::app::options::{CliCommand, CliOptions, MultiServerArg};
+use mcp_compressor_core::app::runtime::{run_cli_mode, run_compressed_server, run_just_bash_mode};
 use mcp_compressor_core::oauth::clear_oauth_store;
 use mcp_compressor_core::server::{
     BackendConfigSource, BackendServerConfig, CompressedServer, CompressedServerConfig,
@@ -80,7 +78,11 @@ async fn build_server(cli: &CliOptions) -> Result<CompressedServer, CliError> {
         if !cli.multi_server.is_empty() {
             return CompressedServer::connect_multi_stdio(
                 config,
-                cli.multi_server.iter().cloned().map(Into::into).collect(),
+                cli.multi_server
+                    .iter()
+                    .cloned()
+                    .map(MultiServerArg::into_backend)
+                    .collect(),
             )
             .await
             .map_err(|error| CliError::Runtime(error.to_string()));

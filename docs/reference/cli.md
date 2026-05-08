@@ -11,7 +11,8 @@ mcp-compressor --help
 | Option | Description |
 |---|---|
 | `-c`, `--compression <level>` | Compression level: `low`, `medium`, `high`, `max`. |
-| `--server-name <name>` | Public name for a single backend server. |
+| `-n`, `--server-name <name>` | Public name for a single backend server. |
+| `-V`, `--version` | Print version information. |
 | `--config <path>` | MCP config JSON file. |
 | `--multi-server <name=command ...>` | Direct multi-server CLI configuration. |
 | `--include-tools <a,b>` | Include only selected backend tools. |
@@ -30,13 +31,22 @@ mcp-compressor --help
 Backend command or URL arguments come after `--`.
 
 ```bash
-mcp-compressor [options] -- <backend command or URL> [backend args]
+mcp-compressor [frontend options] -- <backend command or URL> [backend args]
 ```
 
-## Header args for remote URLs
+Backend-specific options are intentionally parsed after `--` so frontend compression options stay separate from backend connection details.
+
+| Backend arg | Description |
+|---|---|
+| `-H`, `--header KEY=VALUE` | HTTP header for remote streamable HTTP backends. Repeatable. |
+| `--cwd <path>` | Working directory for stdio backend commands. |
+| `-e`, `--env KEY=VALUE` | Environment variable for stdio backend commands. Repeatable. |
+| `-t`, `--timeout <seconds>` | Backend connect/request timeout in seconds. |
+| `--auth <auto|oauth|explicit-headers>` | Remote backend auth mode. |
 
 ```bash
 mcp-compressor -- https://mcp.example.com/v1/mcp -H "Authorization=Bearer ${TOKEN}"
+mcp-compressor -- python server.py --cwd ./repo -e FOO=bar -t 30
 ```
 
 ## OAuth cleanup

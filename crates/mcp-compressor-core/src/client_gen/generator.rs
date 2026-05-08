@@ -72,6 +72,12 @@ pub mod test_helpers {
                                 "type": "integer",
                                 "description": "Timeout in seconds.",
                                 "default": 30
+                            },
+                            "method": {
+                                "type": "string",
+                                "description": "HTTP method to use.",
+                                "enum": ["GET", "POST"],
+                                "default": "GET"
                             }
                         },
                         "required": ["url"]

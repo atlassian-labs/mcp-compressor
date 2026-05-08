@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { CompressorClient, createJustBashCommands, normalizeServers } from "../src/index.js";
+import { CompressorClient, installJustBashCommands, normalizeServers } from "../src/index.js";
 
 import {
   compressToolListing,
@@ -557,10 +557,8 @@ describe("Rust native core wrapper", () => {
           invokeToolName: "alpha_invoke_tool",
         }),
       );
-      const registrations = createJustBashCommands(bashProxy);
-      const bash = new Bash({
-        customCommands: registrations.map((registration) => registration.command),
-      });
+      const bash = new Bash({ customCommands: [] });
+      const registrations = installJustBashCommands(bash, bashProxy);
       expect(registrations.map((registration) => registration.commandName)).toEqual(
         expect.arrayContaining(["alpha_echo", "beta_echo"]),
       );
