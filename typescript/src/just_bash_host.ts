@@ -33,11 +33,20 @@ export function installJustBashCommands(
   proxy: CompressorProxy,
 ): JustBashCommandRegistration[] {
   const registrations = createJustBashCommands(proxy);
-  const host = bash as { customCommands?: Command[] };
-  host.customCommands = [
-    ...(host.customCommands ?? []),
-    ...registrations.map((item) => item.command),
-  ];
+  const host = bash as {
+    customCommands?: Command[];
+    registerCommand?: (command: Command) => void;
+  };
+  if (typeof host.registerCommand === "function") {
+    for (const registration of registrations) {
+      host.registerCommand(registration.command);
+    }
+  } else {
+    host.customCommands = [
+      ...(host.customCommands ?? []),
+      ...registrations.map((item) => item.command),
+    ];
+  }
   return registrations;
 }
 
