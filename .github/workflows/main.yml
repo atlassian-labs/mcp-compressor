@@ -52,7 +52,9 @@ jobs:
       - name: Run public Rust SDK import smoke test
         env:
           PYTHON: ${{ github.workspace }}/.venv/bin/python
-        run: cargo test -p mcp-compressor --test public_api -- --nocapture
+        run: |
+          cargo test -p mcp-compressor --test public_api -- --nocapture
+          cargo test -p mcp-compressor --test public_workflow -- --nocapture
 
       - name: Run Rust core library tests
         env:
@@ -100,7 +102,11 @@ jobs:
         uses: ./.github/actions/setup-python-env
 
       - name: Run Rust binary normal-mode FastMCP e2e
-        run: uv run pytest -q tests/test_rust_core_normal_mode.py
+        env:
+          PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: |
+          uv run pytest -q tests/test_rust_core_normal_mode.py
+          uv run pytest -q tests/test_public_cli_workflows.py
 
   rust-contract-compile:
     runs-on: ubuntu-latest

@@ -5,3 +5,7 @@ edition = "2021"
 
 [dependencies]
 mcp-compressor-core = { path = "../mcp-compressor-core" }
+
+[dev-dependencies]
+serde_json = "1"
+tokio      = { version = "1", features = ["macros"] }

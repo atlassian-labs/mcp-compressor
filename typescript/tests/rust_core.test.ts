@@ -189,6 +189,31 @@ const sampleTool: ToolSpec = {
   },
 };
 
+describe("Public TypeScript SDK workflow", () => {
+  it("matches the documented CompressorClient quickstart", async () => {
+    const client = new CompressorClient({
+      servers: {
+        alpha: {
+          command: process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python"),
+          args: [fixturePath("alpha_server.py")],
+        },
+      },
+      compressionLevel: "max",
+    });
+
+    const proxy = await client.connect();
+    try {
+      expect(proxy.tools.map((tool) => tool.name)).toContain("alpha_get_tool_schema");
+      expect(proxy.tools.map((tool) => tool.name)).toContain("alpha_invoke_tool");
+      const response = await proxy.invoke("echo", { message: "public-ts" });
+      expect(response).toBe("alpha:public-ts");
+    } finally {
+      proxy.close();
+      client.close();
+    }
+  });
+});
+
 describe("Rust native core wrapper", () => {
   it("compresses tool listings through the native addon", () => {
     expect(compressToolListing("high", [sampleTool])).toBe("<tool>echo(message)</tool>");
