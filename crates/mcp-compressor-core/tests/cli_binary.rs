@@ -216,6 +216,56 @@ fn rust_cli_code_mode_rejects_conflicting_runtime_modes() {
 }
 
 #[test]
+fn rust_cli_supports_version_flag() {
+    let mut cmd = core_cmd();
+    cmd.arg("--version")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("mcp-compressor"));
+}
+
+#[test]
+fn rust_cli_rejects_invalid_timeout() {
+    let mut cmd = core_cmd();
+    cmd.args([
+        "--timeout",
+        "0",
+        "--",
+        &common::python_command(),
+        common::fixture_path("alpha_server.py").to_str().unwrap(),
+    ])
+    .assert()
+    .failure()
+    .code(2)
+    .stderr(predicate::str::contains("--timeout must be a positive"));
+}
+
+#[test]
+fn rust_cli_applies_cwd_and_env_to_backend() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let output_dir = tempdir.path().join("bin");
+    let mut cmd = core_cmd();
+    cmd.env("MCP_COMPRESSOR_EXIT_AFTER_READY", "1")
+        .args([
+            "--cli-mode",
+            "--server-name",
+            "alpha",
+            "--cwd",
+            tempdir.path().to_str().unwrap(),
+            "--env",
+            "MCP_COMPRESSOR_TEST_ENV=enabled",
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+            "--",
+            &common::python_command(),
+            common::fixture_path("alpha_server.py").to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("CLI ready"));
+}
+
+#[test]
 fn rust_cli_contract_cli_transform_mode() {
     let mut cmd = core_cmd();
     cmd.env("MCP_COMPRESSOR_EXIT_AFTER_READY", "1");

@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::Duration;
 
 use crate::ffi::FfiClientArtifactKind;
 use std::str::FromStr;
@@ -12,7 +13,8 @@ use crate::server::{BackendServerConfig, ProxyTransformMode};
 #[command(
     name = "mcp-compressor",
     about = "Standalone Rust MCP compressor core binary",
-    disable_help_subcommand = true
+    disable_help_subcommand = true,
+    version
 )]
 pub struct CliOptions {
     #[command(subcommand)]
@@ -27,8 +29,20 @@ pub struct CliOptions {
     pub config_path: Option<PathBuf>,
 
     /// Frontend server name/prefix.
-    #[arg(long)]
+    #[arg(short = 'n', long)]
     pub server_name: Option<String>,
+
+    /// Working directory for stdio backend commands.
+    #[arg(long = "cwd")]
+    pub cwd: Option<PathBuf>,
+
+    /// Environment variables for stdio backend commands, in KEY=VALUE form. Repeatable.
+    #[arg(short = 'e', long = "env", value_name = "KEY=VALUE", action = ArgAction::Append)]
+    pub env: Vec<EnvArg>,
+
+    /// Backend connect/request timeout in seconds.
+    #[arg(short = 't', long = "timeout")]
+    pub timeout: Option<f64>,
 
     /// Frontend transform mode.
     #[arg(long, value_enum, default_value = "compressed-tools")]
@@ -121,6 +135,11 @@ impl CliOptions {
                     .to_string(),
             );
         }
+        if let Some(timeout) = self.timeout {
+            if !timeout.is_finite() || timeout <= 0.0 {
+                return Err("--timeout must be a positive number of seconds".to_string());
+            }
+        }
         Ok(())
     }
 
@@ -140,6 +159,30 @@ impl CliOptions {
         } else {
             self.transform_mode.into()
         }
+    }
+
+    pub fn backend_env(&self) -> Vec<(String, String)> {
+        self.env
+            .iter()
+            .map(|env| (env.key.clone(), env.value.clone()))
+            .collect()
+    }
+
+    pub fn backend_timeout(&self) -> Option<Duration> {
+        self.timeout.map(Duration::from_secs_f64)
+    }
+
+    pub fn apply_backend_options(&self, mut backend: BackendServerConfig) -> BackendServerConfig {
+        if !self.env.is_empty() {
+            backend = backend.with_env(self.backend_env());
+        }
+        if let Some(cwd) = &self.cwd {
+            backend = backend.with_cwd(cwd.clone());
+        }
+        if let Some(timeout) = self.backend_timeout() {
+            backend = backend.with_timeout(timeout);
+        }
+        backend
     }
 
     pub fn client_artifact_kind(&self) -> Option<FfiClientArtifactKind> {
@@ -174,10 +217,37 @@ impl CliCommand {
 }
 
 #[derive(Debug, Clone)]
+pub struct EnvArg {
+    key: String,
+    value: String,
+}
+
+impl FromStr for EnvArg {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let (key, raw_value) = value
+            .split_once('=')
+            .filter(|(key, _)| !key.is_empty())
+            .ok_or_else(|| "expected KEY=VALUE".to_string())?;
+        Ok(Self {
+            key: key.to_string(),
+            value: raw_value.to_string(),
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct MultiServerArg {
     name: String,
     command: String,
     args: Vec<String>,
+}
+
+impl MultiServerArg {
+    pub fn into_backend(self) -> BackendServerConfig {
+        BackendServerConfig::new(self.name, self.command, self.args)
+    }
 }
 
 impl FromStr for MultiServerArg {
@@ -197,12 +267,6 @@ impl FromStr for MultiServerArg {
             command: command.to_string(),
             args: parts.map(ToString::to_string).collect(),
         })
-    }
-}
-
-impl From<MultiServerArg> for BackendServerConfig {
-    fn from(value: MultiServerArg) -> Self {
-        BackendServerConfig::new(value.name, value.command, value.args)
     }
 }
 

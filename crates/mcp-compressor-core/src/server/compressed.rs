@@ -189,11 +189,11 @@ impl CompressedServer {
             let prefix = self.wrapper_prefix(backend);
             tools.push(wrapper_tool(
                 format!("{prefix}get_tool_schema"),
-                "Return the full schema for a backend tool.",
+                &self.get_tool_schema_description(backend),
             ));
             tools.push(wrapper_tool(
                 format!("{prefix}invoke_tool"),
-                "Invoke a backend tool by name.",
+                &self.invoke_tool_description(backend),
             ));
             if self.config.level == CompressionLevel::Max {
                 tools.push(wrapper_tool(
@@ -203,6 +203,39 @@ impl CompressedServer {
             }
         }
         Ok(tools)
+    }
+
+    fn get_tool_schema_description(&self, backend: &ConnectedBackend) -> String {
+        format!(
+            "Get the input schema for a specific tool from the {} toolset.\n\nAvailable tools are:\n{}",
+            backend.public_name,
+            self.frontend_tool_listing(backend)
+        )
+    }
+
+    fn invoke_tool_description(&self, backend: &ConnectedBackend) -> String {
+        format!(
+            "Invoke a tool from the {} toolset. Use get_tool_schema first when you need the full input schema.",
+            backend.public_name
+        )
+    }
+
+    fn frontend_tool_listing(&self, backend: &ConnectedBackend) -> String {
+        let listing = self.engine().format_listing(&backend.tools);
+        if listing.is_empty() {
+            backend
+                .tools
+                .iter()
+                .map(|tool| format!("<tool>{}</tool>", tool.name))
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            listing
+        }
+    }
+
+    fn engine(&self) -> crate::compression::engine::CompressionEngine {
+        crate::compression::engine::CompressionEngine::new(self.config.level.clone())
     }
 
     /// Return the default backend server name when a single unambiguous default exists.

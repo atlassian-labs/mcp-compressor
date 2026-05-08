@@ -78,6 +78,9 @@ async fn connect_stdio_backend(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped());
     command.stderr(Stdio::inherit());
+    if let Some(cwd) = &backend.cwd {
+        command.current_dir(cwd);
+    }
     for (key, value) in &backend.env {
         command.env(key, value);
     }

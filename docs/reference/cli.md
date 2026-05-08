@@ -11,7 +11,11 @@ mcp-compressor --help
 | Option | Description |
 |---|---|
 | `-c`, `--compression <level>` | Compression level: `low`, `medium`, `high`, `max`. |
-| `--server-name <name>` | Public name for a single backend server. |
+| `-n`, `--server-name <name>` | Public name for a single backend server. |
+| `--cwd <path>` | Working directory for stdio backend commands. |
+| `-e`, `--env KEY=VALUE` | Environment variable for stdio backend commands. Repeatable. |
+| `-t`, `--timeout <seconds>` | Backend connect/request timeout in seconds. |
+| `-V`, `--version` | Print version information. |
 | `--config <path>` | MCP config JSON file. |
 | `--multi-server <name=command ...>` | Direct multi-server CLI configuration. |
 | `--include-tools <a,b>` | Include only selected backend tools. |

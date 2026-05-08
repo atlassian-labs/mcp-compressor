@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::str::FromStr;
+use std::time::Duration;
 
 use axum::http::{HeaderName, HeaderValue};
 
@@ -33,6 +35,8 @@ pub struct BackendServerConfig {
     pub command: String,
     pub args: Vec<String>,
     pub env: HashMap<String, String>,
+    pub cwd: Option<PathBuf>,
+    pub timeout: Option<Duration>,
     pub transport: BackendTransport,
     pub headers: HashMap<String, String>,
     pub auth_mode: BackendAuthMode,
@@ -61,6 +65,8 @@ impl BackendServerConfig {
             command,
             args,
             env: HashMap::new(),
+            cwd: None,
+            timeout: None,
             transport,
             headers,
             auth_mode,
@@ -72,6 +78,16 @@ impl BackendServerConfig {
         env: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
     ) -> Self {
         self.env = env.into_iter().map(|(k, v)| (k.into(), v.into())).collect();
+        self
+    }
+
+    pub fn with_cwd(mut self, cwd: impl Into<PathBuf>) -> Self {
+        self.cwd = Some(cwd.into());
+        self
+    }
+
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 
