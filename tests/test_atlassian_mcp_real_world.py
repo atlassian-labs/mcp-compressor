@@ -310,7 +310,7 @@ async def test_atlassian_mcp_config_multi_server_and_streamable_http_port() -> N
 
 
 def test_atlassian_python_high_level_compressor_client() -> None:
-    sys.path.insert(0, str(ROOT / "python" / "mcp-compressor-rust"))
+    sys.path.insert(0, str(ROOT / "python" / "mcp-compressor"))
     rust_package = cast("Any", importlib.import_module("mcp_compressor"))
 
     client = rust_package.CompressorClient(
@@ -333,7 +333,7 @@ def test_atlassian_python_high_level_compressor_client() -> None:
 
 
 def test_atlassian_python_high_level_generated_clients(tmp_path) -> None:
-    sys.path.insert(0, str(ROOT / "python" / "mcp-compressor-rust"))
+    sys.path.insert(0, str(ROOT / "python" / "mcp-compressor"))
     rust_package = cast("Any", importlib.import_module("mcp_compressor"))
 
     client = rust_package.CompressorClient(
@@ -379,7 +379,7 @@ def test_atlassian_python_high_level_generated_clients(tmp_path) -> None:
 
 
 def test_atlassian_python_native_session() -> None:
-    sys.path.insert(0, str(ROOT / "python" / "mcp-compressor-rust"))
+    sys.path.insert(0, str(ROOT / "python" / "mcp-compressor"))
     rust_package = cast("Any", importlib.import_module("mcp_compressor"))
 
     session = rust_package.start_compressed_session(

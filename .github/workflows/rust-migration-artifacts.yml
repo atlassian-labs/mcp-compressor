@@ -7,10 +7,31 @@ on:
         description: Version label for artifact names, e.g. 0.4.0-rc.1
         required: false
         type: string
+  push:
+    branches:
+      - rust-core-migration-trunk
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - rust-core-migration-trunk
 
 jobs:
   rust-cli-binary:
-    runs-on: ubuntu-latest
+    name: Rust CLI binary (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact-suffix: linux-x86_64
+            binary-name: mcp-compressor-core
+          - os: macos-latest
+            artifact-suffix: macos-arm64
+            binary-name: mcp-compressor-core
+          - os: windows-latest
+            artifact-suffix: windows-x86_64
+            binary-name: mcp-compressor-core.exe
     steps:
       - name: Check out
         uses: actions/checkout@v6
@@ -21,20 +42,37 @@ jobs:
       - name: Build Rust CLI binary
         run: cargo build -p mcp-compressor-core --release
 
+      - name: Smoke-test Rust CLI binary
+        shell: bash
+        run: |
+          "target/release/${{ matrix.binary-name }}" --help
+
       - name: Stage binary artifact
+        shell: bash
         run: |
           VERSION="${{ inputs.version || github.sha }}"
           mkdir -p dist
-          cp target/release/mcp-compressor-core "dist/mcp-compressor-core-linux-x86_64-${VERSION}"
+          cp "target/release/${{ matrix.binary-name }}" "dist/mcp-compressor-${{ matrix.artifact-suffix }}-${VERSION}"
 
       - name: Upload Rust CLI binary
         uses: actions/upload-artifact@v4
         with:
-          name: rust-cli-binary
-          path: dist/mcp-compressor-core-linux-x86_64-*
+          name: rust-cli-binary-${{ matrix.artifact-suffix }}
+          path: dist/mcp-compressor-${{ matrix.artifact-suffix }}-*
 
   python-wheel:
-    runs-on: ubuntu-latest
+    name: Python wheel (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact-suffix: linux-x86_64
+          - os: macos-latest
+            artifact-suffix: macos-arm64
+          - os: windows-latest
+            artifact-suffix: windows-x86_64
     steps:
       - name: Check out
         uses: actions/checkout@v6
@@ -55,28 +93,47 @@ jobs:
         run: uvx maturin build --release --out dist
 
       - name: Smoke-test wheel from clean directory
+        shell: bash
         run: |
           python -m venv /tmp/mcp-compressor-wheel-test
-          /tmp/mcp-compressor-wheel-test/bin/python -m pip install --upgrade pip
-          /tmp/mcp-compressor-wheel-test/bin/python -m pip install "${{ github.workspace }}"/python/mcp-compressor/dist/*.whl
-          cd /tmp
-          /tmp/mcp-compressor-wheel-test/bin/python - <<'PY'
-          from mcp_compressor import ToolSpec, compress_tool_listing
+          if [ -x /tmp/mcp-compressor-wheel-test/Scripts/python.exe ]; then
+            VENV_PYTHON=/tmp/mcp-compressor-wheel-test/Scripts/python.exe
+          else
+            VENV_PYTHON=/tmp/mcp-compressor-wheel-test/bin/python
+          fi
+          "$VENV_PYTHON" -m pip install --upgrade pip
+          "$VENV_PYTHON" -m pip install "${{ github.workspace }}"/python/mcp-compressor/dist/*.whl
+          mkdir -p /tmp/mcp-compressor-wheel-import-test
+          cd /tmp/mcp-compressor-wheel-import-test
+          "$VENV_PYTHON" - <<'PY'
+          from mcp_compressor import CompressorClient, ToolSpec, compress_tool_listing
           listing = compress_tool_listing(
               "high",
-              [ToolSpec(name="echo", input_schema={"type": "object", "properties": {"message": {"type": "string"}}})],
+              [ToolSpec(name="echo", description="Echo a message.", input_schema={"type": "object", "properties": {"message": {"type": "string"}}})],
           )
-          assert "echo" in listing
+          assert "echo" in listing and "message" in listing
+          assert CompressorClient is not None
           PY
 
       - name: Upload Python wheel
         uses: actions/upload-artifact@v4
         with:
-          name: python-wheel
+          name: python-wheel-${{ matrix.artifact-suffix }}
           path: python/mcp-compressor/dist/*.whl
 
   typescript-package:
-    runs-on: ubuntu-latest
+    name: TypeScript package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact-suffix: linux-x86_64
+          - os: macos-latest
+            artifact-suffix: macos-arm64
+          - os: windows-latest
+            artifact-suffix: windows-x86_64
     defaults:
       run:
         working-directory: typescript
@@ -86,6 +143,12 @@ jobs:
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -98,17 +161,22 @@ jobs:
           bun run build
           bun run build:native
 
-      - name: Pack and smoke-test package
+      - name: Pack package
+        shell: bash
+        run: bun pm pack --filename /tmp/mcp-compressor-typescript-package.tgz
+
+      - name: Smoke-test packed package
+        shell: bash
         run: |
-          bun pm pack --filename /tmp/mcp-compressor-typescript-package.tgz
+          rm -rf /tmp/mcp-compressor-typescript-package-test
           mkdir -p /tmp/mcp-compressor-typescript-package-test
           cd /tmp/mcp-compressor-typescript-package-test
-          bun init -y >/dev/null
-          bun add --registry https://registry.npmjs.org /tmp/mcp-compressor-typescript-package.tgz
-          bun --eval 'import { CompressorClient, compressToolListing } from "@atlassian/mcp-compressor"; if (typeof CompressorClient !== "function") throw new Error("CompressorClient missing"); const listing = compressToolListing("high", [{ name: "echo", inputSchema: { type: "object", properties: { message: { type: "string" } } } }]); if (!listing.includes("echo")) throw new Error(`bad listing: ${listing}`);'
+          printf '{"type":"module"}\n' > package.json
+          npm install --registry https://registry.npmjs.org /tmp/mcp-compressor-typescript-package.tgz
+          node --input-type=module -e 'import { CompressorClient, createJustBashCommands, compressToolListing } from "@atlassian/mcp-compressor"; if (typeof CompressorClient !== "function") throw new Error("CompressorClient missing"); if (typeof createJustBashCommands !== "function") throw new Error("createJustBashCommands missing"); const listing = compressToolListing("high", [{ name: "echo", inputSchema: { type: "object", properties: { message: { type: "string" } } } }]); if (!listing.includes("echo") || !listing.includes("message")) throw new Error(`bad listing: ${listing}`);'
 
       - name: Upload TypeScript package
         uses: actions/upload-artifact@v4
         with:
-          name: typescript-package
+          name: typescript-package-${{ matrix.artifact-suffix }}
           path: /tmp/mcp-compressor-typescript-package.tgz
