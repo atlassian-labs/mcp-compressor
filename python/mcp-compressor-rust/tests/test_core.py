@@ -10,7 +10,7 @@ from urllib import error, request
 
 import pytest
 
-from mcp_compressor_rust import (
+from mcp_compressor import (
     BackendConfig,
     CompressedSessionConfig,
     CompressorClient,
@@ -226,7 +226,7 @@ def test_high_level_compressor_client_exposes_cli_and_bash_modes(monkeypatch) ->
 
 
 def test_high_level_compressor_client_supports_remote_config_shape() -> None:
-    from mcp_compressor_rust import normalize_servers
+    from mcp_compressor import normalize_servers
 
     backends = normalize_servers(
         {

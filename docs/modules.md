@@ -4,7 +4,7 @@ The Rust-core migration branch no longer documents the legacy `mcp_compressor` P
 
 Rust-backed package API references currently live with their package-specific tests and source:
 
-- `python/mcp-compressor-rust/mcp_compressor_rust/`
+- `python/mcp-compressor-rust/mcp_compressor/`
 - `typescript/src/rust_core.ts`
 - `crates/mcp-compressor-core/`
 

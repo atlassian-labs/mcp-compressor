@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from mcp_compressor_rust.client import CompressorProxy, JustBashCommand
-from mcp_compressor_rust.core import ToolSpec, parse_tool_argv
+from mcp_compressor.client import CompressorProxy, JustBashCommand
+from mcp_compressor.core import ToolSpec, parse_tool_argv
 
 
 @dataclass(frozen=True)

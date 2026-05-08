@@ -136,8 +136,8 @@ jobs:
       - name: Run rust-backed Python package lint and type checks
         working-directory: python/mcp-compressor-rust
         run: |
-          uv run ruff check mcp_compressor_rust tests
-          uv run ty check --project . --python .venv mcp_compressor_rust tests
+          uv run ruff check mcp_compressor tests
+          uv run ty check --project . --python .venv mcp_compressor tests
 
   rust-binary-package:
     runs-on: ubuntu-latest
@@ -205,7 +205,7 @@ jobs:
           /tmp/mcp-compressor-rust-wheel-test/bin/python -m pip install "${{ github.workspace }}"/python/mcp-compressor-rust/dist/*.whl
           cd /tmp
           /tmp/mcp-compressor-rust-wheel-test/bin/python - <<'PY'
-          from mcp_compressor_rust import ToolSpec, compress_tool_listing
+          from mcp_compressor import ToolSpec, compress_tool_listing
 
           listing = compress_tool_listing(
               "high",

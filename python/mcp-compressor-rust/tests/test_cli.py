@@ -4,7 +4,7 @@ import os
 import signal
 from pathlib import Path
 
-from mcp_compressor_rust.cli import main
+from mcp_compressor.cli import main
 
 
 class InterruptingProcess:

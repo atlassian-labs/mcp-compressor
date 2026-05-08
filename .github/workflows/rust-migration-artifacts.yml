@@ -61,7 +61,7 @@ jobs:
           /tmp/mcp-compressor-rust-wheel-test/bin/python -m pip install "${{ github.workspace }}"/python/mcp-compressor-rust/dist/*.whl
           cd /tmp
           /tmp/mcp-compressor-rust-wheel-test/bin/python - <<'PY'
-          from mcp_compressor_rust import ToolSpec, compress_tool_listing
+          from mcp_compressor import ToolSpec, compress_tool_listing
           listing = compress_tool_listing(
               "high",
               [ToolSpec(name="echo", input_schema={"type": "object", "properties": {"message": {"type": "string"}}})],

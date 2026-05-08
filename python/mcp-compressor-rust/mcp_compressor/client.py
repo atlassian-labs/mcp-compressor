@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib import request
 
-from mcp_compressor_rust.core import (
+from mcp_compressor.core import (
     BackendConfig,
     CompressedSession,
     CompressedSessionConfig,

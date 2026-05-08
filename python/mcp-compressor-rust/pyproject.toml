@@ -7,7 +7,7 @@ requires-python = ">=3.11,<4.0"
 authors = [{ name = "Tim Esler", email = "tesler@atlassian.com" }]
 
 [project.scripts]
-mcp-compressor-rust = "mcp_compressor_rust.cli:entrypoint"
+mcp-compressor-rust = "mcp_compressor.cli:entrypoint"
 
 [project.urls]
 Homepage = "https://atlassian-labs.github.io/mcp-compressor/"
@@ -20,7 +20,7 @@ build-backend = "maturin"
 [tool.maturin]
 manifest-path = "../../crates/mcp-compressor-python/Cargo.toml"
 python-source = "."
-module-name = "mcp_compressor_rust._mcp_compressor_core"
+module-name = "mcp_compressor._native"
 features = ["pyo3/extension-module"]
 
 [dependency-groups]
