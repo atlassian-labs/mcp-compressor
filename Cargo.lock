@@ -1034,6 +1034,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
+name = "mcp-compressor"
+version = "0.1.0"
+dependencies = [
+ "mcp-compressor-core",
+]
+
+[[package]]
 name = "mcp-compressor-core"
 version = "0.1.0"
 dependencies = [

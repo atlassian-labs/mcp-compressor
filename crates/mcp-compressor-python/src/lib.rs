@@ -130,7 +130,7 @@ fn clear_oauth_credentials_json(target: Option<&str>) -> PyResult<String> {
 }
 
 #[pymodule]
-fn _mcp_compressor_core(module: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyCompressedSession>()?;
     module.add_function(wrap_pyfunction!(compress_tool_listing_json, module)?)?;
     module.add_function(wrap_pyfunction!(format_tool_schema_response_json, module)?)?;

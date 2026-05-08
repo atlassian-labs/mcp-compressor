@@ -10,7 +10,7 @@ The primary SDK object is `CompressorClient`. It starts a Rust-backed local prox
 
 
 ```python
-from mcp_compressor_rust import CompressorClient
+from mcp_compressor import CompressorClient
 
 servers = {
     "alpha": {
@@ -88,7 +88,7 @@ uvx maturin build --release --out dist
 python -m venv /tmp/mcp-compressor-rust-wheel-test
 /tmp/mcp-compressor-rust-wheel-test/bin/python -m pip install "$PWD"/dist/*.whl
 cd /tmp
-/tmp/mcp-compressor-rust-wheel-test/bin/python -c "from mcp_compressor_rust import CompressorClient, ToolSpec"
+/tmp/mcp-compressor-rust-wheel-test/bin/python -c "from mcp_compressor import CompressorClient, ToolSpec"
 ```
 
 CI runs the same kind of wheel smoke test before uploading the built wheel as an artifact.

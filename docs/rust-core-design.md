@@ -768,7 +768,7 @@ The Rust-backed Python package is intentionally separate from the existing legac
 ```
 python/mcp-compressor-rust/
 ├── pyproject.toml              # maturin-backed Python package config
-├── mcp_compressor_rust/
+├── mcp_compressor/
 │   ├── __init__.py
 │   └── core.py                 # thin wrappers around native extension helpers
 └── tests/
@@ -787,13 +787,13 @@ This gives CI a real wheel/import path for Rust-backed Python functionality. PyO
 
 On the migration trunk, the legacy top-level `mcp_compressor/` package is removed. The Rust-backed package publishes under `mcp-compressor-rust` for now, with a `mcp-compressor-rust` console script that delegates to the Rust core binary. This avoids overwriting the existing published Python package until the migration is ready for a final cutover.
 
-#### Rust SDK (`mcp_compressor_core::sdk`)
+#### Rust SDK (`mcp_compressor::sdk`)
 
 The Rust core crate exposes a high-level SDK that mirrors the Python and TypeScript client concepts:
 
 ```rust
-use mcp_compressor_core::compression::CompressionLevel;
-use mcp_compressor_core::sdk::{CompressorClient, ServerConfig};
+use mcp_compressor::compression::CompressionLevel;
+use mcp_compressor::sdk::{CompressorClient, ServerConfig};
 use serde_json::json;
 
 let client = CompressorClient::builder()

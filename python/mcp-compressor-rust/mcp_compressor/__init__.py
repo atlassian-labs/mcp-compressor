@@ -1,6 +1,6 @@
 """Rust-backed Python API for mcp-compressor."""
 
-from mcp_compressor_rust.client import (
+from mcp_compressor.client import (
     CompressorClient,
     CompressorProxy,
     JustBashCommand,
@@ -9,7 +9,7 @@ from mcp_compressor_rust.client import (
     ProxyTool,
     normalize_servers,
 )
-from mcp_compressor_rust.core import (
+from mcp_compressor.core import (
     BackendConfig,
     CompressedSession,
     CompressedSessionConfig,
@@ -23,7 +23,7 @@ from mcp_compressor_rust.core import (
     start_compressed_session,
     start_compressed_session_from_mcp_config,
 )
-from mcp_compressor_rust.just_bash_host import JustBashCallableCommand, create_just_bash_commands
+from mcp_compressor.just_bash_host import JustBashCallableCommand, create_just_bash_commands
 
 __all__ = [
     "BackendConfig",

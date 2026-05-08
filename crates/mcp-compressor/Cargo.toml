@@ -1,0 +1,7 @@
+[package]
+name    = "mcp-compressor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mcp-compressor-core = { path = "../mcp-compressor-core" }
