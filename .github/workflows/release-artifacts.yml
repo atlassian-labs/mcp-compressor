@@ -1,4 +1,4 @@
-name: Rust Migration Artifacts
+name: Release Artifacts
 
 on:
   workflow_dispatch:

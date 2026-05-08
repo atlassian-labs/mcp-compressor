@@ -237,7 +237,7 @@ Status as of 2026-05-07 on `rust-core-migration-trunk`:
 
 ### Recommended next implementation order
 
-1. Harden packaging/release automation for Rust-backed Python wheels, TypeScript native addon artifacts, and the Rust binary. CI now includes smoke jobs for Python wheels, TypeScript package artifacts, and the Rust CLI binary. A manual `Rust Migration Artifacts` workflow builds all three artifact classes together without publishing.
+1. Harden packaging/release automation for Rust-backed Python wheels, TypeScript native addon artifacts, and the Rust binary. CI now includes smoke jobs for Python wheels, TypeScript package artifacts, and the Rust CLI binary. A `Release Artifacts` workflow builds all three artifact classes together without publishing.
 2. Finish Just Bash integration around Rust provider specs and language-hosted Just Bash execution.
 3. Continue OAuth hardening against real hosted MCP servers.
 4. Add final API/reference docs for the Rust, Python, TypeScript SDKs, generated-client modes, and migration/cutover behavior.
