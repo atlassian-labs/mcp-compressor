@@ -20,8 +20,10 @@ mcp-compressor --help
 | `--transport <stdio|streamable-http>` | Frontend MCP transport. |
 | `--port <port>` | Port for streamable HTTP frontend. Use `0` for OS-selected. |
 | `--cli-mode` | Generate a shell CLI and run a local proxy. |
-| `--python-mode` | Start Python Code Mode: generate a Python client and run a local proxy. |
-| `--typescript-mode` | Start TypeScript Code Mode: generate a TypeScript client and run a local proxy. |
+| `--code-mode python` | Start Python Code Mode: generate a Python client and run a local proxy. |
+| `--code-mode typescript` | Start TypeScript Code Mode: generate a TypeScript client and run a local proxy. |
+| `--python-mode` | Deprecated alias for `--code-mode python`. |
+| `--typescript-mode` | Deprecated alias for `--code-mode typescript`. |
 | `--just-bash-mode` | Expose Just Bash command metadata and run a local proxy. |
 | `--output-dir <path>` | Output directory for generated clients/scripts. |
 

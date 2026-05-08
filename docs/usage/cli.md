@@ -57,9 +57,9 @@ mcp-compressor --cli-mode --server-name alpha --output-dir ./bin -- python serve
 Code Mode generates Python or TypeScript functions for backend MCP tools while keeping the local Rust proxy alive.
 
 ```bash
-mcp-compressor --python-mode --server-name atlassian --output-dir ./generated-py -- https://mcp.atlassian.com/v1/mcp
+mcp-compressor --code-mode python --server-name atlassian --output-dir ./generated-py -- https://mcp.atlassian.com/v1/mcp
 
-mcp-compressor --typescript-mode --server-name atlassian --output-dir ./generated-ts -- https://mcp.atlassian.com/v1/mcp
+mcp-compressor --code-mode typescript --server-name atlassian --output-dir ./generated-ts -- https://mcp.atlassian.com/v1/mcp
 ```
 
 See [Code Mode and generated clients](generated-clients.md) for examples of generated functions and agent usage.

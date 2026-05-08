@@ -36,7 +36,7 @@ All generated clients require the proxy session to stay alive while they are use
 === "Python Code Mode"
 
     ```bash
-    mcp-compressor --python-mode \
+    mcp-compressor --code-mode python \
       --server-name atlassian \
       --output-dir ./generated-py \
       -- https://mcp.atlassian.com/v1/mcp
@@ -51,7 +51,7 @@ All generated clients require the proxy session to stay alive while they are use
 === "TypeScript Code Mode"
 
     ```bash
-    mcp-compressor --typescript-mode \
+    mcp-compressor --code-mode typescript \
       --server-name atlassian \
       --output-dir ./generated-ts \
       -- https://mcp.atlassian.com/v1/mcp
