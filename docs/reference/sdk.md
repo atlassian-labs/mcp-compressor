@@ -1,0 +1,44 @@
+# SDK reference overview
+
+This page is a human-oriented map of the main SDK objects. Generated API references can be added once the migration package layout is finalized.
+
+## Shared concepts
+
+| Concept | Python | TypeScript | Rust |
+|---|---|---|---|
+| High-level client | `CompressorClient` | `CompressorClient` | `CompressorClient` |
+| Connected proxy/session | `CompressorProxy` | `CompressorProxy` | `CompressorProxy` |
+| Tool metadata | `ToolSpec`, `ProxyTool` | `ToolSpec`, `ProxyTool` | `Tool` |
+| Just Bash provider | `JustBashProvider` | `JustBashProvider` | `JustBashProviderSpec` |
+| Generated client kind | string: `cli`, `python`, `typescript` | string union | `GeneratedClientKind` |
+
+## Python imports
+
+```python
+from mcp_compressor_rust import (
+    CompressorClient,
+    ToolSpec,
+    create_just_bash_commands,
+)
+```
+
+## TypeScript imports
+
+```ts
+import {
+  CompressorClient,
+  type ToolSpec,
+  createJustBashCommands,
+} from "@atlassian/mcp-compressor";
+```
+
+## Rust imports
+
+```rust
+use mcp_compressor_core::compression::CompressionLevel;
+use mcp_compressor_core::sdk::{
+    CompressorClient,
+    GeneratedClientKind,
+    ServerConfig,
+};
+```
