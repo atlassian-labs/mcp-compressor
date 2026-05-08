@@ -2,11 +2,12 @@ import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { request } from "node:http";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { tmpdir } from "node:os";
+import { Bash } from "just-bash";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { CompressorClient, normalizeServers } from "../src/index.js";
+import { CompressorClient, createJustBashCommands, normalizeServers } from "../src/index.js";
 
 import {
   compressToolListing,
@@ -556,6 +557,16 @@ describe("Rust native core wrapper", () => {
           invokeToolName: "alpha_invoke_tool",
         }),
       );
+      const registrations = createJustBashCommands(bashProxy);
+      const bash = new Bash({
+        customCommands: registrations.map((registration) => registration.command),
+      });
+      expect(registrations.map((registration) => registration.commandName)).toEqual(
+        expect.arrayContaining(["alpha_echo", "beta_echo"]),
+      );
+      const result = await bash.exec("alpha_echo --message via-bash");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe("alpha:via-bash");
     } finally {
       await bashClient.close();
     }

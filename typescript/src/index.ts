@@ -1,6 +1,7 @@
 export { VERSION } from "./version.js";
 export * from "./errors.js";
 export * from "./rust_core.js";
+export * from "./just_bash_host.js";
 export {
   type GeneratedClientKind,
   type JustBashCommand,
