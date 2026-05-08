@@ -6,12 +6,12 @@
       "name": "mcp-compressor",
       "dependencies": {
         "commander": "^14.0.3",
+        "just-bash": "^2.14.0",
         "zod": "^4.1.13",
       },
       "devDependencies": {
         "@napi-rs/cli": "^3.3.4",
         "@types/node": "^24.10.1",
-        "just-bash": "^2.14.0",
         "oxfmt": "^0.44.0",
         "oxlint": "^1.59.0",
         "typescript": "^5.9.3",
