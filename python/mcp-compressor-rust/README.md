@@ -60,7 +60,13 @@ with CompressorClient(servers=servers, mode="bash") as proxy:
         print(provider.provider_name, provider.help_tool_name)
         for command in provider.tools:
             print(command.command_name, command.backend_tool_name, command.invoke_tool_name)
+
+    # Python hosts can also create callable command objects from the metadata.
+    commands = {cmd.command_name: cmd for cmd in create_just_bash_commands(proxy)}
+    print(commands["atlassian_get-accessible-atlassian-resources"]([]))
 ```
+
+Duplicate backend command names are prefixed with the provider name, for example `alpha_echo` and `beta_echo`.
 
 ## Generated clients
 
