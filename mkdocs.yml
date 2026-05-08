@@ -9,9 +9,28 @@ copyright: Maintained by <a href="https://atlassian.com">atlassian</a>.
 
 nav:
   - Home: index.md
-  - TypeScript: typescript.md
-  - Rust Core Design: rust-core-design.md
-  - Modules: modules.md
+  - Getting started:
+      - Installation: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
+  - Concepts:
+      - How it works: concepts/how-it-works.md
+      - Configuration: concepts/configuration.md
+  - Usage:
+      - CLI: usage/cli.md
+      - SDKs: usage/sdks.md
+      - Generated clients: usage/generated-clients.md
+      - Just Bash: usage/just-bash.md
+      - Remote servers and auth: usage/auth-and-remote.md
+  - Examples:
+      - Atlassian MCP: examples/atlassian.md
+  - Reference:
+      - CLI reference: reference/cli.md
+      - SDK reference: reference/sdk.md
+      - API status: reference/api-status.md
+      - API modules: modules.md
+  - Development:
+      - Rust migration: development/rust-migration.md
+      - Rust core design: rust-core-design.md
 plugins:
   - search
   - include-markdown
@@ -20,8 +39,10 @@ theme:
   name: material
   logo: https://raw.githubusercontent.com/atlassian-forks/SWE-PolyBench/refs/heads/main/rovo-dev-logo.svg
   favicon: https://raw.githubusercontent.com/atlassian-forks/SWE-PolyBench/refs/heads/main/rovo-dev-logo.svg
-  feature:
-    tabs: true
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - content.code.copy
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -50,6 +71,10 @@ extra:
 markdown_extensions:
   - toc:
       permalink: true
+  - admonition
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.arithmatex:
       generic: true
   - pymdownx.superfences:
