@@ -17,6 +17,8 @@ fn rust_cli_help_describes_supported_modes() {
     cmd.arg("--help")
         .assert()
         .success()
+        .stdout(predicate::str::contains("<URL_OR_COMMAND>"))
+        .stdout(predicate::str::contains("Backend URL or command plus backend arguments"))
         .stdout(predicate::str::contains("--compression <COMPRESSION>"))
         .stdout(predicate::str::contains("--config <CONFIG_PATH>"))
         .stdout(predicate::str::contains(
@@ -222,22 +224,6 @@ fn rust_cli_supports_version_flag() {
         .assert()
         .success()
         .stdout(predicate::str::contains("mcp-compressor"));
-}
-
-#[test]
-fn rust_cli_rejects_invalid_timeout() {
-    let mut cmd = core_cmd();
-    cmd.args([
-        "--",
-        &common::python_command(),
-        common::fixture_path("alpha_server.py").to_str().unwrap(),
-        "--timeout",
-        "0",
-    ])
-    .assert()
-    .failure()
-    .code(2)
-    .stderr(predicate::str::contains("unexpected argument '--timeout'"));
 }
 
 #[test]

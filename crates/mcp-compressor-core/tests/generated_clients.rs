@@ -9,6 +9,16 @@ use mcp_compressor_core::client_gen::{ClientGenerator, GeneratorConfig};
 use mcp_compressor_core::proxy::{RunningToolProxy, ToolProxyServer};
 use mcp_compressor_core::server::CompressedServer;
 
+async fn real_backend_tools() -> Vec<mcp_compressor_core::compression::engine::Tool> {
+    let compressed = CompressedServer::connect_stdio(
+        common::max_config(Some("alpha")),
+        common::backend("alpha", "alpha_server.py"),
+    )
+    .await
+    .unwrap();
+    compressed.backend_tools()
+}
+
 async fn running_proxy_config(output_dir: &std::path::Path) -> (GeneratorConfig, RunningToolProxy) {
     let compressed = CompressedServer::connect_stdio(
         common::max_config(Some("alpha")),
@@ -38,6 +48,37 @@ async fn running_proxy_config(output_dir: &std::path::Path) -> (GeneratorConfig,
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn generated_cli_script_handles_structured_json_arguments() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let (config, _proxy) = running_proxy_config(tempdir.path()).await;
+    let mut config = config;
+    config.tools = real_backend_tools().await;
+
+    CliGenerator.generate(&config).unwrap();
+    let script = tempdir.path().join("alpha");
+
+    let output = std::process::Command::new(&script)
+        .args([
+            "summarize-payload",
+            "--items",
+            "[\"one\",\"two\"]",
+            "--metadata",
+            "{\"source\":\"generated-cli\",\"ok\":true}",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("item_count"));
+    assert!(stdout.contains("generated-cli"));
+}
+
+#[tokio::test]
 async fn generated_cli_script_invokes_real_proxy_and_backend() {
     let tempdir = tempfile::tempdir().unwrap();
     let (config, _proxy) = running_proxy_config(tempdir.path()).await;

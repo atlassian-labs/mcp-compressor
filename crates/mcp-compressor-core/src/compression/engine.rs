@@ -145,8 +145,17 @@ fn format_args(tool: &Tool) -> String {
 }
 
 fn first_sentence_description(tool: &Tool) -> Option<&str> {
-    let description = tool.description.as_deref()?;
-    let first_line = description.lines().next().unwrap_or_default();
+    let description = tool.description.as_deref()?.trim();
+    let first_paragraph = description
+        .split("\n\n")
+        .map(str::trim)
+        .find(|paragraph| !paragraph.is_empty())
+        .unwrap_or(description);
+    let first_line = first_paragraph
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or(first_paragraph);
     Some(first_line.split('.').next().unwrap_or_default().trim())
 }
 
@@ -263,6 +272,22 @@ mod tests {
         let out = engine.format_tool(&multiline_tool());
         // "First line description.\nSecond line..." → first line → before "." → "First line description"
         assert_eq!(out, "<tool>multiline(x): First line description</tool>");
+    }
+
+    #[test]
+    fn format_tool_low_and_medium_differ_for_paragraph_descriptions() {
+        let tool = Tool::new(
+            "search",
+            Some("\n\nSearch the web.\n\nLonger details that should only appear at low verbosity.".to_string()),
+            json!({}),
+        );
+        let low = CompressionEngine::new(CompressionLevel::Low);
+        let medium = CompressionEngine::new(CompressionLevel::Medium);
+
+        assert!(low
+            .format_tool(&tool)
+            .contains("Longer details that should only appear at low verbosity"));
+        assert_eq!(medium.format_tool(&tool), "<tool>search(): Search the web</tool>");
     }
 
     /// At Medium, a tool with no description renders without a description suffix.

@@ -28,6 +28,19 @@ function failure(error: unknown): ExecResult {
   return { stdout: "", stderr: `${message}\n`, exitCode: 1 };
 }
 
+export function installJustBashCommands(
+  bash: unknown,
+  proxy: CompressorProxy,
+): JustBashCommandRegistration[] {
+  const registrations = createJustBashCommands(proxy);
+  const host = bash as { customCommands?: Command[] };
+  host.customCommands = [
+    ...(host.customCommands ?? []),
+    ...registrations.map((item) => item.command),
+  ];
+  return registrations;
+}
+
 export function createJustBashCommands(proxy: CompressorProxy): JustBashCommandRegistration[] {
   const rawNames = proxy.justBashProviders.flatMap((provider) =>
     provider.tools.map((tool) => tool.commandName),

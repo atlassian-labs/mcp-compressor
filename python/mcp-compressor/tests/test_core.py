@@ -18,6 +18,7 @@ from mcp_compressor import (
     compress_tool_listing,
     create_just_bash_commands,
     format_tool_schema_response,
+    install_just_bash_commands,
     parse_mcp_config,
     parse_tool_argv,
     start_compressed_session,
@@ -223,6 +224,15 @@ def test_high_level_compressor_client_exposes_cli_and_bash_modes(monkeypatch) ->
         commands = {command.command_name: command for command in create_just_bash_commands(proxy)}
         assert {"alpha_echo", "beta_echo"}.issubset(commands)
         assert commands["alpha_echo"](["--message", "via-python-bash"]) == "alpha:via-python-bash"
+
+        class ExistingBashHost:
+            def __init__(self) -> None:
+                self.custom_commands: dict[str, object] = {}
+
+        host = ExistingBashHost()
+        installed = install_just_bash_commands(host, proxy)
+        assert {command.command_name for command in installed}.issuperset({"alpha_echo", "beta_echo"})
+        assert "alpha_echo" in host.custom_commands
 
 
 def test_high_level_compressor_client_supports_remote_config_shape() -> None:

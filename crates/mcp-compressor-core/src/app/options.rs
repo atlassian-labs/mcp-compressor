@@ -12,7 +12,8 @@ use crate::server::{BackendServerConfig, ProxyTransformMode};
     name = "mcp-compressor",
     about = "Standalone Rust MCP compressor core binary",
     disable_help_subcommand = true,
-    version
+    version,
+    override_usage = "mcp-compressor [OPTIONS] [COMMAND] -- <URL_OR_COMMAND> [BACKEND_ARGS]..."
 )]
 pub struct CliOptions {
     #[command(subcommand)]
@@ -86,8 +87,8 @@ pub struct CliOptions {
     #[arg(long, default_value_t = 8000)]
     pub port: u16,
 
-    /// Backend command, URL, and arguments. All backend server arguments belong after `--`.
-    #[arg(value_name = "COMMAND", allow_hyphen_values = true, last = true)]
+    /// Backend URL or command plus backend arguments. All backend server arguments belong after `--`.
+    #[arg(value_name = "URL_OR_COMMAND", allow_hyphen_values = true, last = true)]
     pub command: Vec<String>,
 }
 
