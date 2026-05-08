@@ -29,7 +29,7 @@ PYTHON="$PWD/.venv/bin/python" cargo test -p mcp-compressor-core --lib -- --noca
 Python package:
 
 ```bash
-cd python/mcp-compressor-rust
+cd python/mcp-compressor
 uv run maturin develop
 uv run pytest -q tests
 ```

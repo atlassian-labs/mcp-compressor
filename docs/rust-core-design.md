@@ -229,7 +229,7 @@ Status as of 2026-05-07 on `rust-core-migration-trunk`:
 - **Richer generated CLI help parity remains optional.** Current help is close to Python's top-level/subcommand shape, but argument descriptions, required/optional labels, type/default rendering, and edge-case formatting can still improve.
 - **Python/TypeScript/Rust SDK cutover is now substantially implemented on the migration trunk:**
   - `mcp-compressor-core` keeps pure Rust runtime, SDK, and JSON-serializable FFI helper surfaces; it does not depend on PyO3 or napi-rs.
-  - `python/mcp-compressor-rust` exposes a high-level `CompressorClient` backed by the `crates/mcp-compressor-python` PyO3 extension crate.
+  - `python/mcp-compressor` exposes a high-level `CompressorClient` backed by the `crates/mcp-compressor-python` PyO3 extension crate.
   - `typescript/` now exposes the Rust-backed `CompressorClient` as the root TypeScript SDK and has removed the legacy TypeScript runtime/client/server implementation from the migration trunk.
   - `crates/mcp-compressor-core::sdk` exposes a Rust `CompressorClient` / `CompressorProxy` wrapper aligned with the Python and TypeScript SDK concepts.
   - Real-world Atlassian MCP tests cover CLI, native Python/TS high-level SDKs, and generated Python/TS clients.
@@ -761,12 +761,12 @@ crates/mcp-compressor-core/
         └── types.rs             # language-neutral JSON DTOs and helper surface for binding crates
 ```
 
-#### Rust-backed Python package (`python/mcp-compressor-rust/`)
+#### Rust-backed Python package (`python/mcp-compressor/`)
 
 The Rust-backed Python package is intentionally separate from the existing legacy package while parity is proven.
 
 ```
-python/mcp-compressor-rust/
+python/mcp-compressor/
 ├── pyproject.toml              # maturin-backed Python package config
 ├── mcp_compressor/
 │   ├── __init__.py
@@ -825,9 +825,9 @@ cargo build -p mcp-compressor-core --release
 MCP_COMPRESSOR_EXIT_AFTER_READY=1 target/release/mcp-compressor-core \
   --cli-mode \
   --server-name alpha \
-  --output-dir /tmp/mcp-compressor-rust-bin-smoke \
+  --output-dir /tmp/mcp-compressor-bin-smoke \
   -- python3 crates/mcp-compressor-core/tests/fixtures/alpha_server.py
-test -x /tmp/mcp-compressor-rust-bin-smoke/alpha
+test -x /tmp/mcp-compressor-bin-smoke/alpha
 ```
 
 The Rust CLI should support the same high-level modes as the wrappers:

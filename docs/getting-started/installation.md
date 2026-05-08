@@ -19,7 +19,7 @@ The CLI is provided by the Rust binary.
 === "Python wrapper"
 
     ```bash
-    cd python/mcp-compressor-rust
+    cd python/mcp-compressor
     uv sync --group dev
     uv run maturin develop
     uv run mcp-compressor-rust --help
@@ -38,7 +38,7 @@ The CLI is provided by the Rust binary.
 ## Python SDK
 
 ```bash
-cd python/mcp-compressor-rust
+cd python/mcp-compressor
 uv sync --group dev
 uv run maturin develop
 ```

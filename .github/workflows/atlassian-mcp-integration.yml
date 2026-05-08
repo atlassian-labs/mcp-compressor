@@ -37,7 +37,7 @@ jobs:
         run: cargo build -p mcp-compressor-core
 
       - name: Build Rust-backed Python extension
-        working-directory: python/mcp-compressor-rust
+        working-directory: python/mcp-compressor
         run: |
           uv sync --frozen --group dev
           uv run maturin develop
