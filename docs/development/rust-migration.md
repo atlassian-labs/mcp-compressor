@@ -48,4 +48,4 @@ bun run check
 - Rust binary smoke is in CI.
 - Python wheel smoke is in CI.
 - TypeScript package/native-addon smoke is in CI.
-- A manual `Rust Migration Artifacts` workflow builds all three artifact classes together.
+- A `Release Artifacts` workflow builds all three artifact classes together.
