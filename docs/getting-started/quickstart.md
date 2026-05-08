@@ -15,7 +15,7 @@ This quickstart uses a local MCP server command. Replace it with any stdio MCP s
 === "Python"
 
     ```python
-    from mcp_compressor_rust import CompressorClient
+    from mcp_compressor import CompressorClient
 
     with CompressorClient(
         servers={"local": {"command": "python", "args": ["server.py"]}},
@@ -48,8 +48,8 @@ This quickstart uses a local MCP server command. Replace it with any stdio MCP s
 === "Rust"
 
     ```rust
-    use mcp_compressor_core::compression::CompressionLevel;
-    use mcp_compressor_core::sdk::{CompressorClient, ServerConfig};
+    use mcp_compressor::compression::CompressionLevel;
+    use mcp_compressor::sdk::{CompressorClient, ServerConfig};
     use serde_json::json;
 
     let proxy = CompressorClient::builder()
@@ -64,25 +64,19 @@ This quickstart uses a local MCP server command. Replace it with any stdio MCP s
 
 ## Remote MCP server
 
-For a remote streamable HTTP backend, pass a URL and any required headers.
+For a remote streamable HTTP backend, pass a URL. If the server requires OAuth and no explicit `Authorization` header is provided, `mcp-compressor` starts the OAuth flow.
 
 === "CLI"
 
     ```bash
-    mcp-compressor -c medium -- https://mcp.example.com/v1/mcp \
-      -H "Authorization=Bearer ${TOKEN}"
+    mcp-compressor -c medium -- https://mcp.example.com/v1/mcp
     ```
 
 === "Python"
 
     ```python
     with CompressorClient(
-        servers={
-            "remote": {
-                "url": "https://mcp.example.com/v1/mcp",
-                "headers": {"Authorization": f"Bearer {token}"},
-            }
-        },
+        servers={"remote": {"url": "https://mcp.example.com/v1/mcp"}},
         compression_level="medium",
     ) as proxy:
         print(proxy.tools)
@@ -92,12 +86,7 @@ For a remote streamable HTTP backend, pass a URL and any required headers.
 
     ```ts
     const proxy = await new CompressorClient({
-      servers: {
-        remote: {
-          url: "https://mcp.example.com/v1/mcp",
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      },
+      servers: { remote: { url: "https://mcp.example.com/v1/mcp" } },
       compressionLevel: "medium",
     }).connect();
     ```
@@ -106,11 +95,7 @@ For a remote streamable HTTP backend, pass a URL and any required headers.
 
     ```rust
     let proxy = CompressorClient::builder()
-        .server(
-            "remote",
-            ServerConfig::url("https://mcp.example.com/v1/mcp")
-                .header("Authorization", format!("Bearer {token}")),
-        )
+        .server("remote", ServerConfig::url("https://mcp.example.com/v1/mcp"))
         .compression_level(CompressionLevel::Medium)
         .build()
         .connect()

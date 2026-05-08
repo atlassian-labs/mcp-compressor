@@ -46,7 +46,7 @@ uv run maturin develop
 Then:
 
 ```python
-from mcp_compressor_rust import CompressorClient
+from mcp_compressor import CompressorClient
 ```
 
 ## TypeScript SDK
@@ -75,5 +75,5 @@ mcp-compressor-core = { path = "crates/mcp-compressor-core" }
 Use:
 
 ```rust
-use mcp_compressor_core::sdk::CompressorClient;
+use mcp_compressor::sdk::CompressorClient;
 ```

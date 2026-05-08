@@ -37,7 +37,7 @@ try {
 ## Python host helper
 
 ```python
-from mcp_compressor_rust import CompressorClient, create_just_bash_commands
+from mcp_compressor import CompressorClient, create_just_bash_commands
 
 with CompressorClient(servers=servers, mode="bash") as proxy:
     commands = {command.command_name: command for command in create_just_bash_commands(proxy)}

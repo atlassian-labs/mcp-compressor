@@ -15,7 +15,7 @@ This page is a human-oriented map of the main SDK objects. Generated API referen
 ## Python imports
 
 ```python
-from mcp_compressor_rust import (
+from mcp_compressor import (
     CompressorClient,
     ToolSpec,
     create_just_bash_commands,
@@ -35,8 +35,8 @@ import {
 ## Rust imports
 
 ```rust
-use mcp_compressor_core::compression::CompressionLevel;
-use mcp_compressor_core::sdk::{
+use mcp_compressor::compression::CompressionLevel;
+use mcp_compressor::sdk::{
     CompressorClient,
     GeneratedClientKind,
     ServerConfig,
