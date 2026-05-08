@@ -13,7 +13,7 @@ The CLI is provided by the Rust binary.
 
     ```bash
     cargo build -p mcp-compressor-core --release
-    ./target/release/mcp-compressor-core --help
+    ./target/release/mcp-compressor --help
     ```
 
 === "Python wrapper"

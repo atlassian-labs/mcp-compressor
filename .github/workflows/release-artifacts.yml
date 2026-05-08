@@ -25,13 +25,13 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact-suffix: linux-x86_64
-            binary-name: mcp-compressor-core
+            binary-name: mcp-compressor
           - os: macos-latest
             artifact-suffix: macos-arm64
-            binary-name: mcp-compressor-core
+            binary-name: mcp-compressor
           - os: windows-latest
             artifact-suffix: windows-x86_64
-            binary-name: mcp-compressor-core.exe
+            binary-name: mcp-compressor.exe
     steps:
       - name: Check out
         uses: actions/checkout@v6

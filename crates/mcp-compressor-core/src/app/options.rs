@@ -10,7 +10,7 @@ use crate::server::{BackendServerConfig, ProxyTransformMode};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "mcp-compressor-core",
+    name = "mcp-compressor",
     about = "Standalone Rust MCP compressor core binary",
     disable_help_subcommand = true
 )]

@@ -26,7 +26,7 @@ TOKEN_ENV = "ATLASSIAN_MCP_BASIC_TOKEN"
 SAFE_TOOL = "getAccessibleAtlassianResources"
 SAFE_PYTHON_FUNCTION = "get_accessible_atlassian_resources"
 SAFE_SUBCOMMAND = "get-accessible-atlassian-resources"
-CORE_BIN = ROOT / "target" / "debug" / "mcp-compressor-core"
+CORE_BIN = ROOT / "target" / "debug" / "mcp-compressor"
 
 
 def _token() -> str:

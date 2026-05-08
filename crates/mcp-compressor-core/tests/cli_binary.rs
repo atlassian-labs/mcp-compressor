@@ -8,7 +8,7 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 
 fn core_cmd() -> Command {
-    Command::cargo_bin("mcp-compressor-core").unwrap()
+    Command::cargo_bin("mcp-compressor").unwrap()
 }
 
 #[test]
@@ -217,7 +217,7 @@ fn rust_cli_mode_honors_explicit_output_dir() {
 fn rust_cli_mode_manual_flow_generates_script_that_invokes_backend() {
     let tempdir = tempfile::tempdir().unwrap();
     let output_dir = tempdir.path().join("generated");
-    let mut child = StdCommand::new(assert_cmd::cargo::cargo_bin("mcp-compressor-core"))
+    let mut child = StdCommand::new(assert_cmd::cargo::cargo_bin("mcp-compressor"))
         .env("MCP_COMPRESSOR_CLI_OUTPUT_DIR", &output_dir)
         .args([
             "--cli-mode",

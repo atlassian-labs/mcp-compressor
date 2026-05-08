@@ -218,10 +218,10 @@ function parseClearOAuthArgs(args: string[]): { target?: string; all: boolean } 
 
 function candidateCoreBinaries(): string[] {
   const candidates: string[] = [];
-  if (process.env.MCP_COMPRESSOR_CORE_BINARY) {
-    candidates.push(process.env.MCP_COMPRESSOR_CORE_BINARY);
+  if (process.env.MCP_COMPRESSOR_BINARY) {
+    candidates.push(process.env.MCP_COMPRESSOR_BINARY);
   }
-  candidates.push("mcp-compressor-core");
+  candidates.push("mcp-compressor");
   const here = dirname(fileURLToPath(import.meta.url));
   candidates.push(
     join(
@@ -230,7 +230,7 @@ function candidateCoreBinaries(): string[] {
       "..",
       "target",
       "debug",
-      process.platform === "win32" ? "mcp-compressor-core.exe" : "mcp-compressor-core",
+      process.platform === "win32" ? "mcp-compressor.exe" : "mcp-compressor",
     ),
   );
   candidates.push(
@@ -239,7 +239,7 @@ function candidateCoreBinaries(): string[] {
       "..",
       "target",
       "debug",
-      process.platform === "win32" ? "mcp-compressor-core.exe" : "mcp-compressor-core",
+      process.platform === "win32" ? "mcp-compressor.exe" : "mcp-compressor",
     ),
   );
   return candidates;
@@ -255,7 +255,7 @@ function translateArgsForRust(args: string[]): string[] {
 
 async function runRustCoreCli(args: string[]): Promise<number> {
   for (const binary of candidateCoreBinaries()) {
-    if (binary !== "mcp-compressor-core" && !existsSync(binary)) {
+    if (binary !== "mcp-compressor" && !existsSync(binary)) {
       continue;
     }
     const child = spawn(binary, translateArgsForRust(args), { stdio: "inherit" });
@@ -277,7 +277,7 @@ async function runRustCoreCli(args: string[]): Promise<number> {
     });
   }
   console.error(
-    "mcp-compressor-core binary was not found. Build it with `cargo build -p mcp-compressor-core` or set MCP_COMPRESSOR_CORE_BINARY.",
+    "mcp-compressor binary was not found. Build it with `cargo build -p mcp-compressor-core` or set MCP_COMPRESSOR_BINARY.",
   );
   return 127;
 }

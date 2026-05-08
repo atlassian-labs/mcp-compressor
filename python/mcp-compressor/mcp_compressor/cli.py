@@ -10,12 +10,12 @@ from pathlib import Path
 
 
 def _candidate_binaries() -> list[str]:
-    env_binary = os.environ.get("MCP_COMPRESSOR_CORE_BINARY")
+    env_binary = os.environ.get("MCP_COMPRESSOR_BINARY") or os.environ.get("MCP_COMPRESSOR_CORE_BINARY")
     candidates: list[str] = []
     if env_binary:
         return [env_binary]
-    candidates.append("mcp-compressor-core")
-    repo_binary = Path(__file__).resolve().parents[3] / "target" / "debug" / "mcp-compressor-core"
+    candidates.append("mcp-compressor")
+    repo_binary = Path(__file__).resolve().parents[3] / "target" / "debug" / "mcp-compressor"
     candidates.append(str(repo_binary))
     return candidates
 
@@ -45,8 +45,8 @@ def main(argv: list[str] | None = None) -> int:
             last_error = exc
             continue
     print(
-        "mcp-compressor-core binary was not found. Build it with `cargo build -p mcp-compressor-core` "
-        "or set MCP_COMPRESSOR_CORE_BINARY.",
+        "mcp-compressor binary was not found. Build it with `cargo build -p mcp-compressor-core` "
+        "or set MCP_COMPRESSOR_BINARY.",
         file=sys.stderr,
     )
     if last_error is not None:

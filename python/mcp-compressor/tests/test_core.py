@@ -82,7 +82,7 @@ def test_native_extension_starts_session_and_invokes_backend() -> None:
 
 
 def test_high_level_compressor_client_exposes_compressed_tools_and_invocation(monkeypatch) -> None:
-    monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
+    monkeypatch.setenv("MCP_COMPRESSOR_BINARY", os.devnull + "-missing")
     monkeypatch.setenv("PATH", "")
     with CompressorClient(
         servers={
@@ -102,7 +102,7 @@ def test_high_level_compressor_client_exposes_compressed_tools_and_invocation(mo
 
 
 def test_high_level_compressor_client_writes_generated_clients(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
+    monkeypatch.setenv("MCP_COMPRESSOR_BINARY", os.devnull + "-missing")
     with CompressorClient(
         servers={"alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]}},
         compression_level="max",
@@ -155,7 +155,7 @@ def test_high_level_compressor_client_reports_invalid_server_config() -> None:
 
 
 def test_high_level_compressor_client_reports_missing_wrapper(monkeypatch) -> None:
-    monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
+    monkeypatch.setenv("MCP_COMPRESSOR_BINARY", os.devnull + "-missing")
     monkeypatch.setenv("PATH", "")
     with (
         CompressorClient(
@@ -168,7 +168,7 @@ def test_high_level_compressor_client_reports_missing_wrapper(monkeypatch) -> No
 
 
 def test_high_level_compressor_client_lifecycle_is_explicit(monkeypatch) -> None:
-    monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
+    monkeypatch.setenv("MCP_COMPRESSOR_BINARY", os.devnull + "-missing")
     monkeypatch.setenv("PATH", "")
     client = CompressorClient(
         servers={"alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]}},
@@ -183,7 +183,7 @@ def test_high_level_compressor_client_lifecycle_is_explicit(monkeypatch) -> None
 
 
 def test_high_level_compressor_client_defaults_single_server_wrapper(monkeypatch) -> None:
-    monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
+    monkeypatch.setenv("MCP_COMPRESSOR_BINARY", os.devnull + "-missing")
     monkeypatch.setenv("PATH", "")
     with CompressorClient(
         servers={"alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]}},
@@ -194,7 +194,7 @@ def test_high_level_compressor_client_defaults_single_server_wrapper(monkeypatch
 
 
 def test_high_level_compressor_client_exposes_cli_and_bash_modes(monkeypatch) -> None:
-    monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
+    monkeypatch.setenv("MCP_COMPRESSOR_BINARY", os.devnull + "-missing")
     monkeypatch.setenv("PATH", "")
     with CompressorClient(
         servers={"alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]}},
@@ -243,7 +243,7 @@ def test_high_level_compressor_client_supports_remote_config_shape() -> None:
 
 
 def test_python_agent_can_start_compressed_multi_server_proxy_without_compressor_subprocess(monkeypatch) -> None:
-    monkeypatch.setenv("MCP_COMPRESSOR_CORE_BINARY", os.devnull + "-missing")
+    monkeypatch.setenv("MCP_COMPRESSOR_BINARY", os.devnull + "-missing")
     monkeypatch.setenv("PATH", "")
     session = start_compressed_session_from_mcp_config(
         CompressedSessionConfig(compression_level="max"),

@@ -822,7 +822,7 @@ A local packaging smoke test is:
 
 ```bash
 cargo build -p mcp-compressor-core --release
-MCP_COMPRESSOR_EXIT_AFTER_READY=1 target/release/mcp-compressor-core \
+MCP_COMPRESSOR_EXIT_AFTER_READY=1 target/release/mcp-compressor \
   --cli-mode \
   --server-name alpha \
   --output-dir /tmp/mcp-compressor-bin-smoke \
