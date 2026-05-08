@@ -92,19 +92,19 @@ async def test_public_multiserver_mcp_config_exposes_expected_wrapper_tools(tmp_
         "mcpServers": {
             "rust": {
                 "command": str(BINARY),
-                "args": ["--compression", "max", "--server-name", "suite", "--config", str(config)],
+                "args": ["--compression", "max", "--config", str(config)],
             }
         }
     }) as client:
         tool_names = {tool.name for tool in await client.list_tools()}
 
     assert {
-        "suite_alpha_get_tool_schema",
-        "suite_alpha_invoke_tool",
-        "suite_alpha_list_tools",
-        "suite_beta_get_tool_schema",
-        "suite_beta_invoke_tool",
-        "suite_beta_list_tools",
+        "alpha_get_tool_schema",
+        "alpha_invoke_tool",
+        "alpha_list_tools",
+        "beta_get_tool_schema",
+        "beta_invoke_tool",
+        "beta_list_tools",
     }.issubset(tool_names)
 
 
