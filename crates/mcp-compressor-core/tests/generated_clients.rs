@@ -78,10 +78,12 @@ async fn generated_cli_script_handles_structured_json_arguments() {
     assert!(stdout.contains("generated-cli"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn generated_cli_script_invokes_real_proxy_and_backend() {
     let tempdir = tempfile::tempdir().unwrap();
     let (config, _proxy) = running_proxy_config(tempdir.path()).await;
+    let mut config = config;
+    config.tools = real_backend_tools().await;
     let paths = CliGenerator.generate(&config).unwrap();
     let script = paths
         .iter()

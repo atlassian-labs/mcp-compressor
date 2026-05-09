@@ -97,7 +97,11 @@ while index < len(argv):
         tool_input[key] = True
         index += 1
     else:
-        tool_input[key] = argv[index + 1]
+        raw_value = argv[index + 1]
+        try:
+            tool_input[key] = json.loads(raw_value)
+        except json.JSONDecodeError:
+            tool_input[key] = raw_value
         index += 2
 payload = json.dumps({{"tool": tool_name, "input": tool_input}}).encode()
 req = urllib.request.Request(
@@ -106,7 +110,7 @@ req = urllib.request.Request(
     headers={{"Content-Type": "application/json", "Authorization": "Bearer " + token}},
     method="POST",
 )
-with urllib.request.urlopen(req) as resp:
+with urllib.request.urlopen(req, timeout=30) as resp:
     sys.stdout.write(resp.read().decode())
 PY
     ;;
