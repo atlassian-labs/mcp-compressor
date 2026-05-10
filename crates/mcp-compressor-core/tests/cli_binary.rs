@@ -164,7 +164,9 @@ fn rust_cli_code_mode_python_generates_python_client() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Python code client ready"))
-        .stdout(predicate::str::contains("Generated files:"));
+        .stdout(predicate::str::contains("Generated files:"))
+        .stdout(predicate::str::contains("Import the generated client"))
+        .stdout(predicate::str::contains("Invoke with:").not());
 
     assert!(output_dir.join("alpha.py").exists());
 }

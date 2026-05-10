@@ -108,7 +108,8 @@ export interface CompressedSessionInfo {
     input_schema: Record<string, unknown>;
   }>;
   backend_tools_by_server: Array<{
-    server_name: string;
+    server_name?: string;
+    serverName?: string;
     tool: {
       name: string;
       description?: string | null;

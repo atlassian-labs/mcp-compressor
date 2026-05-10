@@ -171,7 +171,7 @@ class CompressorProxy:
             for item in scoped_tools
             if isinstance(item, dict)
             and item.get("tool", {}).get("name") == tool
-            and (target_server is None or item.get("server_name") == target_server)
+            and (target_server is None or (item.get("server_name") or item.get("serverName")) == target_server)
         ]
         if len(matches) == 1:
             schema = matches[0].get("tool", {}).get("input_schema", {})

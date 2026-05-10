@@ -169,7 +169,9 @@ export class CompressorProxy {
     const matches = this.info().backend_tools_by_server.filter(
       (item) =>
         item.tool.name === tool &&
-        (server === null || server === undefined || item.server_name === server),
+        (server === null ||
+          server === undefined ||
+          (item.server_name ?? item.serverName) === server),
     );
     if (matches.length === 1) {
       return matches[0]?.tool.input_schema ?? {};
