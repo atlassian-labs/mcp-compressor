@@ -68,6 +68,8 @@ def test_public_code_modes_default_to_dist(tmp_path: Path) -> None:
             timeout=30,
         )
         assert "code client ready" in result.stdout
+        assert "Import the generated client" in result.stdout
+        assert "Invoke with:" not in result.stdout
         assert (tmp_path / "dist" / expected).exists()
 
 

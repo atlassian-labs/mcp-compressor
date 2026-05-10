@@ -134,17 +134,21 @@ pub async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(
         println!("CLI ready");
         println!("Generated CLI: {}", script.display());
     }
-    if on_path {
-        println!("Invoke with: {cli_name} <subcommand> [args...]");
+    if client_artifact_kind.is_none() {
+        if on_path {
+            println!("Invoke with: {cli_name} <subcommand> [args...]");
+        } else {
+            println!("Invoke with: {} <subcommand> [args...]", script.display());
+            println!(
+                "Note: {} is not on PATH; add it to PATH to run `{cli_name}` directly.",
+                script
+                    .parent()
+                    .unwrap_or_else(|| std::path::Path::new("."))
+                    .display()
+            );
+        }
     } else {
-        println!("Invoke with: {} <subcommand> [args...]", script.display());
-        println!(
-            "Note: {} is not on PATH; add it to PATH to run `{cli_name}` directly.",
-            script
-                .parent()
-                .unwrap_or_else(|| std::path::Path::new("."))
-                .display()
-        );
+        println!("Import the generated client from your agent code while this process is running.");
     }
     println!("Bridge URL: {}", proxy.bridge_url());
     println!("Press Ctrl+C to stop.");
