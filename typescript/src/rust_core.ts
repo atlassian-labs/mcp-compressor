@@ -107,6 +107,14 @@ export interface CompressedSessionInfo {
     description?: string | null;
     input_schema: Record<string, unknown>;
   }>;
+  backend_tools_by_server: Array<{
+    server_name: string;
+    tool: {
+      name: string;
+      description?: string | null;
+      input_schema: Record<string, unknown>;
+    };
+  }>;
   just_bash_providers: JustBashProviderSpec[];
 }
 

@@ -115,15 +115,32 @@ fn rust_cli_contract_multi_server_json_config() {
     cmd.args([
         "--compression",
         "max",
-        "--server-name",
-        "suite",
         "--config",
         config_path.to_str().unwrap(),
     ])
     .assert()
     .success()
-    .stdout(predicate::str::contains("suite_alpha_invoke_tool"))
-    .stdout(predicate::str::contains("suite_beta_invoke_tool"));
+    .stdout(predicate::str::contains("alpha_invoke_tool"))
+    .stdout(predicate::str::contains("beta_invoke_tool"));
+}
+
+#[test]
+fn rust_cli_rejects_server_name_with_mcp_config() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let config_path = tempdir.path().join("mcp.json");
+    std::fs::write(&config_path, common::mcp_config_json(&[("alpha", "alpha_server.py")])).unwrap();
+
+    let mut cmd = core_cmd();
+    cmd.args([
+        "--server-name",
+        "custom",
+        "--config",
+        config_path.to_str().unwrap(),
+    ])
+    .assert()
+    .failure()
+    .code(2)
+    .stderr(predicate::str::contains("--server-name cannot be used with --config"));
 }
 
 #[test]

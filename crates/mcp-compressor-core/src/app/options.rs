@@ -94,6 +94,10 @@ pub struct CliOptions {
 
 impl CliOptions {
     pub fn validate(&self) -> Result<(), String> {
+        if self.config_path.is_some() && self.server_name.is_some() {
+            return Err("--server-name cannot be used with --config; MCP config server names come from mcpServers keys".to_string());
+        }
+
         let mode_aliases = [
             self.cli_mode,
             self.just_bash || self.just_bash_mode,

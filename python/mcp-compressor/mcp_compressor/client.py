@@ -164,13 +164,25 @@ class CompressorProxy:
             return ProxyResponse(response.read().decode())
 
     def schema(self, tool: str, *, server: str | None = None) -> dict[str, Any]:
-        prefix = f"{server or self._default_server}_" if server or self._default_server else ""
-        invoke_name = f"{prefix}invoke_tool"
-        for frontend_tool in self.tools:
-            if frontend_tool.name == invoke_name:
-                return frontend_tool.input_schema
-        msg = f"No compressed invoke wrapper found for {server or self._default_server or 'default'}"
-        raise KeyError(msg)
+        scoped_tools = self._session.info().get("backend_tools_by_server", [])
+        target_server = server or self._default_server
+        matches = [
+            item
+            for item in scoped_tools
+            if isinstance(item, dict)
+            and item.get("tool", {}).get("name") == tool
+            and (target_server is None or item.get("server_name") == target_server)
+        ]
+        if len(matches) == 1:
+            schema = matches[0].get("tool", {}).get("input_schema", {})
+            if isinstance(schema, dict):
+                return schema
+            return {}
+        if not matches:
+            msg = f"Backend tool not found: {tool}"
+            raise KeyError(msg)
+        msg = "Multiple backend tools matched; specify a server"
+        raise RuntimeError(msg)
 
     def invoke(self, tool: str, tool_input: dict[str, Any] | None = None, *, server: str | None = None) -> str:
         wrapper = _wrapper_name(server or self._default_server, "invoke_tool")

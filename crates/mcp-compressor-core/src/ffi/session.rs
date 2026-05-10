@@ -95,6 +95,14 @@ async fn compressed_session_from_server(
         .map(FfiTool::from)
         .collect();
     let backend_tools = server.backend_tools().into_iter().map(FfiTool::from).collect();
+    let backend_tools_by_server = server
+        .backend_tools_by_server()
+        .into_iter()
+        .map(|(server_name, tool)| super::dto::FfiBackendTool {
+            server_name,
+            tool: FfiTool::from(tool),
+        })
+        .collect();
     let just_bash_providers = server
         .just_bash_provider_specs()
         .into_iter()
@@ -107,6 +115,7 @@ async fn compressed_session_from_server(
             token: proxy.token_value().to_string(),
             frontend_tools,
             backend_tools,
+            backend_tools_by_server,
             just_bash_providers,
         },
         _proxy: proxy,

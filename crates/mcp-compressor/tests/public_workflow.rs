@@ -37,6 +37,29 @@ async fn public_rust_sdk_quickstart_flow() {
     assert!(tool_names.contains(&"alpha_get_tool_schema"));
     assert!(tool_names.contains(&"alpha_invoke_tool"));
 
+    let schema = proxy.schema("echo").unwrap();
+    assert!(schema["properties"].get("message").is_some());
+
     let response = proxy.invoke("echo", json!({ "message": "public-rust" })).await.unwrap();
     assert_eq!(response, "alpha:public-rust");
+}
+
+#[tokio::test]
+async fn public_rust_sdk_schema_lookup_supports_multi_server() {
+    let client = CompressorClient::builder()
+        .server(
+            "alpha",
+            ServerConfig::command(python_command()).arg(fixture_path("alpha_server.py")),
+        )
+        .server(
+            "beta",
+            ServerConfig::command(python_command()).arg(fixture_path("beta_server.py")),
+        )
+        .compression_level(CompressionLevel::Max)
+        .build();
+
+    let proxy = client.connect().await.unwrap();
+    let schema = proxy.schema_on(Some("alpha"), "echo").unwrap();
+    assert!(schema["properties"].get("message").is_some());
+    assert!(proxy.schema("echo").is_err());
 }

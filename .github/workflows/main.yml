@@ -80,14 +80,14 @@ jobs:
         env:
           PYTHON: ${{ github.workspace }}/.venv/bin/python
         run: |
-          cargo test -p mcp-compressor-core --test compressed_server_stdio -- --nocapture
-          cargo test -p mcp-compressor-core --test compression_levels -- --nocapture
-          cargo test -p mcp-compressor-core --test config_sources -- --nocapture
-          cargo test -p mcp-compressor-core --test multi_server -- --nocapture
-          cargo test -p mcp-compressor-core --test proxy_http -- --nocapture
-          cargo test -p mcp-compressor-core --test generated_clients -- --nocapture
-          cargo test -p mcp-compressor-core --test cli_binary -- --nocapture
-          cargo test -p mcp-compressor-core --test transform_modes -- --nocapture
+          timeout 180 cargo test -p mcp-compressor-core --test compressed_server_stdio -- --nocapture
+          timeout 180 cargo test -p mcp-compressor-core --test compression_levels -- --nocapture
+          timeout 180 cargo test -p mcp-compressor-core --test config_sources -- --nocapture
+          timeout 180 cargo test -p mcp-compressor-core --test multi_server -- --nocapture
+          timeout 180 cargo test -p mcp-compressor-core --test proxy_http -- --nocapture
+          timeout 180 cargo test -p mcp-compressor-core --test generated_clients -- --nocapture
+          timeout 180 cargo test -p mcp-compressor-core --test cli_binary -- --nocapture
+          timeout 180 cargo test -p mcp-compressor-core --test transform_modes -- --nocapture
 
   rust-binary-e2e:
     runs-on: ubuntu-latest

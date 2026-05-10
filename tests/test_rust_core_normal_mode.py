@@ -265,25 +265,23 @@ async def test_rust_core_normal_stdio_mode_with_json_config(tmp_path: Path) -> N
     command = rust_core_command(
         "--compression",
         "max",
-        "--server-name",
-        "suite",
         "--config",
         str(config),
     )
 
     async with Client(StdioTransport(command=command[0], args=command[1:])) as client:
         tools = {tool.name for tool in await client.list_tools()}
-        assert "suite_alpha_invoke_tool" in tools
-        assert "suite_beta_invoke_tool" in tools
+        assert "alpha_invoke_tool" in tools
+        assert "beta_invoke_tool" in tools
 
         alpha_result = await client.call_tool(
-            "suite_alpha_invoke_tool",
+            "alpha_invoke_tool",
             {"tool_name": "echo", "tool_input": {"message": "json"}},
         )
         assert alpha_result.content[0].text == "alpha:json"
 
         beta_result = await client.call_tool(
-            "suite_beta_invoke_tool",
+            "beta_invoke_tool",
             {"tool_name": "echo", "tool_input": {"message": "json"}},
         )
         assert beta_result.content[0].text == "beta:json"
