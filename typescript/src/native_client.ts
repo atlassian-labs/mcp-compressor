@@ -2,6 +2,7 @@ import {
   generateClientArtifacts,
   normalizeSdkServers,
   startCompressedSession,
+  startCompressedSessionWithAuthProviders,
   startCompressedSessionFromMcpConfig,
 } from "./rust_core.js";
 import type { BackendConfig as LegacyBackendConfig, JsonConfigServerEntry } from "./types.js";
@@ -58,8 +59,20 @@ export interface NormalizedBackendConfig {
   args?: string[];
 }
 
+function providerFromConfig(config: Record<string, unknown>): AuthProvider | undefined {
+  const provider = config.authProvider ?? config.auth_provider;
+  if (provider === undefined) {
+    return undefined;
+  }
+  if (typeof provider !== "function") {
+    throw new TypeError("authProvider must be a function");
+  }
+  return provider as AuthProvider;
+}
+
 async function resolveAuthHeaders(
   config: Record<string, unknown>,
+  options: { includeProvider?: boolean } = {},
 ): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
   const rawHeaders = config.headers;
@@ -68,17 +81,63 @@ async function resolveAuthHeaders(
       headers[key] = String(value);
     }
   }
-  const provider = config.authProvider ?? config.auth_provider;
-  if (provider !== undefined) {
-    if (typeof provider !== "function") {
-      throw new TypeError("authProvider must be a function");
-    }
-    const provided = await (provider as AuthProvider)();
+  const provider = providerFromConfig(config);
+  if ((options.includeProvider ?? true) && provider !== undefined) {
+    const provided = await provider();
     for (const [key, value] of Object.entries(provided)) {
       headers[key] = String(value);
     }
   }
   return headers;
+}
+
+interface ProviderMaterializedBackend extends NormalizedBackendConfig {
+  providerIndex?: number;
+}
+
+async function normalizeServersWithProviders(
+  servers: NativeServersInput,
+): Promise<{ backends: ProviderMaterializedBackend[]; providers: AuthProvider[] } | string> {
+  if (typeof servers === "string") {
+    const trimmed = servers.trim();
+    if (trimmed.startsWith("{")) {
+      return servers;
+    }
+    return { backends: [{ name: "default", commandOrUrl: servers }], providers: [] };
+  }
+  if (isLegacyBackendConfig(servers)) {
+    return {
+      backends: [await legacyBackendToNative("default", servers, { includeProvider: false })],
+      providers: [],
+    };
+  }
+  const backends: ProviderMaterializedBackend[] = [];
+  const providers: AuthProvider[] = [];
+  for (const [name, config] of Object.entries(servers as Record<string, NativeServerConfig>)) {
+    if (typeof config === "object" && config !== null && "url" in config) {
+      const provider = providerFromConfig(config as Record<string, unknown>);
+      const backend: ProviderMaterializedBackend = await sdkObjectToNative(
+        name,
+        config as Record<string, unknown>,
+        { includeProvider: true },
+      );
+      if (provider !== undefined) {
+        backend.providerIndex = providers.length;
+        providers.push(provider);
+      }
+      backends.push(backend);
+    } else if (typeof config === "object" && config !== null && "command" in config) {
+      backends.push(
+        await sdkObjectToNative(name, config as Record<string, unknown>, {
+          includeProvider: false,
+        }),
+      );
+    } else {
+      const normalized = normalizeSdkServers({ [name]: config });
+      backends.push(normalized[0]!);
+    }
+  }
+  return { backends, providers };
 }
 
 export async function normalizeServers(
@@ -114,15 +173,48 @@ function isLegacyBackendConfig(value: unknown): value is LegacyBackendConfig {
   );
 }
 
+async function sdkObjectToNative(
+  name: string,
+  config: Record<string, unknown>,
+  options: { includeProvider?: boolean } = {},
+): Promise<NormalizedBackendConfig> {
+  if ("url" in config) {
+    const args: string[] = [];
+    const headers = await resolveAuthHeaders(config, options);
+    for (const [key, value] of Object.entries(headers)) {
+      args.push("-H", `${key}=${value}`);
+    }
+    if (
+      Object.keys(headers).length > 0 &&
+      !(Array.isArray(config.args) && config.args.includes("--auth"))
+    ) {
+      args.push("--auth", "explicit-headers");
+    }
+    if (Array.isArray(config.args)) {
+      args.push(...config.args.map(String));
+    }
+    return { name, commandOrUrl: String(config.url), args };
+  }
+  if ("command" in config) {
+    return {
+      name,
+      commandOrUrl: String(config.command),
+      args: Array.isArray(config.args) ? config.args.map(String) : [],
+    };
+  }
+  throw new Error(`server ${name} must define command or url`);
+}
+
 async function legacyBackendToNative(
   name: string,
   backend: LegacyBackendConfig,
+  options: { includeProvider?: boolean } = {},
 ): Promise<NormalizedBackendConfig> {
   if (backend.type === "stdio") {
     return { name, commandOrUrl: backend.command, args: backend.args ?? [] };
   }
   const args: string[] = [];
-  const headers = await resolveAuthHeaders(backend as unknown as Record<string, unknown>);
+  const headers = await resolveAuthHeaders(backend as unknown as Record<string, unknown>, options);
   if (Object.keys(headers).length > 0) {
     for (const [key, value] of Object.entries(headers)) {
       args.push("-H", `${key}=${value}`);
@@ -145,7 +237,21 @@ export class CompressorProxy {
   constructor(
     private readonly session: CompressedSession,
     private readonly defaultServer: string | null,
+    private readonly authProviders: AuthProvider[] = [],
   ) {}
+
+  private async refreshAuthProviders(): Promise<void> {
+    await Promise.all(
+      this.authProviders.map(async (provider, index) => {
+        const headers = await provider();
+        const materialized: Record<string, string> = {};
+        for (const [key, value] of Object.entries(headers)) {
+          materialized[key] = String(value);
+        }
+        this.session.updateAuthProviderHeaders(index, materialized);
+      }),
+    );
+  }
 
   info(): CompressedSessionInfo {
     return this.session.info();
@@ -192,6 +298,7 @@ export class CompressorProxy {
     if (this.closed) {
       throw new Error("Compressor proxy is closed");
     }
+    await this.refreshAuthProviders();
     const response = await fetch(`${this.bridgeUrl}/exec`, {
       method: "POST",
       headers: {
@@ -263,6 +370,7 @@ export class CompressorProxy {
 export class CompressorClient {
   private session: CompressedSession | null = null;
   private readonly mode: NativeCompressorMode;
+  private authProviders: AuthProvider[] = [];
 
   constructor(private readonly options: CompressorClientOptions) {
     this.mode = options.mode ?? "compressed";
@@ -270,9 +378,9 @@ export class CompressorClient {
 
   async connect(): Promise<CompressorProxy> {
     if (this.session) {
-      return new CompressorProxy(this.session, this.defaultServer());
+      return new CompressorProxy(this.session, this.defaultServer(), this.authProviders);
     }
-    const normalized = await normalizeServers(this.options.servers);
+    const normalized = await normalizeServersWithProviders(this.options.servers);
     const config = {
       compressionLevel: this.options.compressionLevel ?? "medium",
       serverName: this.options.serverName ?? null,
@@ -281,11 +389,18 @@ export class CompressorClient {
       toonify: this.options.toonify ?? false,
       transformMode: transformMode(this.mode),
     };
+    this.authProviders = typeof normalized === "string" ? [] : normalized.providers;
     this.session =
       typeof normalized === "string"
         ? await startCompressedSessionFromMcpConfig(config, normalized)
-        : await startCompressedSession(config, normalized);
-    return new CompressorProxy(this.session, this.defaultServer());
+        : normalized.providers.length > 0
+          ? await startCompressedSessionWithAuthProviders(
+              config,
+              normalized.backends,
+              normalized.providers,
+            )
+          : await startCompressedSession(config, normalized.backends);
+    return new CompressorProxy(this.session, this.defaultServer(), this.authProviders);
   }
 
   async close(): Promise<void> {

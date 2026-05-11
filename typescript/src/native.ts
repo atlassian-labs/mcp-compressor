@@ -20,6 +20,11 @@ export interface NativeCore {
     configJson: string,
     backendsJson: string,
   ): Promise<NativeCompressedSession>;
+  startCompressedSessionWithProviderBackendsJson(
+    configJson: string,
+    backendsJson: string,
+    providersJson: string,
+  ): Promise<NativeCompressedSession>;
   startCompressedSessionFromMcpConfigJson(
     configJson: string,
     mcpConfigJson: string,
@@ -29,6 +34,7 @@ export interface NativeCore {
 export interface NativeCompressedSession {
   infoJson(): string;
   close(): void;
+  updateAuthProviderHeadersJson(providerIndex: number, headersJson: string): void;
 }
 
 const require = createRequire(import.meta.url);

@@ -1,5 +1,10 @@
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use mcp_compressor_core::server::{BackendAuthMode, BackendServerConfig};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -18,6 +23,37 @@ fn py_value_error(error: impl std::fmt::Display) -> PyErr {
 
 fn parse_json<T: for<'de> Deserialize<'de>>(value: &str) -> PyResult<T> {
     serde_json::from_str(value).map_err(py_value_error)
+}
+
+#[derive(Debug, Deserialize)]
+struct ProviderBackendConfig {
+    name: String,
+    command_or_url: String,
+    #[serde(default)]
+    args: Vec<String>,
+    provider_index: Option<usize>,
+}
+
+fn provider_headers_from_python(provider: &Py<PyAny>) -> Result<BTreeMap<String, String>, mcp_compressor_core::Error> {
+    Python::attach(|py| {
+        let value = provider
+            .call0(py)
+            .map_err(|error| mcp_compressor_core::Error::Config(error.to_string()))?;
+        let dict = value
+            .downcast_bound::<PyDict>(py)
+            .map_err(|_| mcp_compressor_core::Error::Config("auth_provider must return a dict".to_string()))?;
+        let mut headers = BTreeMap::new();
+        for (key, value) in dict.iter() {
+            headers.insert(
+                key.extract::<String>()
+                    .map_err(|error| mcp_compressor_core::Error::Config(error.to_string()))?,
+                value
+                    .extract::<String>()
+                    .map_err(|error| mcp_compressor_core::Error::Config(error.to_string()))?,
+            );
+        }
+        Ok(headers)
+    })
 }
 
 #[pyfunction]
@@ -107,6 +143,43 @@ fn start_compressed_session_json(
 }
 
 #[pyfunction]
+fn start_compressed_session_with_provider_backends_json(
+    py: Python<'_>,
+    config_json: &str,
+    backends_json: &str,
+    providers: Vec<Py<PyAny>>,
+) -> PyResult<PyCompressedSession> {
+    let config = parse_json::<FfiCompressedSessionConfig>(config_json)?;
+    let backends = parse_json::<Vec<ProviderBackendConfig>>(backends_json)?;
+    let mut backend_configs = Vec::new();
+    for backend in backends {
+        let mut config = BackendServerConfig::new(backend.name, backend.command_or_url, backend.args);
+        if let Some(index) = backend.provider_index {
+            let provider = Python::attach(|py| {
+                providers
+                    .get(index)
+                    .ok_or_else(|| py_value_error(format!("auth provider index out of range: {index}")))
+                    .map(|provider| provider.clone_ref(py))
+            })?;
+            config = config
+                .with_header_provider(Arc::new(move || provider_headers_from_python(&provider)))
+                .with_auth_mode(BackendAuthMode::ExplicitHeaders);
+        }
+        backend_configs.push(config);
+    }
+    let runtime = tokio::runtime::Runtime::new().map_err(py_value_error)?;
+    let inner = py
+        .detach(|| {
+            runtime.block_on(mcp_compressor_core::ffi::start_compressed_session_with_backend_configs(
+                config,
+                backend_configs,
+            ))
+        })
+        .map_err(py_value_error)?;
+    Ok(PyCompressedSession { inner, runtime })
+}
+
+#[pyfunction]
 fn start_compressed_session_from_mcp_config_json(
     config_json: &str,
     mcp_config_json: &str,
@@ -139,6 +212,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(normalize_servers_json, module)?)?;
     module.add_function(wrap_pyfunction!(parse_mcp_config_json, module)?)?;
     module.add_function(wrap_pyfunction!(start_compressed_session_json, module)?)?;
+    module.add_function(wrap_pyfunction!(start_compressed_session_with_provider_backends_json, module)?)?;
     module.add_function(wrap_pyfunction!(start_compressed_session_from_mcp_config_json, module)?)?;
     module.add_function(wrap_pyfunction!(list_oauth_credentials_json, module)?)?;
     module.add_function(wrap_pyfunction!(clear_oauth_credentials_json, module)?)?;

@@ -129,6 +129,10 @@ export class CompressedSession {
   close(): void {
     this.nativeSession.close();
   }
+
+  updateAuthProviderHeaders(providerIndex: number, headers: Record<string, string>): void {
+    this.nativeSession.updateAuthProviderHeadersJson(providerIndex, stringify(headers));
+  }
 }
 
 function toNativeSessionConfig(config: CompressedSessionConfig): Record<string, unknown> {
@@ -157,6 +161,28 @@ export async function startCompressedSession(
   const session = await loadNativeCore().startCompressedSessionJson(
     stringify(toNativeSessionConfig(config)),
     stringify(backends.map(toNativeBackendConfig)),
+  );
+  return new CompressedSession(session);
+}
+
+export interface ProviderBackendConfig extends BackendConfig {
+  providerIndex?: number;
+}
+
+export async function startCompressedSessionWithAuthProviders(
+  config: CompressedSessionConfig,
+  backends: ProviderBackendConfig[],
+  providers: Array<() => Record<string, string> | Promise<Record<string, string>>>,
+): Promise<CompressedSession> {
+  const nativeBackends = backends.map((backend) => ({
+    ...toNativeBackendConfig(backend),
+    provider_index: backend.providerIndex ?? null,
+  }));
+  const initialHeaders = await Promise.all(providers.map((provider) => provider()));
+  const session = await loadNativeCore().startCompressedSessionWithProviderBackendsJson(
+    stringify(toNativeSessionConfig(config)),
+    stringify(nativeBackends),
+    stringify(initialHeaders),
   );
   return new CompressedSession(session);
 }
