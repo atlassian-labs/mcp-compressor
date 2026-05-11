@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde_json::{json, Value};
 
@@ -12,6 +12,7 @@ use crate::compression::engine::Tool;
 use crate::compression::CompressionLevel;
 use crate::ffi::{normalize_sdk_servers, FfiSdkServerConfig, FfiSdkServersConfig};
 use crate::proxy::{RunningToolProxy, ToolProxyServer};
+use crate::server::{BackendAuthMode, BackendServerConfig};
 use crate::server::{CompressedServer, CompressedServerConfig, ProxyTransformMode};
 use crate::Error;
 
@@ -94,14 +95,8 @@ impl ServerConfig {
         self
     }
 
-    fn materialize(mut self) -> Result<FfiSdkServerConfig, Error> {
-        if let Some(provider) = self.auth_provider.take() {
-            let provided = provider()?;
-            if let FfiSdkServerConfig::Structured { headers, .. } = &mut self.inner {
-                headers.extend(provided);
-            }
-        }
-        Ok(self.inner)
+    fn materialize(mut self) -> (FfiSdkServerConfig, Option<HeaderProvider>) {
+        (self.inner, self.auth_provider.take())
     }
 }
 
@@ -187,9 +182,35 @@ impl CompressorClient {
             .servers
             .clone()
             .into_iter()
-            .map(|(name, config)| config.materialize().map(|config| (name, config)))
-            .collect::<Result<Vec<_>, _>>()?;
-        let backends = normalize_sdk_servers(FfiSdkServersConfig::from_iter(materialized))?;
+            .map(|(name, config)| {
+                let (config, provider) = config.materialize();
+                (name, config, provider)
+            })
+            .collect::<Vec<_>>();
+        let providers = materialized
+            .iter()
+            .filter_map(|(name, _, provider)| {
+                provider.clone().map(|provider| (name.clone(), provider))
+            })
+            .collect::<BTreeMap<_, _>>();
+        let ffi_configs = materialized
+            .into_iter()
+            .map(|(name, config, _)| (name, config))
+            .collect::<Vec<_>>();
+        let backends = normalize_sdk_servers(FfiSdkServersConfig::from_iter(ffi_configs))?;
+        let backends = backends
+            .into_iter()
+            .map(|backend| {
+                let name = backend.name.clone();
+                let mut backend = BackendServerConfig::from(backend);
+                if let Some(provider) = providers.get(&name) {
+                    backend = backend
+                        .with_header_provider(Arc::clone(provider))
+                        .with_auth_mode(BackendAuthMode::ExplicitHeaders);
+                }
+                backend
+            })
+            .collect::<Vec<_>>();
         let server = CompressedServer::connect_multi_stdio(
             CompressedServerConfig {
                 level: self.builder.compression_level.clone(),
@@ -200,7 +221,7 @@ impl CompressorClient {
                 transform_mode: self.builder.mode.into(),
                 ..CompressedServerConfig::default()
             },
-            backends.into_iter().map(Into::into).collect(),
+            backends,
         )
         .await?;
         CompressorProxy::start(server).await
@@ -276,7 +297,8 @@ impl CompressorProxy {
     }
 
     pub async fn invoke(&self, tool_name: &str, input: Value) -> Result<String, Error> {
-        self.invoke_on(self.default_server.as_deref(), tool_name, input).await
+        self.invoke_on(self.default_server.as_deref(), tool_name, input)
+            .await
     }
 
     pub async fn invoke_on(
@@ -308,7 +330,9 @@ impl CompressorProxy {
         if status.is_success() {
             Ok(text)
         } else {
-            Err(Error::Config(format!("proxy request failed with {status}: {text}")))
+            Err(Error::Config(format!(
+                "proxy request failed with {status}: {text}"
+            )))
         }
     }
 
@@ -384,8 +408,8 @@ mod tests {
     }
 
     #[test]
-    fn server_config_auth_provider_materializes_headers() {
-        let config = ServerConfig::url("https://example.test/mcp")
+    fn server_config_auth_provider_is_preserved_for_transport_layer() {
+        let (config, provider) = ServerConfig::url("https://example.test/mcp")
             .header("X-Static", "yes")
             .auth_provider(|| {
                 Ok(BTreeMap::from([(
@@ -393,8 +417,7 @@ mod tests {
                     "Bearer dynamic".to_string(),
                 )]))
             })
-            .materialize()
-            .unwrap();
+            .materialize();
 
         let backends = normalize_sdk_servers(FfiSdkServersConfig::from_iter([(
             "remote".to_string(),
@@ -405,61 +428,9 @@ mod tests {
         assert_eq!(backends[0].command_or_url, "https://example.test/mcp");
         assert_eq!(
             backends[0].args,
-            [
-                "-H",
-                "Authorization=Bearer dynamic",
-                "-H",
-                "X-Static=yes",
-                "--auth",
-                "explicit-headers",
-            ]
+            ["-H", "X-Static=yes", "--auth", "explicit-headers"]
         );
-    }
-
-    #[test]
-    fn auth_provider_is_evaluated_each_time_config_is_materialized() {
-        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let first_calls = Arc::clone(&calls);
-        let first = ServerConfig::url("https://example.test/mcp")
-            .auth_provider(move || {
-                let call = first_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-                Ok(BTreeMap::from([(
-                    "Authorization".to_string(),
-                    format!("Bearer token-{call}"),
-                )]))
-            })
-            .materialize()
-            .unwrap();
-        let second_calls = Arc::clone(&calls);
-        let second = ServerConfig::url("https://example.test/mcp")
-            .auth_provider(move || {
-                let call = second_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-                Ok(BTreeMap::from([(
-                    "Authorization".to_string(),
-                    format!("Bearer token-{call}"),
-                )]))
-            })
-            .materialize()
-            .unwrap();
-
-        let first_backend = normalize_sdk_servers(FfiSdkServersConfig::from_iter([(
-            "remote".to_string(),
-            first,
-        )]))
-        .unwrap();
-        let second_backend = normalize_sdk_servers(FfiSdkServersConfig::from_iter([(
-            "remote".to_string(),
-            second,
-        )]))
-        .unwrap();
-
-        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
-        assert!(first_backend[0]
-            .args
-            .contains(&"Authorization=Bearer token-1".to_string()));
-        assert!(second_backend[0]
-            .args
-            .contains(&"Authorization=Bearer token-2".to_string()));
+        assert!(provider.is_some());
     }
 
     #[tokio::test]
@@ -472,8 +443,14 @@ mod tests {
             .compression_level(CompressionLevel::Max)
             .build();
         let proxy = client.connect().await.unwrap();
-        assert!(proxy.tools().iter().any(|tool| tool.name == "alpha_invoke_tool"));
-        let result = proxy.invoke("echo", json!({ "message": "rust-sdk" })).await.unwrap();
+        assert!(proxy
+            .tools()
+            .iter()
+            .any(|tool| tool.name == "alpha_invoke_tool"));
+        let result = proxy
+            .invoke("echo", json!({ "message": "rust-sdk" }))
+            .await
+            .unwrap();
         assert_eq!(result, "alpha:rust-sdk");
     }
 

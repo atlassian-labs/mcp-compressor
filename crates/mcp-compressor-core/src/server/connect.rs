@@ -14,6 +14,7 @@ use crate::oauth::{
     FileCredentialStore, FileStateStore, OAuthCallbackListener,
 };
 use crate::server::backend::{backend_http_headers, BackendServerConfig, BackendTransport};
+use crate::server::dynamic_http_client::DynamicAuthHttpClient;
 use crate::Error;
 
 #[derive(Debug)]
@@ -104,13 +105,21 @@ async fn connect_streamable_http_backend(
     }
     let mut config = StreamableHttpClientTransportConfig::with_uri(backend.command.clone());
     let headers = backend_http_headers(backend)?;
-    if !headers.is_empty() {
-        config = config.custom_headers(headers);
+    if backend.header_provider.is_none() && !headers.is_empty() {
+        config = config.custom_headers(headers.clone());
     }
-    let transport = StreamableHttpClientTransport::from_config(config);
-    ().serve(transport)
-        .await
-        .map_err(|error| remote_backend_error(&backend.command, error.to_string()))
+    if let Some(provider) = backend.header_provider.clone() {
+        let client = DynamicAuthHttpClient::new(reqwest::Client::new(), headers, provider);
+        let transport = StreamableHttpClientTransport::with_client(client, config);
+        ().serve(transport)
+            .await
+            .map_err(|error| remote_backend_error(&backend.command, error.to_string()))
+    } else {
+        let transport = StreamableHttpClientTransport::from_config(config);
+        ().serve(transport)
+            .await
+            .map_err(|error| remote_backend_error(&backend.command, error.to_string()))
+    }
 }
 
 async fn connect_oauth_streamable_http_backend(

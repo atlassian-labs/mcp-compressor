@@ -178,7 +178,7 @@ For long-lived sessions, recreate the compressed session to pick up a refreshed 
 2. close the current proxy/session,
 3. call `connect()` again.
 
-The public `auth_provider` / `authProvider` API is intentionally compatible with a future per-request transport implementation, but the current implementation is **session-start auth**, not per-request auth.
+Rust SDK auth providers are evaluated by the remote HTTP transport for each backend request. Python and TypeScript SDK auth providers are currently evaluated when the compressed session is opened; close and reconnect those sessions to pick up a refreshed token until their binding-level provider registries are wired to the transport layer.
 
 === "Python"
 

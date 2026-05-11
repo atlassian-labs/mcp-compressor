@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::http::{HeaderName, HeaderValue};
@@ -34,8 +35,10 @@ impl Default for BackendAuthMode {
     }
 }
 
+pub type HeaderProvider = Arc<dyn Fn() -> Result<BTreeMap<String, String>, Error> + Send + Sync>;
+
 /// Configuration for one upstream MCP server.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct BackendServerConfig {
     pub name: String,
     pub command: String,
@@ -45,6 +48,7 @@ pub struct BackendServerConfig {
     pub timeout: Option<Duration>,
     pub transport: BackendTransport,
     pub headers: HashMap<String, String>,
+    pub header_provider: Option<HeaderProvider>,
     pub auth_mode: BackendAuthMode,
 }
 
@@ -71,6 +75,7 @@ impl BackendServerConfig {
             timeout: parsed_args.timeout,
             transport,
             headers: parsed_args.headers,
+            header_provider: None,
             auth_mode: parsed_args.auth_mode,
         }
     }
@@ -109,6 +114,15 @@ impl BackendServerConfig {
         self
     }
 
+    pub fn with_header_provider(mut self, provider: HeaderProvider) -> Self {
+        self.header_provider = Some(provider);
+        self
+    }
+
+    pub fn has_dynamic_headers(&self) -> bool {
+        self.header_provider.is_some()
+    }
+
     pub fn has_authorization_header(&self) -> bool {
         self.headers
             .keys()
@@ -118,7 +132,9 @@ impl BackendServerConfig {
     pub fn should_use_oauth(&self) -> bool {
         self.transport == BackendTransport::StreamableHttp
             && match self.auth_mode {
-                BackendAuthMode::Auto => !self.has_authorization_header(),
+                BackendAuthMode::Auto => {
+                    !self.has_authorization_header() && !self.has_dynamic_headers()
+                }
                 BackendAuthMode::ExplicitHeaders => false,
                 BackendAuthMode::OAuth => true,
             }
@@ -217,7 +233,10 @@ fn parse_backend_args(args: Vec<String>, transport: BackendTransport) -> ParsedB
                 parsed.args.push(arg.clone());
                 index += 1;
             }
-        } else if let Some(env) = arg.strip_prefix("-e=").or_else(|| arg.strip_prefix("--env=")) {
+        } else if let Some(env) = arg
+            .strip_prefix("-e=")
+            .or_else(|| arg.strip_prefix("--env="))
+        {
             if let Some((key, value)) = parse_key_value_arg(env) {
                 parsed.env.insert(key, interpolate_env(&value));
             } else {
@@ -466,7 +485,10 @@ mod tests {
         );
 
         assert_eq!(backend.args, ["server.py"]);
-        assert_eq!(backend.cwd.as_deref(), Some(std::path::Path::new("/tmp/example")));
+        assert_eq!(
+            backend.cwd.as_deref(),
+            Some(std::path::Path::new("/tmp/example"))
+        );
         assert_eq!(backend.env["FOO"], "bar");
         assert_eq!(backend.env["EMPTY"], "");
         assert_eq!(backend.timeout, Some(Duration::from_secs_f64(2.5)));
