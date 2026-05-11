@@ -126,6 +126,17 @@ pub async fn start_compressed_session(
     config: FfiCompressedSessionConfig,
     backends: Vec<FfiBackendConfig>,
 ) -> Result<FfiCompressedSession, Error> {
+    start_compressed_session_with_backend_configs(
+        config,
+        backends.into_iter().map(Into::into).collect(),
+    )
+    .await
+}
+
+pub async fn start_compressed_session_with_backend_configs(
+    config: FfiCompressedSessionConfig,
+    backends: Vec<crate::server::BackendServerConfig>,
+) -> Result<FfiCompressedSession, Error> {
     let server = CompressedServer::connect_multi_stdio(
         CompressedServerConfig {
             level: config.compression_level.parse()?,
@@ -136,7 +147,7 @@ pub async fn start_compressed_session(
             transform_mode: parse_ffi_transform_mode(config.transform_mode.as_deref())?,
             ..CompressedServerConfig::default()
         },
-        backends.into_iter().map(Into::into).collect(),
+        backends,
     )
     .await?;
     compressed_session_from_server(server).await

@@ -125,6 +125,20 @@ def start_compressed_session(
     return CompressedSession(native_session)
 
 
+def start_compressed_session_with_auth_providers(
+    config: CompressedSessionConfig,
+    backends: list[dict[str, Any]],
+    providers: list[Any],
+) -> CompressedSession:
+    """Start a Rust-backed compressed session with per-request auth providers."""
+    native_session = _native.start_compressed_session_with_provider_backends_json(
+        _json_dumps(config.to_json_dict()),
+        _json_dumps(backends),
+        providers,
+    )
+    return CompressedSession(native_session)
+
+
 def start_compressed_session_from_mcp_config(
     config: CompressedSessionConfig,
     mcp_config_json: str,

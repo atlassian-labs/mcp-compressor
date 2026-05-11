@@ -5,7 +5,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
-from urllib import request
+from urllib import error, request
 
 from mcp_compressor.core import (
     BackendConfig,
@@ -14,6 +14,7 @@ from mcp_compressor.core import (
     generate_client_artifacts,
     start_compressed_session,
     start_compressed_session_from_mcp_config,
+    start_compressed_session_with_auth_providers,
 )
 
 CompressorMode = Literal["compressed", "cli", "bash", "python", "typescript"]
@@ -50,14 +51,40 @@ class JustBashProvider:
     tools: list[JustBashCommand]
 
 
-def _backend_from_value(name: str, value: ServerConfig) -> BackendConfig:
+def _provider_from_value(value: ServerConfig) -> AuthProvider | None:
+    if not isinstance(value, dict):
+        return None
+    provider = value.get("auth_provider")
+    if provider is None:
+        provider = value.get("authProvider")
+    if provider is None:
+        return None
+    if not callable(provider):
+        msg = "auth_provider must be callable"
+        raise TypeError(msg)
+    return provider
+
+
+def _backend_provider_payload(name: str, value: ServerConfig, provider_index: int | None) -> dict[str, Any]:
+    backend = _backend_from_value(name, value, resolve_provider=provider_index is not None)
+    payload = {
+        "name": backend.name,
+        "command_or_url": backend.command_or_url,
+        "args": backend.args or [],
+    }
+    if provider_index is not None:
+        payload["provider_index"] = provider_index
+    return payload
+
+
+def _backend_from_value(name: str, value: ServerConfig, *, resolve_provider: bool = True) -> BackendConfig:
     if isinstance(value, BackendConfig):
         return value
     if isinstance(value, str):
         return BackendConfig(name=name, command_or_url=value)
     if "url" in value:
         args: list[str] = []
-        headers = _resolve_headers(value)
+        headers = _resolve_headers(value) if resolve_provider else _resolve_headers(value, include_provider=False)
         if headers:
             for key, header_value in headers.items():
                 args.extend(["-H", f"{key}={header_value}"])
@@ -75,7 +102,7 @@ def _backend_from_value(name: str, value: ServerConfig) -> BackendConfig:
     raise ValueError(msg)
 
 
-def _resolve_headers(value: dict[str, Any]) -> dict[str, str]:
+def _resolve_headers(value: dict[str, Any], *, include_provider: bool = True) -> dict[str, str]:
     headers: dict[str, str] = {}
     raw_headers = value.get("headers")
     if isinstance(raw_headers, dict):
@@ -83,7 +110,7 @@ def _resolve_headers(value: dict[str, Any]) -> dict[str, str]:
     provider = value.get("auth_provider")
     if provider is None:
         provider = value.get("authProvider")
-    if provider is not None:
+    if include_provider and provider is not None:
         if not callable(provider):
             msg = "auth_provider must be callable"
             raise TypeError(msg)
@@ -93,6 +120,28 @@ def _resolve_headers(value: dict[str, Any]) -> dict[str, str]:
             raise TypeError(msg)
         headers.update({str(key): str(header_value) for key, header_value in provided.items()})
     return headers
+
+
+def _resolve_provider_backends(
+    servers: ServersInput,
+) -> tuple[list[dict[str, Any]] | None, list[AuthProvider], str | None]:
+    if isinstance(servers, str):
+        stripped = servers.strip()
+        if stripped.startswith("{"):
+            return None, [], servers
+        return [{"name": "default", "command_or_url": servers, "args": []}], [], None
+    if isinstance(servers, BackendConfig):
+        return [servers.to_json_dict()], [], None
+    payloads: list[dict[str, Any]] = []
+    providers: list[AuthProvider] = []
+    for name, value in servers.items():
+        provider = _provider_from_value(value)
+        provider_index = None
+        if provider is not None:
+            provider_index = len(providers)
+            providers.append(provider)
+        payloads.append(_backend_provider_payload(name, value, provider_index))
+    return payloads, providers, None
 
 
 def _resolve_backends(servers: ServersInput) -> tuple[list[BackendConfig] | None, str | None]:
@@ -181,8 +230,13 @@ class CompressorProxy:
             },
             method="POST",
         )
-        with request.urlopen(req, timeout=30) as response:  # noqa: S310 - local Rust proxy
-            return ProxyResponse(response.read().decode())
+        try:
+            with request.urlopen(req, timeout=30) as response:  # noqa: S310 - local Rust proxy
+                return ProxyResponse(response.read().decode())
+        except error.HTTPError as exc:
+            detail = exc.read().decode(errors="replace")
+            msg = f"Proxy invocation failed: HTTP {exc.code}: {detail}"
+            raise RuntimeError(msg) from exc
 
     def schema(self, tool: str, *, server: str | None = None) -> dict[str, Any]:
         scoped_tools = self._session.info().get("backend_tools_by_server", [])
@@ -253,10 +307,15 @@ class CompressorClient:
     def connect(self) -> CompressorProxy:
         if self._session is not None:
             return CompressorProxy(self._session, self._default_server())
-        backends, mcp_config_json = _resolve_backends(self._servers)
+        provider_backends, providers, mcp_config_json = _resolve_provider_backends(self._servers)
         if mcp_config_json is not None:
             self._session = start_compressed_session_from_mcp_config(self._config, mcp_config_json)
+        elif providers:
+            self._session = start_compressed_session_with_auth_providers(
+                self._config, provider_backends or [], providers
+            )
         else:
+            backends, _ = _resolve_backends(self._servers)
             self._session = start_compressed_session(self._config, backends or [])
         return CompressorProxy(self._session, self._default_server())
 

@@ -163,6 +163,58 @@ async function startRemoteAlphaUpstream(): Promise<{
   return { url, child };
 }
 
+async function startRotatingAuthProxy(
+  targetUrl: string,
+  expectedStart = 1,
+  allowInitialRepeats = 0,
+  allowAnyRepeats = 0,
+): Promise<{
+  url: string;
+  child: ChildProcessWithoutNullStreams;
+  stderr: () => string;
+}> {
+  const child = spawn(
+    process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python"),
+    [fixturePath("rotating_auth_proxy.py")],
+    {
+      cwd: join(process.cwd(), ".."),
+      env: {
+        ...process.env,
+        MCP_COMPRESSOR_AUTH_PROXY_TARGET: targetUrl,
+        MCP_COMPRESSOR_AUTH_PROXY_EXPECTED_START: String(expectedStart),
+        MCP_COMPRESSOR_AUTH_PROXY_ALLOW_INITIAL_REPEATS: String(allowInitialRepeats),
+        MCP_COMPRESSOR_AUTH_PROXY_ALLOW_ANY_REPEATS: String(allowAnyRepeats),
+      },
+    },
+  );
+
+  let stderr = "";
+  const url = await new Promise<string>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`timed out waiting for rotating auth proxy URL\nstderr:\n${stderr}`));
+    }, 30_000);
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+      const match = /AUTH_PROXY_URL=(http:\/\/127\.0\.0\.1:\d+)/.exec(String(chunk));
+      if (match) {
+        clearTimeout(timeout);
+        resolve(match[1]!);
+      }
+    });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("exit", (code) => {
+      clearTimeout(timeout);
+      reject(new Error(`rotating auth proxy exited before ready: ${code}`));
+    });
+  });
+
+  return { url, child, stderr: () => stderr };
+}
+
 async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
   if (child.killed || child.exitCode !== null) {
     return;
@@ -212,6 +264,51 @@ describe("Public TypeScript SDK workflow", () => {
     } finally {
       proxy.close();
       client.close();
+    }
+  });
+
+  it("refreshes authProvider headers for each remote backend request", async () => {
+    const upstream = await startRemoteAlphaUpstream();
+    const authProxy = await startRotatingAuthProxy(upstream.url, 1, 10, 10);
+    let calls = 0;
+    const client = new CompressorClient({
+      servers: {
+        remote: {
+          url: authProxy.url,
+          authProvider: async () => {
+            calls += 1;
+            return { Authorization: `Bearer token-${calls}` };
+          },
+        },
+      },
+      compressionLevel: "max",
+    });
+
+    try {
+      const proxy = await client.connect();
+      try {
+        const first = await proxy.invokeWrapper("remote_invoke_tool", {
+          tool_name: "alpha_invoke_tool",
+          tool_input: { tool_name: "echo", tool_input: { message: "one" } },
+        });
+        const second = await proxy.invokeWrapper("remote_invoke_tool", {
+          tool_name: "alpha_invoke_tool",
+          tool_input: { tool_name: "echo", tool_input: { message: "two" } },
+        });
+        expect(first.text).toBe("alpha:one");
+        expect(second.text).toBe("alpha:two");
+      } finally {
+        proxy.close();
+        await client.close();
+      }
+      expect(calls).toBeGreaterThanOrEqual(2);
+    } catch (error) {
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}\nAuth proxy stderr:\n${authProxy.stderr()}`,
+      );
+    } finally {
+      await stopChild(authProxy.child);
+      await stopChild(upstream.child);
     }
   });
 

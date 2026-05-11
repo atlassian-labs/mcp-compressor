@@ -170,15 +170,7 @@ The SDKs expose the same main compression options as the CLI.
 
 ## Dynamic auth providers
 
-SDK clients can supply auth header providers for remote HTTP MCP servers. The provider is evaluated when the SDK opens a compressed session and its returned headers are forwarded to the backend. This is intended for agent runtimes that already manage access tokens and need to inject the current bearer token without shelling out to the CLI.
-
-For long-lived sessions, recreate the compressed session to pick up a refreshed token:
-
-1. refresh or rotate the token in your application,
-2. close the current proxy/session,
-3. call `connect()` again.
-
-Rust SDK auth providers are evaluated by the remote HTTP transport for each backend request. Python and TypeScript SDK auth providers are currently evaluated when the compressed session is opened; close and reconnect those sessions to pick up a refreshed token until their binding-level provider registries are wired to the transport layer.
+SDK clients can supply auth header providers for remote HTTP MCP servers. Providers are evaluated by the remote HTTP transport for each backend request in Rust, Python, and TypeScript. Use them when your application owns token refresh and needs the latest bearer token attached to every backend MCP request without shelling out to the CLI.
 
 === "Python"
 
