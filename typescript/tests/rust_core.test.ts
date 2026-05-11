@@ -620,7 +620,7 @@ describe("Rust native core wrapper", () => {
     }
   });
 
-  it("normalizes dynamic auth providers before starting native sessions", async () => {
+  it("calls authProvider each time servers are normalized", async () => {
     let calls = 0;
     const normalized = await normalizeServers({
       remote: {

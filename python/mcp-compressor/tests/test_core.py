@@ -235,7 +235,7 @@ def test_high_level_compressor_client_exposes_cli_and_bash_modes(monkeypatch) ->
         assert "alpha_echo" in host.custom_commands
 
 
-def test_high_level_compressor_client_supports_dynamic_auth_provider() -> None:
+def test_high_level_compressor_client_calls_auth_provider_each_time_servers_are_resolved() -> None:
     from mcp_compressor import normalize_servers
 
     calls = 0
