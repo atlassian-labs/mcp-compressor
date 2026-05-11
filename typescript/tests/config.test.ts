@@ -1,5 +1,10 @@
 import { expect, test } from "vitest";
-import { interpolateMCPConfig, interpolateString, parseServerConfigJson } from "../src/config.js";
+import {
+  interpolateMCPConfig,
+  interpolateString,
+  normalizeConfigServer,
+  parseServerConfigJson,
+} from "../src/config.js";
 
 test("parseServerConfigJson parses a single stdio server", () => {
   const parsed = parseServerConfigJson(
@@ -139,4 +144,34 @@ test("interpolateMCPConfig preserves unset placeholders", () => {
     mcpServers: { srv: { url: "https://example.com", headers: { X: "${UNSET_VAR}" } } },
   });
   expect(result.mcpServers["srv"]?.headers?.["X"]).toBe("${UNSET_VAR}");
+});
+
+test("normalizeConfigServer preserves fetch for HTTP config", () => {
+  const customFetch = async (url: string | URL, init?: RequestInit) =>
+    new Response(null, { status: 200 });
+  const result = normalizeConfigServer({ url: "http://localhost:3000", fetch: customFetch });
+  expect(result.type).toBe("http");
+  expect((result as { fetch?: unknown }).fetch).toBe(customFetch);
+});
+
+test("normalizeConfigServer preserves fetch for SSE config", () => {
+  const customFetch = async (url: string | URL, init?: RequestInit) =>
+    new Response(null, { status: 200 });
+  const result = normalizeConfigServer({
+    url: "http://localhost:3000",
+    transport: "sse",
+    fetch: customFetch,
+  });
+  expect(result.type).toBe("sse");
+  expect((result as { fetch?: unknown }).fetch).toBe(customFetch);
+});
+
+test("normalizeConfigServer does not set fetch when not provided", () => {
+  const result = normalizeConfigServer({ url: "http://localhost:3000" });
+  expect("fetch" in result).toBe(false);
+});
+
+test("normalizeConfigServer does not set fetch for stdio config", () => {
+  const result = normalizeConfigServer({ command: "uvx", args: ["my-server"] });
+  expect("fetch" in result).toBe(false);
 });
