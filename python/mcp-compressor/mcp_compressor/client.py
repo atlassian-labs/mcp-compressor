@@ -71,7 +71,7 @@ def _backend_from_value(name: str, value: ServerConfig) -> BackendConfig:
             command_or_url=str(value["command"]),
             args=[str(arg) for arg in value.get("args", [])],
         )
-    msg = f"Unsupported server config for {name!r}"
+    msg = f"server {name!r} must define command or url"
     raise ValueError(msg)
 
 
