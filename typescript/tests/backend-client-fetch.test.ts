@@ -6,10 +6,13 @@ test("BackendClient passes custom fetch to StreamableHTTPClientTransport", async
   const fetchCalls: Array<{ url: string | URL; init?: RequestInit }> = [];
   const customFetch = async (url: string | URL, init?: RequestInit) => {
     fetchCalls.push({ url, init });
-    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 0, error: { code: -1, message: "test" } }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ jsonrpc: "2.0", id: 0, error: { code: -1, message: "test" } }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    );
   };
 
   const config: HttpBackendConfig = {

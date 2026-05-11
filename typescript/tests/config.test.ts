@@ -147,7 +147,7 @@ test("interpolateMCPConfig preserves unset placeholders", () => {
 });
 
 test("normalizeConfigServer preserves fetch for HTTP config", () => {
-  const customFetch = async (url: string | URL, init?: RequestInit) =>
+  const customFetch = async (_url: string | URL, _init?: RequestInit) =>
     new Response(null, { status: 200 });
   const result = normalizeConfigServer({ url: "http://localhost:3000", fetch: customFetch });
   expect(result.type).toBe("http");
@@ -155,7 +155,7 @@ test("normalizeConfigServer preserves fetch for HTTP config", () => {
 });
 
 test("normalizeConfigServer preserves fetch for SSE config", () => {
-  const customFetch = async (url: string | URL, init?: RequestInit) =>
+  const customFetch = async (_url: string | URL, _init?: RequestInit) =>
     new Response(null, { status: 200 });
   const result = normalizeConfigServer({
     url: "http://localhost:3000",
