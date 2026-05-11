@@ -170,7 +170,15 @@ The SDKs expose the same main compression options as the CLI.
 
 ## Dynamic auth providers
 
-SDK clients can supply dynamic auth header providers for remote HTTP MCP servers. The provider is evaluated when the SDK opens the compressed session and its returned headers are forwarded to the backend. This is intended for agent runtimes that already manage access tokens and need to inject the current bearer token without shelling out to the CLI.
+SDK clients can supply auth header providers for remote HTTP MCP servers. The provider is evaluated when the SDK opens a compressed session and its returned headers are forwarded to the backend. This is intended for agent runtimes that already manage access tokens and need to inject the current bearer token without shelling out to the CLI.
+
+For long-lived sessions, recreate the compressed session to pick up a refreshed token:
+
+1. refresh or rotate the token in your application,
+2. close the current proxy/session,
+3. call `connect()` again.
+
+The public `auth_provider` / `authProvider` API is intentionally compatible with a future per-request transport implementation, but the current implementation is **session-start auth**, not per-request auth.
 
 === "Python"
 

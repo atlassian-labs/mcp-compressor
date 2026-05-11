@@ -67,6 +67,76 @@ mcp-compressor clear-oauth remote
 
 Python and TypeScript also expose OAuth store helper APIs for applications that need to list or clear stored credentials.
 
+## SDK auth providers
+
+When your application already owns token refresh, prefer SDK auth providers over embedding static headers in config. Auth providers are currently evaluated when a compressed session is opened.
+
+=== "Python"
+
+    ```python
+    from mcp_compressor import CompressorClient
+
+    client = CompressorClient(
+        servers={
+            "remote": {
+                "url": "https://mcp.example.com/v1/mcp",
+                "auth_provider": lambda: {"Authorization": f"Bearer {token_store.current()}"},
+            }
+        }
+    )
+
+    proxy = client.connect()
+
+    # Later, after refreshing the token:
+    proxy.close()
+    proxy = client.connect()
+    ```
+
+=== "TypeScript"
+
+    ```ts
+    import { CompressorClient } from "@atlassian/mcp-compressor";
+
+    const client = new CompressorClient({
+      servers: {
+        remote: {
+          url: "https://mcp.example.com/v1/mcp",
+          authProvider: async () => ({
+            Authorization: `Bearer ${await tokenStore.current()}`,
+          }),
+        },
+      },
+    });
+
+    let proxy = await client.connect();
+
+    // Later, after refreshing the token:
+    proxy.close();
+    proxy = await client.connect();
+    ```
+
+=== "Rust"
+
+    ```rust
+    use std::collections::BTreeMap;
+    use mcp_compressor::sdk::{CompressorClient, ServerConfig};
+
+    let client = CompressorClient::builder()
+        .server(
+            "remote",
+            ServerConfig::url("https://mcp.example.com/v1/mcp")
+                .auth_provider(|| {
+                    Ok(BTreeMap::from([(
+                        "Authorization".to_string(),
+                        format!("Bearer {}", token_store_current()?),
+                    )]))
+                }),
+        )
+        .build();
+    ```
+
+For long-lived sessions, close and reconnect to pick up refreshed credentials. Per-request token refresh is planned as a transport-level enhancement.
+
 ## Explicit headers
 
 Use explicit headers when you already have a token or need non-interactive CI.

@@ -416,6 +416,52 @@ mod tests {
         );
     }
 
+    #[test]
+    fn auth_provider_is_evaluated_each_time_config_is_materialized() {
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let first_calls = Arc::clone(&calls);
+        let first = ServerConfig::url("https://example.test/mcp")
+            .auth_provider(move || {
+                let call = first_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                Ok(BTreeMap::from([(
+                    "Authorization".to_string(),
+                    format!("Bearer token-{call}"),
+                )]))
+            })
+            .materialize()
+            .unwrap();
+        let second_calls = Arc::clone(&calls);
+        let second = ServerConfig::url("https://example.test/mcp")
+            .auth_provider(move || {
+                let call = second_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                Ok(BTreeMap::from([(
+                    "Authorization".to_string(),
+                    format!("Bearer token-{call}"),
+                )]))
+            })
+            .materialize()
+            .unwrap();
+
+        let first_backend = normalize_sdk_servers(FfiSdkServersConfig::from_iter([(
+            "remote".to_string(),
+            first,
+        )]))
+        .unwrap();
+        let second_backend = normalize_sdk_servers(FfiSdkServersConfig::from_iter([(
+            "remote".to_string(),
+            second,
+        )]))
+        .unwrap();
+
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert!(first_backend[0]
+            .args
+            .contains(&"Authorization=Bearer token-1".to_string()));
+        assert!(second_backend[0]
+            .args
+            .contains(&"Authorization=Bearer token-2".to_string()));
+    }
+
     #[tokio::test]
     async fn compressor_client_invokes_single_server_without_compressor_subprocess() {
         let client = CompressorClient::builder()
