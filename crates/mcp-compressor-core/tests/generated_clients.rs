@@ -107,6 +107,34 @@ async fn generated_cli_script_invokes_real_proxy_and_backend() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn generated_cli_script_reports_stopped_proxy_without_traceback() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let (config, proxy) = running_proxy_config(tempdir.path()).await;
+    let mut config = config;
+    config.tools = real_backend_tools().await;
+    let paths = CliGenerator.generate(&config).unwrap();
+    let script = paths
+        .iter()
+        .find(|path| path.file_name().unwrap() == "alpha")
+        .unwrap();
+
+    drop(proxy);
+
+    let output = Command::new(script)
+        .args(["echo", "--message", "hello"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("mcp-compressor proxy is not running"),
+        "stderr: {stderr}"
+    );
+    assert!(!stderr.contains("Traceback"), "stderr: {stderr}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn generated_python_module_invokes_real_proxy_and_backend() {
     let tempdir = tempfile::tempdir().unwrap();
     let (config, _proxy) = running_proxy_config(tempdir.path()).await;

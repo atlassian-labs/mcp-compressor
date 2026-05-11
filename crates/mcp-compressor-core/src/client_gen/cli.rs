@@ -84,7 +84,7 @@ HELP
       exit 0
     fi
     python3 - "$BRIDGE" "$TOKEN" "{tool_name}" "$@" <<'PY'
-import json, sys, urllib.request
+import json, sys, urllib.error, urllib.request
 bridge, token, tool_name, *argv = sys.argv[1:]
 tool_input = {{}}
 index = 0
@@ -110,8 +110,20 @@ req = urllib.request.Request(
     headers={{"Content-Type": "application/json", "Authorization": "Bearer " + token}},
     method="POST",
 )
-with urllib.request.urlopen(req, timeout=30) as resp:
-    sys.stdout.write(resp.read().decode())
+try:
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        sys.stdout.write(resp.read().decode())
+except urllib.error.HTTPError as exc:
+    message = exc.read().decode(errors="replace") or exc.reason
+    print(f"mcp-compressor proxy returned HTTP {{exc.code}}: {{message}}", file=sys.stderr)
+    raise SystemExit(1)
+except urllib.error.URLError as exc:
+    print(
+        "mcp-compressor proxy is not running; restart the mcp-compressor CLI-mode process and try again.",
+        file=sys.stderr,
+    )
+    print(f"details: {{exc.reason}}", file=sys.stderr)
+    raise SystemExit(1)
 PY
     ;;
 "#,
