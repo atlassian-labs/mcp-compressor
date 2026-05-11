@@ -168,6 +168,68 @@ The SDKs expose the same main compression options as the CLI.
         .build();
     ```
 
+## Dynamic auth providers
+
+SDK clients can supply dynamic auth header providers for remote HTTP MCP servers. The provider is evaluated when the SDK opens the compressed session and its returned headers are forwarded to the backend. This is intended for agent runtimes that already manage access tokens and need to inject the current bearer token without shelling out to the CLI.
+
+=== "Python"
+
+    ```python
+    from mcp_compressor import CompressorClient
+
+    def auth_provider() -> dict[str, str]:
+        token = token_store.current_access_token()
+        return {"Authorization": f"Bearer {token}"}
+
+    client = CompressorClient(
+        servers={
+            "atlassian": {
+                "url": "https://mcp.atlassian.com/v1/mcp",
+                "auth_provider": auth_provider,
+            }
+        }
+    )
+    ```
+
+=== "TypeScript"
+
+    ```ts
+    import { CompressorClient } from "@atlassian/mcp-compressor";
+
+    const client = new CompressorClient({
+      servers: {
+        atlassian: {
+          url: "https://mcp.atlassian.com/v1/mcp",
+          authProvider: async () => ({
+            Authorization: `Bearer ${await tokenStore.currentAccessToken()}`,
+          }),
+        },
+      },
+    });
+    ```
+
+=== "Rust"
+
+    ```rust
+    use std::collections::BTreeMap;
+    use mcp_compressor::sdk::{CompressorClient, ServerConfig};
+
+    let client = CompressorClient::builder()
+        .server(
+            "atlassian",
+            ServerConfig::url("https://mcp.atlassian.com/v1/mcp")
+                .auth_provider(|| {
+                    Ok(BTreeMap::from([(
+                        "Authorization".to_string(),
+                        format!("Bearer {}", current_access_token()?),
+                    )]))
+                }),
+        )
+        .build();
+    ```
+
+Static `headers` and dynamic provider headers can be combined; provider headers override static headers with the same name.
+
 ## Lifecycle
 
 === "Python"

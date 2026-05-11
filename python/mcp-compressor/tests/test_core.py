@@ -235,6 +235,39 @@ def test_high_level_compressor_client_exposes_cli_and_bash_modes(monkeypatch) ->
         assert "alpha_echo" in host.custom_commands
 
 
+def test_high_level_compressor_client_supports_dynamic_auth_provider() -> None:
+    from mcp_compressor import normalize_servers
+
+    calls = 0
+
+    def auth_provider() -> dict[str, str]:
+        nonlocal calls
+        calls += 1
+        return {"Authorization": f"Bearer token-{calls}"}
+
+    backends = normalize_servers(
+        {
+            "remote": {
+                "url": "https://example.test/mcp",
+                "headers": {"X-Static": "yes"},
+                "auth_provider": auth_provider,
+            }
+        }
+    )
+
+    assert calls == 1
+    assert backends is not None
+    assert backends[0].command_or_url == "https://example.test/mcp"
+    assert backends[0].args == [
+        "-H",
+        "X-Static=yes",
+        "-H",
+        "Authorization=Bearer token-1",
+        "--auth",
+        "explicit-headers",
+    ]
+
+
 def test_high_level_compressor_client_supports_remote_config_shape() -> None:
     from mcp_compressor import normalize_servers
 

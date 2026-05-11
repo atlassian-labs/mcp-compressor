@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
@@ -31,9 +32,12 @@ impl From<CompressorMode> for ProxyTransformMode {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+type HeaderProvider = Arc<dyn Fn() -> Result<BTreeMap<String, String>, Error> + Send + Sync>;
+
+#[derive(Clone)]
 pub struct ServerConfig {
     inner: FfiSdkServerConfig,
+    auth_provider: Option<HeaderProvider>,
 }
 
 impl ServerConfig {
@@ -45,6 +49,7 @@ impl ServerConfig {
                 args: Vec::new(),
                 headers: BTreeMap::new(),
             },
+            auth_provider: None,
         }
     }
 
@@ -56,6 +61,7 @@ impl ServerConfig {
                 args: Vec::new(),
                 headers: BTreeMap::new(),
             },
+            auth_provider: None,
         }
     }
 
@@ -79,11 +85,29 @@ impl ServerConfig {
         }
         self
     }
+
+    pub fn auth_provider(
+        mut self,
+        provider: impl Fn() -> Result<BTreeMap<String, String>, Error> + Send + Sync + 'static,
+    ) -> Self {
+        self.auth_provider = Some(Arc::new(provider));
+        self
+    }
+
+    fn materialize(mut self) -> Result<FfiSdkServerConfig, Error> {
+        if let Some(provider) = self.auth_provider.take() {
+            let provided = provider()?;
+            if let FfiSdkServerConfig::Structured { headers, .. } = &mut self.inner {
+                headers.extend(provided);
+            }
+        }
+        Ok(self.inner)
+    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CompressorClientBuilder {
-    servers: BTreeMap<String, FfiSdkServerConfig>,
+    servers: BTreeMap<String, ServerConfig>,
     compression_level: CompressionLevel,
     server_name: Option<String>,
     include_tools: Vec<String>,
@@ -108,7 +132,7 @@ impl Default for CompressorClientBuilder {
 
 impl CompressorClientBuilder {
     pub fn server(mut self, name: impl Into<String>, config: ServerConfig) -> Self {
-        self.servers.insert(name.into(), config.inner);
+        self.servers.insert(name.into(), config);
         self
     }
 
@@ -147,7 +171,7 @@ impl CompressorClientBuilder {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CompressorClient {
     builder: CompressorClientBuilder,
 }
@@ -158,9 +182,14 @@ impl CompressorClient {
     }
 
     pub async fn connect(&self) -> Result<CompressorProxy, Error> {
-        let backends = normalize_sdk_servers(FfiSdkServersConfig::from_iter(
-            self.builder.servers.clone(),
-        ))?;
+        let materialized = self
+            .builder
+            .servers
+            .clone()
+            .into_iter()
+            .map(|(name, config)| config.materialize().map(|config| (name, config)))
+            .collect::<Result<Vec<_>, _>>()?;
+        let backends = normalize_sdk_servers(FfiSdkServersConfig::from_iter(materialized))?;
         let server = CompressedServer::connect_multi_stdio(
             CompressedServerConfig {
                 level: self.builder.compression_level.clone(),
@@ -352,6 +381,39 @@ mod tests {
 
     fn python_command() -> String {
         std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_string())
+    }
+
+    #[test]
+    fn server_config_auth_provider_materializes_headers() {
+        let config = ServerConfig::url("https://example.test/mcp")
+            .header("X-Static", "yes")
+            .auth_provider(|| {
+                Ok(BTreeMap::from([(
+                    "Authorization".to_string(),
+                    "Bearer dynamic".to_string(),
+                )]))
+            })
+            .materialize()
+            .unwrap();
+
+        let backends = normalize_sdk_servers(FfiSdkServersConfig::from_iter([(
+            "remote".to_string(),
+            config,
+        )]))
+        .unwrap();
+
+        assert_eq!(backends[0].command_or_url, "https://example.test/mcp");
+        assert_eq!(
+            backends[0].args,
+            [
+                "-H",
+                "Authorization=Bearer dynamic",
+                "-H",
+                "X-Static=yes",
+                "--auth",
+                "explicit-headers",
+            ]
+        );
     }
 
     #[tokio::test]
