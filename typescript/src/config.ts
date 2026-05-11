@@ -119,5 +119,6 @@ export function normalizeConfigServer(entry: JsonConfigServerEntry): BackendConf
     type: interpolated.transport === "sse" ? "sse" : "http",
     url: interpolated.url.toString(),
     headers: interpolated.headers,
+    ...(entry.fetch !== undefined ? { fetch: entry.fetch } : {}),
   };
 }

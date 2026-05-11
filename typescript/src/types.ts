@@ -1,3 +1,4 @@
+import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 export type CompressionLevel = "low" | "medium" | "high" | "max";
@@ -23,6 +24,7 @@ export interface HttpBackendConfig {
   url: string;
   headers?: Record<string, string>;
   timeoutMs?: number;
+  fetch?: FetchLike;
 }
 
 export interface SseBackendConfig {
@@ -30,6 +32,7 @@ export interface SseBackendConfig {
   url: string;
   headers?: Record<string, string>;
   timeoutMs?: number;
+  fetch?: FetchLike;
 }
 
 export type BackendConfig = StdioBackendConfig | HttpBackendConfig | SseBackendConfig;
@@ -43,6 +46,7 @@ export interface JsonConfigServerEntry {
   url?: URL | string;
   headers?: Record<string, string>;
   transport?: "sse";
+  fetch?: FetchLike;
 }
 
 export interface MCPConfigShape {

@@ -83,6 +83,7 @@ export class BackendClient {
         new StreamableHTTPClientTransport(new URL(this.config.url), {
           authProvider: this.oauthProvider,
           requestInit: { headers: this.config.headers },
+          fetch: this.config.fetch,
         }),
       );
     } else if (this.config.type === "sse") {
@@ -91,6 +92,7 @@ export class BackendClient {
         new SSEClientTransport(new URL(this.config.url), {
           authProvider: this.oauthProvider,
           requestInit: { headers: this.config.headers },
+          fetch: this.config.fetch,
         }),
       );
     } else {
