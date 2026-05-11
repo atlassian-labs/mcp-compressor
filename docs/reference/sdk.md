@@ -4,9 +4,12 @@ This page is a human-oriented map of the main SDK objects. Generated API referen
 
 ## Auth provider semantics
 
-Python, TypeScript, and Rust SDK clients support dynamic auth providers for remote HTTP backend servers. These providers are evaluated when a compressed session is opened. To use a refreshed token, close the current proxy/session and reconnect.
+Python, TypeScript, and Rust SDK clients support dynamic auth providers for remote HTTP backend servers.
 
-This current session-start behavior is intentionally conservative and keeps the public API compatible with a future per-request transport-level refresh implementation.
+- Rust providers are evaluated by the remote HTTP transport for each backend request.
+- Python and TypeScript providers are currently evaluated when a compressed session is opened. To use a refreshed token in those bindings, close the current proxy/session and reconnect.
+
+The Python and TypeScript public APIs are intentionally compatible with future per-request binding-level provider registries.
 
 ## Shared concepts
 

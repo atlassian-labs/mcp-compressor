@@ -69,7 +69,7 @@ Python and TypeScript also expose OAuth store helper APIs for applications that 
 
 ## SDK auth providers
 
-When your application already owns token refresh, prefer SDK auth providers over embedding static headers in config. Auth providers are currently evaluated when a compressed session is opened.
+When your application already owns token refresh, prefer SDK auth providers over embedding static headers in config. Rust SDK auth providers are evaluated for each remote backend request. Python and TypeScript SDK auth providers are currently evaluated when a compressed session is opened.
 
 === "Python"
 
@@ -135,7 +135,7 @@ When your application already owns token refresh, prefer SDK auth providers over
         .build();
     ```
 
-For long-lived sessions, close and reconnect to pick up refreshed credentials. Per-request token refresh is planned as a transport-level enhancement.
+For Python and TypeScript long-lived sessions, close and reconnect to pick up refreshed credentials. Rust SDK sessions can refresh per request through `ServerConfig::auth_provider(...)`. Python and TypeScript per-request provider registries are planned as binding-level follow-ups.
 
 ## Explicit headers
 
