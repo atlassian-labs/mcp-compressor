@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -11,12 +12,12 @@ from mcp_compressor.core import (
     CompressedSession,
     CompressedSessionConfig,
     generate_client_artifacts,
-    normalize_sdk_servers,
     start_compressed_session,
     start_compressed_session_from_mcp_config,
 )
 
 CompressorMode = Literal["compressed", "cli", "bash", "python", "typescript"]
+AuthProvider = Callable[[], Mapping[str, str]]
 ServerConfig = dict[str, Any] | str | BackendConfig
 ServersInput = dict[str, ServerConfig] | ServerConfig | str
 
@@ -56,8 +57,8 @@ def _backend_from_value(name: str, value: ServerConfig) -> BackendConfig:
         return BackendConfig(name=name, command_or_url=value)
     if "url" in value:
         args: list[str] = []
-        headers = value.get("headers")
-        if isinstance(headers, dict):
+        headers = _resolve_headers(value)
+        if headers:
             for key, header_value in headers.items():
                 args.extend(["-H", f"{key}={header_value}"])
             if "--auth" not in value.get("args", []):
@@ -70,8 +71,28 @@ def _backend_from_value(name: str, value: ServerConfig) -> BackendConfig:
             command_or_url=str(value["command"]),
             args=[str(arg) for arg in value.get("args", [])],
         )
-    msg = f"Unsupported server config for {name!r}"
+    msg = f"server {name!r} must define command or url"
     raise ValueError(msg)
+
+
+def _resolve_headers(value: dict[str, Any]) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    raw_headers = value.get("headers")
+    if isinstance(raw_headers, dict):
+        headers.update({str(key): str(header_value) for key, header_value in raw_headers.items()})
+    provider = value.get("auth_provider")
+    if provider is None:
+        provider = value.get("authProvider")
+    if provider is not None:
+        if not callable(provider):
+            msg = "auth_provider must be callable"
+            raise TypeError(msg)
+        provided = provider()
+        if not isinstance(provided, Mapping):
+            msg = "auth_provider must return a mapping of header names to values"
+            raise TypeError(msg)
+        headers.update({str(key): str(header_value) for key, header_value in provided.items()})
+    return headers
 
 
 def _resolve_backends(servers: ServersInput) -> tuple[list[BackendConfig] | None, str | None]:
@@ -82,7 +103,7 @@ def _resolve_backends(servers: ServersInput) -> tuple[list[BackendConfig] | None
         return [BackendConfig(name="default", command_or_url=servers)], None
     if isinstance(servers, BackendConfig):
         return [servers], None
-    return normalize_sdk_servers(servers), None
+    return [_backend_from_value(name, value) for name, value in servers.items()], None
 
 
 class CompressorProxy:

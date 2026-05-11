@@ -620,8 +620,38 @@ describe("Rust native core wrapper", () => {
     }
   });
 
-  it("normalizes high-level native server config", () => {
-    const normalized = normalizeServers({
+  it("normalizes dynamic auth providers before starting native sessions", async () => {
+    let calls = 0;
+    const normalized = await normalizeServers({
+      remote: {
+        url: "https://example.test/mcp",
+        headers: { "X-Static": "yes" },
+        authProvider: async () => {
+          calls += 1;
+          return { Authorization: `Bearer token-${calls}` };
+        },
+      },
+    });
+
+    expect(calls).toBe(1);
+    expect(normalized).toEqual([
+      {
+        name: "remote",
+        commandOrUrl: "https://example.test/mcp",
+        args: [
+          "-H",
+          "Authorization=Bearer token-1",
+          "-H",
+          "X-Static=yes",
+          "--auth",
+          "explicit-headers",
+        ],
+      },
+    ]);
+  });
+
+  it("normalizes high-level native server config", async () => {
+    const normalized = await normalizeServers({
       remote: {
         url: "https://example.test/mcp",
         headers: { Authorization: "Bearer token" },

@@ -8,7 +8,12 @@ import type { BackendConfig as LegacyBackendConfig, JsonConfigServerEntry } from
 import type { CompressedSession, CompressedSessionInfo } from "./rust_core.js";
 
 export type NativeCompressorMode = "compressed" | "cli" | "bash" | "python" | "typescript";
-export type NativeServerConfig = LegacyBackendConfig | JsonConfigServerEntry | string;
+export type AuthProvider = () => Record<string, string> | Promise<Record<string, string>>;
+export type NativeServerObjectConfig = (LegacyBackendConfig | JsonConfigServerEntry) & {
+  authProvider?: AuthProvider;
+  auth_provider?: AuthProvider;
+};
+export type NativeServerConfig = NativeServerObjectConfig | string;
 export type NativeServersInput = Record<string, NativeServerConfig> | LegacyBackendConfig | string;
 
 export interface CompressorClientOptions {
@@ -53,7 +58,32 @@ export interface NormalizedBackendConfig {
   args?: string[];
 }
 
-export function normalizeServers(servers: NativeServersInput): NormalizedBackendConfig[] | string {
+async function resolveAuthHeaders(
+  config: Record<string, unknown>,
+): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {};
+  const rawHeaders = config.headers;
+  if (rawHeaders && typeof rawHeaders === "object" && !Array.isArray(rawHeaders)) {
+    for (const [key, value] of Object.entries(rawHeaders as Record<string, unknown>)) {
+      headers[key] = String(value);
+    }
+  }
+  const provider = config.authProvider ?? config.auth_provider;
+  if (provider !== undefined) {
+    if (typeof provider !== "function") {
+      throw new TypeError("authProvider must be a function");
+    }
+    const provided = await (provider as AuthProvider)();
+    for (const [key, value] of Object.entries(provided)) {
+      headers[key] = String(value);
+    }
+  }
+  return headers;
+}
+
+export async function normalizeServers(
+  servers: NativeServersInput,
+): Promise<NormalizedBackendConfig[] | string> {
   if (typeof servers === "string") {
     const trimmed = servers.trim();
     if (trimmed.startsWith("{")) {
@@ -62,9 +92,20 @@ export function normalizeServers(servers: NativeServersInput): NormalizedBackend
     return [{ name: "default", commandOrUrl: servers }];
   }
   if (isLegacyBackendConfig(servers)) {
-    return [legacyBackendToNative("default", servers)];
+    return [await legacyBackendToNative("default", servers)];
   }
-  return normalizeSdkServers(servers);
+  const materialized: Record<string, unknown> = {};
+  for (const [name, config] of Object.entries(servers as Record<string, NativeServerConfig>)) {
+    if (typeof config === "object" && config !== null && "url" in config) {
+      materialized[name] = {
+        ...config,
+        headers: await resolveAuthHeaders(config as Record<string, unknown>),
+      };
+    } else {
+      materialized[name] = config;
+    }
+  }
+  return normalizeSdkServers(materialized);
 }
 
 function isLegacyBackendConfig(value: unknown): value is LegacyBackendConfig {
@@ -73,16 +114,17 @@ function isLegacyBackendConfig(value: unknown): value is LegacyBackendConfig {
   );
 }
 
-function legacyBackendToNative(
+async function legacyBackendToNative(
   name: string,
   backend: LegacyBackendConfig,
-): NormalizedBackendConfig {
+): Promise<NormalizedBackendConfig> {
   if (backend.type === "stdio") {
     return { name, commandOrUrl: backend.command, args: backend.args ?? [] };
   }
   const args: string[] = [];
-  if (backend.headers) {
-    for (const [key, value] of Object.entries(backend.headers)) {
+  const headers = await resolveAuthHeaders(backend as unknown as Record<string, unknown>);
+  if (Object.keys(headers).length > 0) {
+    for (const [key, value] of Object.entries(headers)) {
       args.push("-H", `${key}=${value}`);
     }
     args.push("--auth", "explicit-headers");
@@ -230,7 +272,7 @@ export class CompressorClient {
     if (this.session) {
       return new CompressorProxy(this.session, this.defaultServer());
     }
-    const normalized = normalizeServers(this.options.servers);
+    const normalized = await normalizeServers(this.options.servers);
     const config = {
       compressionLevel: this.options.compressionLevel ?? "medium",
       serverName: this.options.serverName ?? null,
@@ -252,8 +294,14 @@ export class CompressorClient {
   }
 
   private defaultServer(): string | null {
-    const normalized = normalizeServers(this.options.servers);
-    if (typeof normalized === "string") return null;
-    return normalized.length === 1 ? normalized[0]!.name : null;
+    const servers = this.options.servers;
+    if (typeof servers === "string") {
+      return servers.trim().startsWith("{") ? null : "default";
+    }
+    if (isLegacyBackendConfig(servers)) {
+      return "default";
+    }
+    const names = Object.keys(servers as Record<string, NativeServerConfig>);
+    return names.length === 1 ? names[0]! : null;
   }
 }
