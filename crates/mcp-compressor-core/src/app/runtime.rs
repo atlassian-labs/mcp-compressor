@@ -28,7 +28,6 @@ async fn run_compressed_stdio(server: CompressedServer) -> Result<(), String> {
         "stdio",
         server.compression_level(),
         &server.backend_tools(),
-        false,
         None,
     );
     rmcp::serve_server(FrontendServer::new(server), rmcp::transport::stdio())
@@ -54,7 +53,6 @@ async fn run_compressed_streamable_http(
         "streamable-http",
         server.compression_level(),
         &server.backend_tools(),
-        false,
         None,
     );
 
@@ -98,7 +96,9 @@ pub async fn run_just_bash_mode(cli: CliOptions, server: CompressedServer) -> Re
 }
 
 pub async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(), String> {
-    let tools = server.single_backend_tools().map_err(|error| error.to_string())?;
+    let tools = server
+        .single_backend_tools()
+        .map_err(|error| error.to_string())?;
     let proxy = ToolProxyServer::start(server)
         .await
         .map_err(|error| error.to_string())?;
@@ -109,7 +109,12 @@ pub async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(
             .unwrap_or(false);
         (output_dir, on_path)
     } else if client_artifact_kind.is_some() {
-        (std::env::current_dir().map_err(|error| error.to_string())?.join("dist"), false)
+        (
+            std::env::current_dir()
+                .map_err(|error| error.to_string())?
+                .join("dist"),
+            false,
+        )
     } else {
         cli_output_dir().map_err(|error| error.to_string())?
     };
@@ -142,13 +147,16 @@ pub async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(
         .find(|path| path.file_name().and_then(|name| name.to_str()) == Some(cli_name.as_str()))
         .unwrap_or(&paths[0]);
 
-    let transport_label = if cli.server_name.is_some() { "stdio" } else { "stdio" };
+    let transport_label = if cli.server_name.is_some() {
+        "stdio"
+    } else {
+        "stdio"
+    };
     banner::print_banner(
         cli.server_name.as_deref(),
         transport_label,
         &crate::compression::CompressionLevel::Max,
         &config.tools,
-        true,
         Some(CliInfo {
             script_path: Some(&script.display().to_string()),
             bridge_url: Some(&proxy.bridge_url().to_string()),

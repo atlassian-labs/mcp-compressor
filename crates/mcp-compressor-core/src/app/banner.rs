@@ -33,27 +33,60 @@ pub fn compression_stats(tools: &[Tool]) -> CompressionStats {
 
     let compressed: Vec<(CompressionLevel, usize)> = levels
         .iter()
-        .map(|level| {
-            let engine = CompressionEngine::new(level.clone());
-            let listing = engine.format_listing(tools);
-            (level.clone(), listing.len())
-        })
+        .map(|level| (level.clone(), compressed_frontend_size(tools, level)))
         .collect();
-
-    // CLI mode size: just tool names as subcommands
-    let cli_size: usize = tools.iter().map(|t| t.name.len() + 1).sum();
 
     CompressionStats {
         original_size: original,
         compressed,
-        cli_size,
     }
 }
 
 pub struct CompressionStats {
     pub original_size: usize,
     pub compressed: Vec<(CompressionLevel, usize)>,
-    pub cli_size: usize,
+}
+
+fn compressed_frontend_size(tools: &[Tool], level: &CompressionLevel) -> usize {
+    let engine = CompressionEngine::new(level.clone());
+    let listing = engine.format_listing(tools);
+
+    let get_tool_schema_description = format!(
+        "Get the complete schema and description for one backend tool. Available tools:\n{listing}"
+    );
+    let invoke_tool_description = "Invoke one backend tool by name with JSON input.";
+    let list_tools_description = "List backend tools available through this compressed MCP server.";
+
+    let schema_wrapper = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "tool_name": {"type": "string", "description": "Name of the backend tool"}
+        },
+        "required": ["tool_name"]
+    });
+    let invoke_wrapper = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "tool_name": {"type": "string", "description": "Name of the backend tool"},
+            "tool_input": {"type": "object", "description": "JSON input for the backend tool"}
+        },
+        "required": ["tool_name", "tool_input"]
+    });
+    let list_wrapper = serde_json::json!({
+        "type": "object",
+        "properties": {}
+    });
+
+    let mut size = get_tool_schema_description.len()
+        + invoke_tool_description.len()
+        + schema_wrapper.to_string().len()
+        + invoke_wrapper.to_string().len();
+
+    if *level == CompressionLevel::Max {
+        size += list_tools_description.len() + list_wrapper.to_string().len();
+    }
+
+    size
 }
 
 /// Print the startup banner with compression chart to stderr.
@@ -62,7 +95,6 @@ pub fn print_banner(
     transport_type: &str,
     active_level: &CompressionLevel,
     tools: &[Tool],
-    cli_mode: bool,
     cli_info: Option<CliInfo<'_>>,
 ) {
     let columns = terminal_width().min(80);
@@ -108,24 +140,16 @@ pub fn print_banner(
     lines.push(separator.clone());
     lines.push(blank.clone());
 
-    if cli_mode {
-        lines.push(pad_line(
-            "📊 Compression Statistics (current = CLI mode):",
-            content_width - 1,
-            false,
-        ));
-    } else {
-        lines.push(pad_line(
-            &format!(
-                "📊 Compression Statistics (current = {}):",
-                capitalize(active_level)
-            ),
-            content_width - 1,
-            false,
-        ));
-    }
+    lines.push(pad_line(
+        &format!(
+            "📊 Compression Statistics (current = {}):",
+            capitalize(active_level)
+        ),
+        content_width - 1,
+        false,
+    ));
     lines.push(blank.clone());
-    lines.extend(format_chart(&stats, content_width, active_level, cli_mode));
+    lines.extend(format_chart(&stats, content_width, active_level));
 
     if let Some(info) = cli_info {
         lines.push(blank.clone());
@@ -170,7 +194,6 @@ fn format_chart(
     stats: &CompressionStats,
     width: usize,
     active_level: &CompressionLevel,
-    cli_mode: bool,
 ) -> Vec<String> {
     let chart_width = width.saturating_sub(16);
     let original = stats.original_size;
@@ -206,28 +229,11 @@ fn format_chart(
         let label = format!("{:<8}", capitalize(level));
         let mut line = pad_line(&format!("{label} {bar} {pct:5.1}%"), width, false);
 
-        if level == active_level && !cli_mode {
+        if level == active_level {
             line = highlight_bar(&line);
         }
         lines.push(line);
     }
-
-    // CLI mode bar
-    let cli_ratio = if original > 0 {
-        stats.cli_size as f64 / original as f64
-    } else {
-        0.0
-    };
-    let filled = (cli_ratio * chart_width as f64).round() as usize;
-    let filled = filled.min(chart_width);
-    let bar = format!("{}{}", "█".repeat(filled), "░".repeat(chart_width - filled));
-    let pct = cli_ratio * 100.0;
-    let mut line = pad_line(&format!("CLI mode {bar} {pct:5.1}%"), width, false);
-    if cli_mode {
-        line = highlight_bar(&line);
-    }
-    lines.push(line);
-
     lines
 }
 
@@ -335,7 +341,7 @@ mod tests {
     }
 
     #[test]
-    fn format_chart_handles_cli_mode_bar_with_unicode_border() {
+    fn format_chart_only_shows_compression_levels() {
         let stats = CompressionStats {
             original_size: 129,
             compressed: vec![
@@ -344,15 +350,38 @@ mod tests {
                 (CompressionLevel::High, 10),
                 (CompressionLevel::Max, 5),
             ],
-            cli_size: 3,
         };
 
-        let lines = format_chart(&stats, 80, &CompressionLevel::Medium, true);
-        let cli_line = lines
+        let lines = format_chart(&stats, 80, &CompressionLevel::Medium);
+        assert_eq!(lines.len(), 5);
+        assert!(lines.iter().any(|line| line.contains("Original")));
+        assert!(lines.iter().any(|line| line.contains("Low")));
+        assert!(lines.iter().any(|line| line.contains("Medium")));
+        assert!(lines.iter().any(|line| line.contains("High")));
+        assert!(lines.iter().any(|line| line.contains("Max")));
+        assert!(!lines.iter().any(|line| line.contains("CLI mode")));
+        let medium = lines.iter().find(|line| line.contains("Medium")).unwrap();
+        assert!(medium.contains("\x1b[1;32m"));
+    }
+
+    #[test]
+    fn max_compression_stat_includes_wrapper_schema_surface() {
+        let tools = vec![Tool::new(
+            "echo",
+            Some("Echo a message".to_string()),
+            serde_json::json!({
+                "type": "object",
+                "properties": {"message": {"type": "string"}},
+                "required": ["message"]
+            }),
+        )];
+        let stats = compression_stats(&tools);
+        let max = stats
+            .compressed
             .iter()
-            .find(|line| line.contains("CLI mode"))
-            .expect("CLI mode line");
-        assert!(cli_line.contains("\x1b[1;32m"));
-        assert!(strip_ansi(cli_line).starts_with("│  CLI mode"));
+            .find(|(level, _)| *level == CompressionLevel::Max)
+            .map(|(_, size)| *size)
+            .unwrap();
+        assert!(max > 0);
     }
 }
