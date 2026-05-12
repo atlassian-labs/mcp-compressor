@@ -48,6 +48,37 @@ async fn running_proxy_config(output_dir: &std::path::Path) -> (GeneratorConfig,
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn generated_typescript_module_reports_stopped_proxy_without_fetch_noise() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let (config, proxy) = running_proxy_config(tempdir.path()).await;
+    let mut config = config;
+    config.tools = real_backend_tools().await;
+    let paths = TypeScriptGenerator.generate(&config).unwrap();
+    let module = paths
+        .iter()
+        .find(|path| path.file_name().unwrap() == "alpha.ts")
+        .unwrap();
+
+    drop(proxy);
+
+    let output = Command::new("bun")
+        .arg("--eval")
+        .arg(format!(
+            "import {{ echo }} from {module:?}; await echo('hello')",
+            module = module.display().to_string()
+        ))
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("mcp-compressor proxy is not running"),
+        "stderr: {stderr}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn generated_cli_script_handles_structured_json_arguments() {
     let tempdir = tempfile::tempdir().unwrap();
     let (config, _proxy) = running_proxy_config(tempdir.path()).await;
@@ -156,6 +187,38 @@ async fn generated_python_module_invokes_real_proxy_and_backend() {
         String::from_utf8_lossy(&output.stdout).trim(),
         "alpha:hello"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn generated_python_module_reports_stopped_proxy_without_urllib_traceback() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let (config, proxy) = running_proxy_config(tempdir.path()).await;
+    let mut config = config;
+    config.tools = real_backend_tools().await;
+    let paths = PythonGenerator.generate(&config).unwrap();
+    let module = paths
+        .iter()
+        .find(|path| path.file_name().unwrap() == "alpha.py")
+        .unwrap();
+
+    drop(proxy);
+
+    let output = Command::new(common::python_command())
+        .arg("-c")
+        .arg(format!(
+            "import sys; sys.path.insert(0, {dir:?}); import alpha; alpha.echo('hello')",
+            dir = module.parent().unwrap().display().to_string()
+        ))
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("mcp-compressor proxy is not running"),
+        "stderr: {stderr}"
+    );
+    assert!(!stderr.contains("urllib.request"), "stderr: {stderr}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
