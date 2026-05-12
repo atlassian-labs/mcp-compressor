@@ -11,6 +11,10 @@ readme        = "../../README.md"
 keywords      = ["mcp", "ai", "cli", "agent"]
 categories    = ["api-bindings", "command-line-utilities", "development-tools"]
 
+[[bin]]
+name = "mcp-compressor"
+path = "src/main.rs"
+
 [dependencies]
 mcp-compressor-core = { path = "../mcp-compressor-core", version = "0.1.0" }
 
