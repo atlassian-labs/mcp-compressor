@@ -15,6 +15,8 @@ export type AuthProvider = () => Record<string, string> | Promise<Record<string,
 export type NativeServerObjectConfig = (LegacyBackendConfig | JsonConfigServerEntry) & {
   authProvider?: AuthProvider;
   auth_provider?: AuthProvider;
+  oauthAppName?: string;
+  oauth_app_name?: string;
 };
 export type NativeServerConfig = NativeServerObjectConfig | string;
 export type NativeServersInput = Record<string, NativeServerConfig> | LegacyBackendConfig | string;
@@ -59,6 +61,7 @@ export interface NormalizedBackendConfig {
   name: string;
   commandOrUrl: string;
   args?: string[];
+  oauth_app_name?: string;
 }
 
 export interface GeneratedCodeClient {
@@ -162,18 +165,15 @@ export async function normalizeServers(
   if (isLegacyBackendConfig(servers)) {
     return [await legacyBackendToNative("default", servers)];
   }
-  const materialized: Record<string, unknown> = {};
+  const normalized: NormalizedBackendConfig[] = [];
   for (const [name, config] of Object.entries(servers as Record<string, NativeServerConfig>)) {
-    if (typeof config === "object" && config !== null && "url" in config) {
-      materialized[name] = {
-        ...config,
-        headers: await resolveAuthHeaders(config as Record<string, unknown>),
-      };
+    if (typeof config === "object" && config !== null && ("url" in config || "command" in config)) {
+      normalized.push(await sdkObjectToNative(name, config as Record<string, unknown>));
     } else {
-      materialized[name] = config;
+      normalized.push(...normalizeSdkServers({ [name]: config }));
     }
   }
-  return normalizeSdkServers(materialized);
+  return normalized;
 }
 
 function isLegacyBackendConfig(value: unknown): value is LegacyBackendConfig {
@@ -202,14 +202,28 @@ async function sdkObjectToNative(
     if (Array.isArray(config.args)) {
       args.push(...config.args.map(String));
     }
-    return { name, commandOrUrl: String(config.url), args };
+    const backend: NormalizedBackendConfig & { oauth_app_name?: string } = {
+      name,
+      commandOrUrl: String(config.url),
+      args,
+    };
+    const oauthAppName = config.oauthAppName ?? config.oauth_app_name;
+    if (oauthAppName !== undefined) {
+      backend.oauth_app_name = String(oauthAppName);
+    }
+    return backend;
   }
   if ("command" in config) {
-    return {
+    const backend: NormalizedBackendConfig & { oauth_app_name?: string } = {
       name,
       commandOrUrl: String(config.command),
       args: Array.isArray(config.args) ? config.args.map(String) : [],
     };
+    const oauthAppName = config.oauthAppName ?? config.oauth_app_name;
+    if (oauthAppName !== undefined) {
+      backend.oauth_app_name = String(oauthAppName);
+    }
+    return backend;
   }
   throw new Error(`server ${name} must define command or url`);
 }

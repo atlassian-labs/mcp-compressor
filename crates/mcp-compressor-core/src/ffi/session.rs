@@ -23,12 +23,14 @@ fn normalize_sdk_server(
             name,
             command_or_url,
             args: Vec::new(),
+            oauth_app_name: None,
         }),
         FfiSdkServerConfig::Structured {
             command,
             url,
             mut args,
             headers,
+            oauth_app_name,
         } => {
             let command_or_url = url
                 .or(command)
@@ -50,6 +52,7 @@ fn normalize_sdk_server(
                 name,
                 command_or_url,
                 args,
+                oauth_app_name,
             })
         }
     }

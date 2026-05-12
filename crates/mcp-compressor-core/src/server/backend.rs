@@ -50,6 +50,7 @@ pub struct BackendServerConfig {
     pub headers: HashMap<String, String>,
     pub header_provider: Option<HeaderProvider>,
     pub auth_mode: BackendAuthMode,
+    pub oauth_app_name: Option<String>,
 }
 
 impl BackendServerConfig {
@@ -77,6 +78,7 @@ impl BackendServerConfig {
             headers: parsed_args.headers,
             header_provider: None,
             auth_mode: parsed_args.auth_mode,
+            oauth_app_name: None,
         }
     }
 
@@ -116,6 +118,11 @@ impl BackendServerConfig {
 
     pub fn with_header_provider(mut self, provider: HeaderProvider) -> Self {
         self.header_provider = Some(provider);
+        self
+    }
+
+    pub fn with_oauth_app_name(mut self, app_name: impl Into<String>) -> Self {
+        self.oauth_app_name = Some(app_name.into());
         self
     }
 

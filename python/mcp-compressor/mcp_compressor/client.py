@@ -88,6 +88,10 @@ def _backend_provider_payload(name: str, value: ServerConfig, provider_index: in
         "command_or_url": backend.command_or_url,
         "args": backend.args or [],
     }
+    if isinstance(value, dict):
+        app_name = value.get("oauth_app_name", value.get("oauthAppName"))
+        if app_name is not None:
+            payload["oauth_app_name"] = str(app_name)
     if provider_index is not None:
         payload["provider_index"] = provider_index
     return payload
@@ -107,7 +111,13 @@ def _backend_from_value(name: str, value: ServerConfig, *, resolve_provider: boo
             if "--auth" not in value.get("args", []):
                 args.extend(["--auth", "explicit-headers"])
         args.extend(str(arg) for arg in value.get("args", []))
-        return BackendConfig(name=name, command_or_url=str(value["url"]), args=args)
+        app_name = value.get("oauth_app_name", value.get("oauthAppName"))
+        return BackendConfig(
+            name=name,
+            command_or_url=str(value["url"]),
+            args=args,
+            oauth_app_name=str(app_name) if app_name is not None else None,
+        )
     if "command" in value:
         return BackendConfig(
             name=name,

@@ -18,13 +18,17 @@ class BackendConfig:
     name: str
     command_or_url: str
     args: list[str] | None = None
+    oauth_app_name: str | None = None
 
     def to_json_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "name": self.name,
             "command_or_url": self.command_or_url,
             "args": self.args or [],
         }
+        if self.oauth_app_name is not None:
+            payload["oauth_app_name"] = self.oauth_app_name
+        return payload
 
 
 @dataclass(frozen=True)
@@ -183,7 +187,10 @@ def normalize_sdk_servers(servers: dict[str, Any]) -> list[BackendConfig]:
         raise TypeError(msg)
     return [
         BackendConfig(
-            name=str(item["name"]), command_or_url=str(item["command_or_url"]), args=list(item.get("args", []))
+            name=str(item["name"]),
+            command_or_url=str(item["command_or_url"]),
+            args=list(item.get("args", [])),
+            oauth_app_name=(str(item["oauth_app_name"]) if item.get("oauth_app_name") is not None else None),
         )
         for item in raw
     ]
