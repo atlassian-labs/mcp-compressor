@@ -55,7 +55,14 @@
 
 === "Rust binary"
 
-    Download a release artifact named for your platform, place it on `PATH`, and verify:
+    Install from crates.io:
+
+    ```bash
+    cargo install mcp-compressor
+    mcp-compressor --help
+    ```
+
+    You can also download a release artifact named for your platform, place it on `PATH`, and verify:
 
     ```bash
     mcp-compressor --help
@@ -64,7 +71,7 @@
     From source:
 
     ```bash
-    cargo build -p mcp-compressor-core --release
+    cargo build -p mcp-compressor --bin mcp-compressor --release
     ./target/release/mcp-compressor --help
     ```
 

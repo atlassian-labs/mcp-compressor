@@ -1,0 +1,90 @@
+name: Publish Python Package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish, for example v1.2.3
+        required: true
+        type: string
+      publish:
+        description: Actually publish to PyPI. Leave false for validation only.
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  publish-python-package:
+    name: Publish Python package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out release ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Derive package version from tag
+        id: version
+        shell: bash
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          VERSION="$(python scripts/prepare_python_release.py "$TAG")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing Python package at version $VERSION"
+
+      - name: Build wheel and source distribution
+        working-directory: python/mcp-compressor
+        run: uvx maturin build --release --sdist --out dist
+
+      - name: Smoke-test wheel
+        shell: bash
+        run: |
+          python -m venv /tmp/mcp-compressor-python-publish-smoke
+          VENV_PYTHON=/tmp/mcp-compressor-python-publish-smoke/bin/python
+          "$VENV_PYTHON" -m pip install --upgrade pip
+          "$VENV_PYTHON" -m pip install python/mcp-compressor/dist/*.whl
+          mkdir -p /tmp/mcp-compressor-python-publish-import
+          cd /tmp/mcp-compressor-python-publish-import
+          "$VENV_PYTHON" - <<'PY'
+          from mcp_compressor import CompressorClient, ToolSpec, compress_tool_listing
+          listing = compress_tool_listing(
+              "high",
+              [ToolSpec(name="echo", description="Echo a message.", input_schema={"type": "object", "properties": {"message": {"type": "string"}}})],
+          )
+          assert "echo" in listing and "message" in listing
+          assert CompressorClient is not None
+          PY
+
+      - name: Upload Python distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions-${{ steps.version.outputs.version }}
+          path: python/mcp-compressor/dist/*
+
+      - name: Stop before publish in validation mode
+        if: github.event_name == 'workflow_dispatch' && inputs.publish != true
+        run: echo "Validation complete. Set publish=true or publish a GitHub release to publish to PyPI."
+
+      - name: Publish to PyPI
+        if: github.event_name == 'release' || inputs.publish == true
+        working-directory: python/mcp-compressor
+        run: uv publish --trusted-publishing always dist/*
