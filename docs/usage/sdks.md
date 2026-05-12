@@ -106,12 +106,14 @@ Applications often need framework-ready callable tool objects rather than direct
 === "Python"
 
     ```python
-    from mcp_compressor import CompressorClient, to_ai_sdk_tools, to_mastra_tools
+    from mcp_compressor import CompressorClient
 
     with CompressorClient(servers=servers) as proxy:
         executable_tools = proxy.to_executable_tools()
-        ai_sdk_tools = to_ai_sdk_tools(executable_tools)
-        mastra_tools = to_mastra_tools(executable_tools)
+        result = executable_tools["alpha_invoke_tool"].execute({
+            "tool_name": "echo",
+            "tool_input": {"message": "hello"},
+        })
     ```
 
 === "TypeScript"
