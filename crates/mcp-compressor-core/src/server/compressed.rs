@@ -239,6 +239,10 @@ impl CompressedServer {
     }
 
     /// Return the default backend server name when a single unambiguous default exists.
+    pub fn compression_level(&self) -> &CompressionLevel {
+        &self.config.level
+    }
+
     pub fn default_server_name(&self) -> Option<&str> {
         self.config.server_name.as_deref().or_else(|| {
             if self.backends.len() == 1 {

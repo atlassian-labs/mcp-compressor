@@ -147,18 +147,22 @@ async function startRemoteAlphaUpstream(): Promise<{
         ),
       );
     }, 60_000);
-    child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => {
-      stdout += String(chunk);
-    });
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk) => {
-      stderr += String(chunk);
-      const match = /listening on (http:\/\/127\.0\.0\.1:\d+\/mcp)/.exec(String(chunk));
+    const maybeResolveUrl = () => {
+      const match = /listening on (http:\/\/127\.0\.0\.1:\d+\/mcp)/.exec(`${stdout}\n${stderr}`);
       if (match) {
         clearTimeout(timeout);
         resolve(match[1]!);
       }
+    };
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+      maybeResolveUrl();
+    });
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+      maybeResolveUrl();
     });
     child.on("error", (error) => {
       clearTimeout(timeout);

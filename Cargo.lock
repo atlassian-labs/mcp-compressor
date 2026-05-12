@@ -1053,6 +1053,7 @@ dependencies = [
  "dirs",
  "futures",
  "http",
+ "libc",
  "open",
  "predicates",
  "rand 0.8.6",

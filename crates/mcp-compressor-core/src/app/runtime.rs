@@ -8,6 +8,7 @@ use crate::proxy::ToolProxyServer;
 use crate::server::registration::FrontendServer;
 use crate::server::CompressedServer;
 
+use super::banner::{self, CliInfo};
 use super::options::{CliOptions, FrontendTransport};
 use super::paths::cli_output_dir;
 
@@ -22,6 +23,13 @@ pub async fn run_compressed_server(
 }
 
 async fn run_compressed_stdio(server: CompressedServer) -> Result<(), String> {
+    banner::print_banner(
+        server.default_server_name(),
+        "stdio",
+        server.compression_level(),
+        &server.backend_tools(),
+        None,
+    );
     rmcp::serve_server(FrontendServer::new(server), rmcp::transport::stdio())
         .await
         .map_err(|error| error.to_string())?
@@ -39,6 +47,14 @@ async fn run_compressed_streamable_http(
         session::local::LocalSessionManager, tower::StreamableHttpService,
         StreamableHttpServerConfig,
     };
+
+    banner::print_banner(
+        server.default_server_name(),
+        "streamable-http",
+        server.compression_level(),
+        &server.backend_tools(),
+        None,
+    );
 
     let service = StreamableHttpService::new(
         {
@@ -80,7 +96,9 @@ pub async fn run_just_bash_mode(cli: CliOptions, server: CompressedServer) -> Re
 }
 
 pub async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(), String> {
-    let tools = server.single_backend_tools().map_err(|error| error.to_string())?;
+    let tools = server
+        .single_backend_tools()
+        .map_err(|error| error.to_string())?;
     let proxy = ToolProxyServer::start(server)
         .await
         .map_err(|error| error.to_string())?;
@@ -91,7 +109,12 @@ pub async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(
             .unwrap_or(false);
         (output_dir, on_path)
     } else if client_artifact_kind.is_some() {
-        (std::env::current_dir().map_err(|error| error.to_string())?.join("dist"), false)
+        (
+            std::env::current_dir()
+                .map_err(|error| error.to_string())?
+                .join("dist"),
+            false,
+        )
     } else {
         cli_output_dir().map_err(|error| error.to_string())?
     };
@@ -123,6 +146,23 @@ pub async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(
         .iter()
         .find(|path| path.file_name().and_then(|name| name.to_str()) == Some(cli_name.as_str()))
         .unwrap_or(&paths[0]);
+
+    let transport_label = if cli.server_name.is_some() {
+        "stdio"
+    } else {
+        "stdio"
+    };
+    banner::print_banner(
+        cli.server_name.as_deref(),
+        transport_label,
+        &crate::compression::CompressionLevel::Max,
+        &config.tools,
+        Some(CliInfo {
+            script_path: Some(&script.display().to_string()),
+            bridge_url: Some(&proxy.bridge_url().to_string()),
+            invoke_prefix: Some(&cli_name),
+        }),
+    );
 
     if let Some(kind) = client_artifact_kind {
         println!("{} code client ready", client_artifact_label(kind));
