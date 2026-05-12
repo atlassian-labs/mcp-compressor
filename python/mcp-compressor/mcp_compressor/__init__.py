@@ -1,6 +1,5 @@
 """Rust-backed Python API for mcp-compressor."""
 
-from mcp_compressor.adapters import to_ai_sdk_tools, to_mastra_tools
 from mcp_compressor.client import (
     CompressorClient,
     CompressorProxy,
@@ -57,6 +56,4 @@ __all__ = [
     "parse_tool_argv",
     "start_compressed_session",
     "start_compressed_session_from_mcp_config",
-    "to_ai_sdk_tools",
-    "to_mastra_tools",
 ]
