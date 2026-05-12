@@ -7,7 +7,17 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { CompressorClient, installJustBashCommands, normalizeServers } from "../src/index.js";
+import {
+  CompressorClient,
+  installJustBashCommands,
+  interpolateRecord,
+  interpolateString,
+  normalizeServers,
+  toAISDKTools,
+  toMastraTools,
+  type BackendConfig,
+  type JsonConfigServerEntry,
+} from "../src/index.js";
 
 import {
   compressToolListing,
@@ -331,6 +341,27 @@ describe("Public TypeScript SDK workflow", () => {
       expect(schema.properties).toHaveProperty("message");
       const response = await proxy.invoke("echo", { message: "public-ts" });
       expect(response).toBe("alpha:public-ts");
+
+      const executableTools = proxy.toExecutableTools();
+      await expect(
+        executableTools.alpha_invoke_tool?.execute({
+          tool_name: "echo",
+          tool_input: { message: "executable" },
+        }),
+      ).resolves.toBe("alpha:executable");
+
+      const mastraTools = toMastraTools(executableTools);
+      await expect(
+        mastraTools.alpha_invoke_tool?.execute({
+          tool_name: "echo",
+          tool_input: { message: "mastra" },
+        }),
+      ).resolves.toBe("alpha:mastra");
+
+      const aiTools = toAISDKTools(executableTools, {
+        tool: (definition) => ({ ...definition, wrapped: true }),
+      });
+      expect(aiTools.alpha_invoke_tool).toMatchObject({ wrapped: true });
     } finally {
       proxy.close();
       client.close();
@@ -339,6 +370,21 @@ describe("Public TypeScript SDK workflow", () => {
 });
 
 describe("Rust native core wrapper", () => {
+  it("exports public config helpers and types from package root", () => {
+    process.env.MCP_COMPRESSOR_TEST_TOKEN = "root-token";
+    try {
+      expect(interpolateString("Bearer ${MCP_COMPRESSOR_TEST_TOKEN}")).toBe("Bearer root-token");
+      expect(interpolateRecord({ Authorization: "Bearer $MCP_COMPRESSOR_TEST_TOKEN" })).toEqual({
+        Authorization: "Bearer root-token",
+      });
+      const backend: BackendConfig = { type: "stdio", command: "python", args: ["server.py"] };
+      const entry: JsonConfigServerEntry = { command: backend.command, args: backend.args };
+      expect(entry.command).toBe("python");
+    } finally {
+      delete process.env.MCP_COMPRESSOR_TEST_TOKEN;
+    }
+  });
+
   it("compresses tool listings through the native addon", () => {
     expect(compressToolListing("high", [sampleTool])).toBe("<tool>echo(message)</tool>");
   });
@@ -519,8 +565,20 @@ describe("Rust native core wrapper", () => {
     const proxy = await client.connect();
     try {
       const cliPaths = proxy.writeClient("cli", join(outputDir, "bin"), { name: "alpha" });
-      const pythonPaths = proxy.writeClient("python", join(outputDir, "py"), { name: "alpha" });
-      const tsPaths = proxy.writeClient("typescript", join(outputDir, "ts"), { name: "alpha" });
+      const pythonClient = proxy.writeCodeClient({
+        language: "python",
+        outputDir: join(outputDir, "py"),
+        name: "alpha",
+      });
+      const typescriptClient = proxy.writeCodeClient({
+        language: "typescript",
+        outputDir: join(outputDir, "ts"),
+        name: "alpha",
+      });
+      const pythonPaths = pythonClient.files;
+      const tsPaths = typescriptClient.files;
+      expect(pythonClient.environment).toEqual({ PYTHONPATH: join(outputDir, "py") });
+      expect(typescriptClient.environment).toEqual({});
       const cliPath = cliPaths.find((path) => path.endsWith("alpha"));
       const pythonPath = pythonPaths.find((path) => path.endsWith("alpha.py"));
       const tsPath = tsPaths.find((path) => path.endsWith("alpha.ts"));

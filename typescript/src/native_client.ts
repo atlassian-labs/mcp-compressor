@@ -1,3 +1,5 @@
+import type { ExecutableTool } from "./adapters.js";
+
 import {
   generateClientArtifacts,
   normalizeSdkServers,
@@ -57,6 +59,13 @@ export interface NormalizedBackendConfig {
   name: string;
   commandOrUrl: string;
   args?: string[];
+}
+
+export interface GeneratedCodeClient {
+  language: "python" | "typescript";
+  outputDir: string;
+  files: string[];
+  environment: Record<string, string>;
 }
 
 function providerFromConfig(config: Record<string, unknown>): AuthProvider | undefined {
@@ -346,6 +355,20 @@ export class CompressorProxy {
     this.session.close();
   }
 
+  toExecutableTools(): Record<string, ExecutableTool> {
+    const result: Record<string, ExecutableTool> = {};
+    for (const tool of this.tools) {
+      result[tool.name] = {
+        name: tool.name,
+        description: tool.description ?? undefined,
+        inputSchema: tool.inputSchema,
+        execute: async (input: Record<string, unknown> = {}) =>
+          (await this.invokeWrapper(tool.name, input)).text,
+      };
+    }
+    return result;
+  }
+
   writeClient(
     kind: GeneratedClientKind,
     outputDir: string,
@@ -364,6 +387,20 @@ export class CompressorProxy {
       outputDir,
       sessionPid: 0,
     });
+  }
+
+  writeCodeClient(options: {
+    language: "python" | "typescript";
+    outputDir: string;
+    name?: string;
+  }): GeneratedCodeClient {
+    const files = this.writeClient(options.language, options.outputDir, { name: options.name });
+    return {
+      language: options.language,
+      outputDir: options.outputDir,
+      files,
+      environment: options.language === "python" ? { PYTHONPATH: options.outputDir } : {},
+    };
   }
 }
 

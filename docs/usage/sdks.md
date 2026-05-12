@@ -99,6 +99,32 @@ When more than one backend server is configured, specify the server when invokin
         .await?;
     ```
 
+## Executable tools for agent frameworks
+
+TypeScript applications often need framework-ready tool objects rather than direct `proxy.invoke(...)` calls. Use `proxy.toExecutableTools()` as the framework-neutral primitive, then adapt it to the framework you use.
+
+```ts
+import { CompressorClient, toAISDKTools, toMastraTools } from "@atlassian/mcp-compressor";
+import { tool } from "ai";
+
+const proxy = await new CompressorClient({ servers }).connect();
+
+const executableTools = proxy.toExecutableTools();
+const aiSdkTools = toAISDKTools(executableTools, { tool });
+const mastraTools = toMastraTools(executableTools);
+```
+
+The executable tool shape is intentionally simple:
+
+```ts
+{
+  name: string;
+  description?: string;
+  inputSchema: Record<string, unknown>;
+  execute(input?: Record<string, unknown>): Promise<string>;
+}
+```
+
 ## Compression options
 
 The SDKs expose the same main compression options as the CLI.
