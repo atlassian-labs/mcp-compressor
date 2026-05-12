@@ -73,8 +73,9 @@ The Atlassian examples use OAuth. The first run opens a browser if no stored cre
 
     with CompressorClient(servers=servers, compression_level="max") as proxy:
         proxy.write_client("cli", "./bin", name="atlassian")
-        proxy.write_client("python", "./generated-py", name="atlassian")
-        proxy.write_client("typescript", "./generated-ts", name="atlassian")
+        python_client = proxy.write_code_client("python", "./generated-py", name="atlassian")
+        typescript_client = proxy.write_code_client("typescript", "./generated-ts", name="atlassian")
+        print(python_client.environment)  # {"PYTHONPATH": "./generated-py"}
     ```
 
 === "TypeScript"
@@ -108,11 +109,12 @@ The Atlassian examples use OAuth. The first run opens a browser if no stored cre
 === "Rust"
 
     ```rust
-    use mcp_compressor::sdk::GeneratedClientKind;
+    use mcp_compressor::sdk::CodeLanguage;
 
-    proxy.write_client(GeneratedClientKind::Cli, "./bin", Some("atlassian"))?;
-    proxy.write_client(GeneratedClientKind::Python, "./generated-py", Some("atlassian"))?;
-    proxy.write_client(GeneratedClientKind::TypeScript, "./generated-ts", Some("atlassian"))?;
+    proxy.write_cli_client("./bin", Some("atlassian"))?;
+    let python_client = proxy.write_code_client(CodeLanguage::Python, "./generated-py", Some("atlassian"))?;
+    let typescript_client = proxy.write_code_client(CodeLanguage::TypeScript, "./generated-ts", Some("atlassian"))?;
+    println!("{:?}", python_client.environment); // {"PYTHONPATH": "./generated-py"}
     ```
 
 ## What the generated clients look like

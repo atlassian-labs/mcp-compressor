@@ -36,6 +36,22 @@ class ProxyResponse:
 
 
 @dataclass(frozen=True)
+class ExecutableTool:
+    name: str
+    description: str | None
+    input_schema: dict[str, Any]
+    execute: Callable[[dict[str, Any] | None], str]
+
+
+@dataclass(frozen=True)
+class GeneratedCodeClient:
+    language: Literal["python", "typescript"]
+    output_dir: Path
+    files: list[Path]
+    environment: dict[str, str]
+
+
+@dataclass(frozen=True)
 class JustBashCommand:
     command_name: str
     backend_tool_name: str
@@ -205,6 +221,23 @@ class CompressorProxy:
         self._closed = True
         self._session.close()
 
+    def to_executable_tools(self) -> dict[str, ExecutableTool]:
+        def make_execute(wrapper_name: str) -> Callable[[dict[str, Any] | None], str]:
+            def execute(input: dict[str, Any] | None = None) -> str:
+                return self.invoke_wrapper(wrapper_name, input or {}).text
+
+            return execute
+
+        return {
+            tool.name: ExecutableTool(
+                name=tool.name,
+                description=tool.description,
+                input_schema=tool.input_schema,
+                execute=make_execute(tool.name),
+            )
+            for tool in self.tools
+        }
+
     def write_client(self, kind: str, output_dir: str | Path, *, name: str | None = None) -> list[Path]:
         info = self._session.info()
         return generate_client_artifacts(
@@ -214,6 +247,23 @@ class CompressorProxy:
             token=str(info["token"]),
             tools=list(info.get("backend_tools", info["frontend_tools"])),
             output_dir=output_dir,
+        )
+
+    def write_code_client(
+        self,
+        language: Literal["python", "typescript"],
+        output_dir: str | Path,
+        *,
+        name: str | None = None,
+    ) -> GeneratedCodeClient:
+        output_path = Path(output_dir)
+        files = self.write_client(language, output_path, name=name)
+        environment = {"PYTHONPATH": str(output_path)} if language == "python" else {}
+        return GeneratedCodeClient(
+            language=language,
+            output_dir=output_path,
+            files=files,
+            environment=environment,
         )
 
     def invoke_wrapper(self, wrapper_tool: str, tool_input: dict[str, Any]) -> ProxyResponse:

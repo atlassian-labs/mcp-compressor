@@ -101,29 +101,45 @@ When more than one backend server is configured, specify the server when invokin
 
 ## Executable tools for agent frameworks
 
-TypeScript applications often need framework-ready tool objects rather than direct `proxy.invoke(...)` calls. Use `proxy.toExecutableTools()` as the framework-neutral primitive, then adapt it to the framework you use.
+Applications often need framework-ready callable tool objects rather than direct `proxy.invoke(...)` calls. Use executable tools as the framework-neutral primitive, then adapt them to the framework you use.
 
-```ts
-import { CompressorClient, toAISDKTools, toMastraTools } from "@atlassian/mcp-compressor";
-import { tool } from "ai";
+=== "Python"
 
-const proxy = await new CompressorClient({ servers }).connect();
+    ```python
+    from mcp_compressor import CompressorClient, to_ai_sdk_tools, to_mastra_tools
 
-const executableTools = proxy.toExecutableTools();
-const aiSdkTools = toAISDKTools(executableTools, { tool });
-const mastraTools = toMastraTools(executableTools);
-```
+    with CompressorClient(servers=servers) as proxy:
+        executable_tools = proxy.to_executable_tools()
+        ai_sdk_tools = to_ai_sdk_tools(executable_tools)
+        mastra_tools = to_mastra_tools(executable_tools)
+    ```
 
-The executable tool shape is intentionally simple:
+=== "TypeScript"
 
-```ts
-{
-  name: string;
-  description?: string;
-  inputSchema: Record<string, unknown>;
-  execute(input?: Record<string, unknown>): Promise<string>;
-}
-```
+    ```ts
+    import { CompressorClient, toAISDKTools, toMastraTools } from "@atlassian/mcp-compressor";
+    import { tool } from "ai";
+
+    const proxy = await new CompressorClient({ servers }).connect();
+
+    const executableTools = proxy.toExecutableTools();
+    const aiSdkTools = toAISDKTools(executableTools, { tool });
+    const mastraTools = toMastraTools(executableTools);
+    ```
+
+=== "Rust"
+
+    ```rust
+    let tools = proxy.executable_tools();
+    let result = tools["alpha_invoke_tool"]
+        .execute(json!({
+            "tool_name": "echo",
+            "tool_input": { "message": "hello" }
+        }))
+        .await?;
+    ```
+
+The executable tool shape is intentionally simple: name, description, input schema, and an execute function.
 
 ## Compression options
 
