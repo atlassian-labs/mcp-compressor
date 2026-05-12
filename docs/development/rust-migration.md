@@ -49,3 +49,18 @@ bun run check
 - Python wheel smoke is in CI.
 - TypeScript package/native-addon smoke is in CI.
 - A `Release Artifacts` workflow builds all three artifact classes together.
+
+## Rust crate publishing
+
+The public Rust SDK crate is `mcp-compressor`. It re-exports the implementation crate `mcp-compressor-core`, so both crates are published to crates.io.
+
+Rust crate publishing is handled by the `Publish Rust Crate` workflow when a GitHub Release is published. The workflow derives the crate version from the release tag, for example `v1.2.3`, and patches the checked-out CI workspace before packaging. The source tree does not need a version-bump commit for each release.
+
+Publishing order matters:
+
+1. patch versions from the tag,
+2. publish `mcp-compressor-core`,
+3. wait until that version is visible in the crates.io index,
+4. package and publish `mcp-compressor`.
+
+A manual workflow dispatch can run validation without publishing by leaving `publish=false`.
