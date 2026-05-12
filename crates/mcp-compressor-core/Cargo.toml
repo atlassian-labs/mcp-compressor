@@ -1,7 +1,14 @@
 [package]
-name    = "mcp-compressor-core"
-version = "0.1.0"
-edition = "2021"
+name          = "mcp-compressor-core"
+version       = "0.1.0"
+edition       = "2021"
+description   = "Internal Rust core for mcp-compressor. Prefer the public mcp-compressor crate."
+license       = "Apache-2.0"
+repository    = "https://github.com/atlassian-labs/mcp-compressor"
+homepage      = "https://atlassian-labs.github.io/mcp-compressor/"
+documentation = "https://atlassian-labs.github.io/mcp-compressor/"
+readme        = "../../README.md"
+publish       = true
 
 [dependencies]
 serde      = { version = "1", features = ["derive"] }

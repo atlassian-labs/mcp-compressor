@@ -1,10 +1,18 @@
 [package]
-name    = "mcp-compressor"
-version = "0.1.0"
-edition = "2021"
+name          = "mcp-compressor"
+version       = "0.1.0"
+edition       = "2021"
+description   = "Compress MCP tool surfaces and generate CLI, Python, and TypeScript clients."
+license       = "Apache-2.0"
+repository    = "https://github.com/atlassian-labs/mcp-compressor"
+homepage      = "https://atlassian-labs.github.io/mcp-compressor/"
+documentation = "https://atlassian-labs.github.io/mcp-compressor/"
+readme        = "../../README.md"
+keywords      = ["mcp", "ai", "cli", "agent"]
+categories    = ["api-bindings", "command-line-utilities", "development-tools"]
 
 [dependencies]
-mcp-compressor-core = { path = "../mcp-compressor-core" }
+mcp-compressor-core = { path = "../mcp-compressor-core", version = "0.1.0" }
 
 [dev-dependencies]
 serde_json = "1"
