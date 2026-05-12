@@ -29,7 +29,13 @@ When a remote backend requires OAuth and you do not provide an explicit `Authori
     from mcp_compressor import CompressorClient
 
     with CompressorClient(
-        servers={"remote": {"url": "https://mcp.example.com/v1/mcp"}},
+        servers={
+            "remote": {
+                "url": "https://mcp.example.com/v1/mcp",
+                # Optional display name shown by OAuth providers.
+                "oauth_app_name": "My Agent",
+            }
+        },
         server_name="remote",
     ) as proxy:
         print(proxy.tools)
@@ -41,7 +47,13 @@ When a remote backend requires OAuth and you do not provide an explicit `Authori
     import { CompressorClient } from "@atlassian/mcp-compressor";
 
     const proxy = await new CompressorClient({
-      servers: { remote: { url: "https://mcp.example.com/v1/mcp" } },
+      servers: {
+        remote: {
+          url: "https://mcp.example.com/v1/mcp",
+          // Optional display name shown by OAuth providers.
+          oauthAppName: "My Agent",
+        },
+      },
       serverName: "remote",
     }).connect();
     ```
@@ -50,7 +62,11 @@ When a remote backend requires OAuth and you do not provide an explicit `Authori
 
     ```rust
     let proxy = CompressorClient::builder()
-        .server("remote", ServerConfig::url("https://mcp.example.com/v1/mcp"))
+        .server(
+            "remote",
+            ServerConfig::url("https://mcp.example.com/v1/mcp")
+                .oauth_app_name("My Agent"),
+        )
         .server_name("remote")
         .build()
         .connect()

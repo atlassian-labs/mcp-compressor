@@ -203,11 +203,13 @@ export function normalizeSdkServers(servers: unknown): BackendConfig[] {
     name: string;
     command_or_url: string;
     args?: string[];
+    oauth_app_name?: string | null;
   }>;
   return raw.map((backend) => ({
     name: backend.name,
     commandOrUrl: backend.command_or_url,
     args: backend.args ?? [],
+    ...(backend.oauth_app_name == null ? {} : { oauth_app_name: backend.oauth_app_name }),
   }));
 }
 

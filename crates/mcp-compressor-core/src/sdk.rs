@@ -41,6 +41,7 @@ type HeaderProvider = Arc<dyn Fn() -> Result<BTreeMap<String, String>, Error> + 
 pub struct ServerConfig {
     inner: FfiSdkServerConfig,
     auth_provider: Option<HeaderProvider>,
+    oauth_app_name: Option<String>,
 }
 
 impl ServerConfig {
@@ -51,8 +52,10 @@ impl ServerConfig {
                 url: None,
                 args: Vec::new(),
                 headers: BTreeMap::new(),
+                oauth_app_name: None,
             },
             auth_provider: None,
+            oauth_app_name: None,
         }
     }
 
@@ -63,8 +66,10 @@ impl ServerConfig {
                 url: Some(url.into()),
                 args: Vec::new(),
                 headers: BTreeMap::new(),
+                oauth_app_name: None,
             },
             auth_provider: None,
+            oauth_app_name: None,
         }
     }
 
@@ -97,7 +102,17 @@ impl ServerConfig {
         self
     }
 
+    pub fn oauth_app_name(mut self, app_name: impl Into<String>) -> Self {
+        self.oauth_app_name = Some(app_name.into());
+        self
+    }
+
     fn materialize(mut self) -> (FfiSdkServerConfig, Option<HeaderProvider>) {
+        if let (FfiSdkServerConfig::Structured { oauth_app_name, .. }, Some(app_name)) =
+            (&mut self.inner, self.oauth_app_name.take())
+        {
+            *oauth_app_name = Some(app_name);
+        }
         (self.inner, self.auth_provider.take())
     }
 }
@@ -514,6 +529,21 @@ mod tests {
 
     fn python_command() -> String {
         std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_string())
+    }
+
+    #[test]
+    fn server_config_oauth_app_name_is_preserved_for_transport_layer() {
+        let config = ServerConfig::url("https://example.test/mcp")
+            .oauth_app_name("Rovo Dev")
+            .materialize()
+            .0;
+
+        match config {
+            FfiSdkServerConfig::Structured { oauth_app_name, .. } => {
+                assert_eq!(oauth_app_name.as_deref(), Some("Rovo Dev"));
+            }
+            FfiSdkServerConfig::CommandOrUrl(_) => panic!("expected structured config"),
+        }
     }
 
     #[test]

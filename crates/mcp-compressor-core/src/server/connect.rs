@@ -150,7 +150,11 @@ async fn connect_oauth_streamable_http_backend(
             state_manager.set_state_store(state_store);
         }
         state
-            .start_authorization(&[], &redirect_uri, Some("mcp-compressor"))
+            .start_authorization(
+                &[],
+                &redirect_uri,
+                Some(backend.oauth_app_name.as_deref().unwrap_or("mcp-compressor")),
+            )
             .await
             .map_err(|error| {
                 Error::Config(format!("failed to start OAuth authorization: {error}"))

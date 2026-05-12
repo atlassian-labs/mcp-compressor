@@ -106,6 +106,16 @@ def test_public_python_sdk_quickstart_flow() -> None:
         )
 
 
+def test_public_python_sdk_preserves_oauth_app_name_in_config() -> None:
+    from mcp_compressor.core import normalize_sdk_servers
+
+    backends = normalize_sdk_servers(
+        {"atlassian": {"url": "https://mcp.example.test/mcp", "oauth_app_name": "Rovo Dev"}}
+    )
+
+    assert backends[0].oauth_app_name == "Rovo Dev"
+
+
 def test_public_python_sdk_auth_provider_refreshes_per_remote_request() -> None:
     calls = 0
 

@@ -169,6 +169,7 @@ mod tests {
                 name: "alpha".to_string(),
                 command_or_url: std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_string()),
                 args: vec![fixture.to_string_lossy().into_owned()],
+                oauth_app_name: None,
             }],
         )
         .await
@@ -277,6 +278,7 @@ mod tests {
                 name: "alpha".to_string(),
                 command_or_url: std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_string()),
                 args: vec![fixture.to_string_lossy().into_owned()],
+                oauth_app_name: None,
             }],
         )
         .await
@@ -309,6 +311,7 @@ mod tests {
                         .join("alpha_server.py")
                         .to_string_lossy()
                         .into_owned()],
+                    oauth_app_name: None,
                 },
                 FfiBackendConfig {
                     name: "beta".to_string(),
@@ -317,6 +320,7 @@ mod tests {
                         .join("beta_server.py")
                         .to_string_lossy()
                         .into_owned()],
+                    oauth_app_name: None,
                 },
             ],
         )

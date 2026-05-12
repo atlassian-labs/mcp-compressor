@@ -324,12 +324,106 @@ fn write_callback_response(
         400 => "Bad Request",
         _ => "OK",
     };
+    let html = callback_html(status, body);
     let response = format!(
-        "HTTP/1.1 {status} {status_text}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-        body.len(),
-        body
+        "HTTP/1.1 {status} {status_text}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        html.len(),
+        html
     );
     stream.write_all(response.as_bytes())
+}
+
+fn callback_html(status: u16, body: &str) -> String {
+    let success = status == 200;
+    let title = if success { "Authorization complete" } else { "Authorization failed" };
+    let badge = if success { "Success" } else { "Action needed" };
+    let accent = if success { "#22A06B" } else { "#C9372C" };
+    let mark = if success { "✓" } else { "!" };
+    let escaped_body = escape_html(body);
+    format!(
+        r#"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title} · mcp-compressor</title>
+  <style>
+    :root {{
+      --ds-background-neutral: #F7F8F9;
+      --ds-surface: #FFFFFF;
+      --ds-text: #172B4D;
+      --ds-text-subtle: #44546F;
+      --ds-border: #DCDFE4;
+      --ds-accent: {accent};
+      --ds-shadow: 0 8px 16px rgba(9, 30, 66, 0.15);
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 32px;
+      background: var(--ds-background-neutral);
+      color: var(--ds-text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.5;
+    }}
+    main {{
+      width: min(560px, 100%);
+      background: var(--ds-surface);
+      border: 1px solid var(--ds-border);
+      border-radius: 8px;
+      box-shadow: var(--ds-shadow);
+      padding: 32px;
+    }}
+    .mark {{
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #FFFFFF;
+      background: var(--ds-accent);
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 20px;
+    }}
+    .badge {{
+      display: inline-block;
+      color: var(--ds-accent);
+      border: 1px solid var(--ds-accent);
+      border-radius: 999px;
+      padding: 2px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }}
+    h1 {{ margin: 0 0 12px; font-size: 24px; line-height: 1.2; }}
+    p {{ margin: 0 0 16px; color: var(--ds-text-subtle); }}
+    .footer {{ margin-top: 24px; font-size: 13px; }}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark">{mark}</div>
+    <div class="badge">{badge}</div>
+    <h1>{title}</h1>
+    <p>{escaped_body}</p>
+    <p class="footer">You can close this tab and return to mcp-compressor.</p>
+  </main>
+</body>
+</html>"#,
+    )
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 fn format_callback_provider_error(error: &str, description: Option<&str>) -> String {
@@ -619,14 +713,28 @@ mod tests {
     }
 
     #[test]
+    fn callback_response_escapes_html_body() {
+        let mut response = Vec::new();
+        write_callback_response(&mut response, 200, "OAuth complete <script>").unwrap();
+        let response = String::from_utf8(response).unwrap();
+
+        assert!(response.starts_with("HTTP/1.1 200 OK"));
+        assert!(response.contains("Authorization complete"));
+        assert!(response.contains("OAuth complete &lt;script&gt;"));
+        assert!(!response.contains("OAuth complete <script>"));
+        assert!(response.contains("--ds-text"));
+    }
+
+    #[test]
     fn callback_response_writes_status_and_body() {
         let mut response = Vec::new();
         write_callback_response(&mut response, 400, "nope").unwrap();
         let response = String::from_utf8(response).unwrap();
 
         assert!(response.starts_with("HTTP/1.1 400 Bad Request"));
-        assert!(response.contains("Content-Length: 4"));
-        assert!(response.ends_with("\r\n\r\nnope"));
+        assert!(response.contains("Content-Type: text/html; charset=utf-8"));
+        assert!(response.contains("Authorization failed"));
+        assert!(response.contains("nope"));
     }
 
     #[test]

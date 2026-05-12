@@ -65,6 +65,7 @@ pub struct FfiBackendConfig {
     pub command_or_url: String,
     #[serde(default)]
     pub args: Vec<String>,
+    pub oauth_app_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -78,6 +79,8 @@ pub enum FfiSdkServerConfig {
         args: Vec<String>,
         #[serde(default)]
         headers: BTreeMap<String, String>,
+        #[serde(default, alias = "oauthAppName")]
+        oauth_app_name: Option<String>,
     },
 }
 
@@ -108,7 +111,11 @@ pub struct FfiCompressedSessionInfo {
 
 impl From<FfiBackendConfig> for BackendServerConfig {
     fn from(value: FfiBackendConfig) -> Self {
-        BackendServerConfig::new(value.name, value.command_or_url, value.args)
+        let mut backend = BackendServerConfig::new(value.name, value.command_or_url, value.args);
+        if let Some(app_name) = value.oauth_app_name {
+            backend = backend.with_oauth_app_name(app_name);
+        }
+        backend
     }
 }
 

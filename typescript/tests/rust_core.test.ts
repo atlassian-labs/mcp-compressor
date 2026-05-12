@@ -810,6 +810,7 @@ describe("Rust native core wrapper", () => {
       remote: {
         url: "https://example.test/mcp",
         headers: { Authorization: "Bearer token" },
+        oauthAppName: "Rovo Dev",
         args: ["--auth", "explicit-headers"],
       },
     });
@@ -818,6 +819,7 @@ describe("Rust native core wrapper", () => {
         name: "remote",
         commandOrUrl: "https://example.test/mcp",
         args: ["-H", "Authorization=Bearer token", "--auth", "explicit-headers"],
+        oauth_app_name: "Rovo Dev",
       },
     ]);
   });
