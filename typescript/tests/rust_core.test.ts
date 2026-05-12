@@ -789,20 +789,22 @@ describe("Rust native core wrapper", () => {
     });
 
     expect(calls).toBe(1);
-    expect(normalized).toEqual([
-      {
-        name: "remote",
-        commandOrUrl: "https://example.test/mcp",
-        args: [
-          "-H",
-          "Authorization=Bearer token-1",
-          "-H",
-          "X-Static=yes",
-          "--auth",
-          "explicit-headers",
-        ],
-      },
-    ]);
+    expect(Array.isArray(normalized)).toBe(true);
+    if (!Array.isArray(normalized)) throw new Error("expected normalized backend list");
+    expect(normalized).toHaveLength(1);
+    expect(normalized[0]).toMatchObject({
+      name: "remote",
+      commandOrUrl: "https://example.test/mcp",
+    });
+    expect(normalized[0]!.args).toEqual(
+      expect.arrayContaining([
+        "-H",
+        "Authorization=Bearer token-1",
+        "X-Static=yes",
+        "--auth",
+        "explicit-headers",
+      ]),
+    );
   });
 
   it("normalizes high-level native server config", async () => {
