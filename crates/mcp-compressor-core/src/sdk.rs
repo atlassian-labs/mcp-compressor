@@ -1,6 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+use async_trait::async_trait;
 
 use serde_json::{json, Value};
 
@@ -308,16 +310,24 @@ impl CompressorProxy {
         input: Value,
     ) -> Result<String, Error> {
         let wrapper = self.invoke_wrapper(server)?;
+        self.invoke_wrapper_tool(
+            &wrapper,
+            json!({
+                "tool_name": tool_name,
+                "tool_input": input,
+            }),
+        )
+        .await
+    }
+
+    async fn invoke_wrapper_tool(&self, wrapper: &str, input: Value) -> Result<String, Error> {
         let client = reqwest::Client::new();
         let response = client
             .post(self.proxy.exec_url())
             .header("Authorization", format!("Bearer {}", self.token()))
             .json(&json!({
                 "tool": wrapper,
-                "input": {
-                    "tool_name": tool_name,
-                    "tool_input": input,
-                }
+                "input": input
             }))
             .send()
             .await
@@ -336,12 +346,46 @@ impl CompressorProxy {
         }
     }
 
+    pub fn executable_tools(&self) -> BTreeMap<String, Box<dyn ExecutableTool + '_>> {
+        self.frontend_tools
+            .iter()
+            .map(|tool| {
+                (
+                    tool.name.clone(),
+                    Box::new(ProxyExecutableTool { proxy: self, tool: tool.clone() })
+                        as Box<dyn ExecutableTool>,
+                )
+            })
+            .collect()
+    }
+
+    pub fn write_cli_client(
+        &self,
+        output_dir: impl AsRef<Path>,
+        name: Option<&str>,
+    ) -> Result<GeneratedClient, Error> {
+        self.write_client(GeneratedClientKind::Cli, output_dir, name)
+    }
+
+    pub fn write_code_client(
+        &self,
+        language: CodeLanguage,
+        output_dir: impl AsRef<Path>,
+        name: Option<&str>,
+    ) -> Result<GeneratedClient, Error> {
+        let kind = match language {
+            CodeLanguage::Python => GeneratedClientKind::Python,
+            CodeLanguage::TypeScript => GeneratedClientKind::TypeScript,
+        };
+        self.write_client(kind, output_dir, name.into())
+    }
+
     pub fn write_client(
         &self,
         kind: GeneratedClientKind,
         output_dir: impl AsRef<Path>,
         name: Option<&str>,
-    ) -> Result<Vec<PathBuf>, Error> {
+    ) -> Result<GeneratedClient, Error> {
         let generator_config = GeneratorConfig {
             cli_name: name
                 .or(self.default_server.as_deref())
@@ -353,11 +397,18 @@ impl CompressorProxy {
             session_pid: 0,
             output_dir: output_dir.as_ref().to_path_buf(),
         };
-        match kind {
+        let files = match kind {
             GeneratedClientKind::Cli => CliGenerator.generate(&generator_config),
             GeneratedClientKind::Python => PythonGenerator.generate(&generator_config),
             GeneratedClientKind::TypeScript => TypeScriptGenerator.generate(&generator_config),
-        }
+        }?;
+        let environment = kind.environment(&generator_config);
+        Ok(GeneratedClient {
+            kind,
+            output_dir: generator_config.output_dir,
+            files,
+            environment,
+        })
     }
 
     fn invoke_wrapper(&self, server: Option<&str>) -> Result<String, Error> {
@@ -386,11 +437,69 @@ impl CompressorProxy {
     }
 }
 
+#[async_trait]
+pub trait ExecutableTool: Send + Sync {
+    fn name(&self) -> &str;
+    fn description(&self) -> Option<&str>;
+    fn input_schema(&self) -> &Value;
+    async fn execute(&self, input: Value) -> Result<String, Error>;
+}
+
+struct ProxyExecutableTool<'a> {
+    proxy: &'a CompressorProxy,
+    tool: Tool,
+}
+
+#[async_trait]
+impl ExecutableTool for ProxyExecutableTool<'_> {
+    fn name(&self) -> &str {
+        &self.tool.name
+    }
+
+    fn description(&self) -> Option<&str> {
+        self.tool.description.as_deref()
+    }
+
+    fn input_schema(&self) -> &Value {
+        &self.tool.input_schema
+    }
+
+    async fn execute(&self, input: Value) -> Result<String, Error> {
+        self.proxy.invoke_wrapper_tool(&self.tool.name, input).await
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodeLanguage {
+    Python,
+    TypeScript,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeneratedClient {
+    pub kind: GeneratedClientKind,
+    pub output_dir: PathBuf,
+    pub files: Vec<PathBuf>,
+    pub environment: HashMap<String, String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GeneratedClientKind {
     Cli,
     Python,
     TypeScript,
+}
+
+impl GeneratedClientKind {
+    fn environment(self, config: &GeneratorConfig) -> HashMap<String, String> {
+        match self {
+            GeneratedClientKind::Python => HashMap::from([(
+                "PYTHONPATH".to_string(),
+                config.output_dir.to_string_lossy().to_string(),
+            )]),
+            GeneratedClientKind::Cli | GeneratedClientKind::TypeScript => HashMap::new(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -452,6 +561,17 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result, "alpha:rust-sdk");
+
+        let executable = proxy.executable_tools();
+        let invoke = executable.get("alpha_invoke_tool").unwrap();
+        let executable_result = invoke
+            .execute(json!({
+                "tool_name": "echo",
+                "tool_input": { "message": "executable-rust" }
+            }))
+            .await
+            .unwrap();
+        assert_eq!(executable_result, "alpha:executable-rust");
     }
 
     #[tokio::test]
@@ -491,10 +611,18 @@ mod tests {
             .build();
         let proxy = client.connect().await.unwrap();
         let tempdir = tempfile::tempdir().unwrap();
-        let paths = proxy
-            .write_client(GeneratedClientKind::Python, tempdir.path(), Some("alpha"))
+        let generated = proxy
+            .write_code_client(CodeLanguage::Python, tempdir.path(), Some("alpha"))
             .unwrap();
-        assert!(paths.iter().any(|path| path.ends_with("alpha.py")));
+        assert_eq!(generated.kind, GeneratedClientKind::Python);
+        assert!(generated.files.iter().any(|path| path.ends_with("alpha.py")));
+        assert_eq!(
+            generated.environment.get("PYTHONPATH"),
+            Some(&tempdir.path().to_string_lossy().to_string())
+        );
+
+        let cli = proxy.write_cli_client(tempdir.path(), Some("alpha")).unwrap();
+        assert_eq!(cli.kind, GeneratedClientKind::Cli);
     }
 
     #[tokio::test]

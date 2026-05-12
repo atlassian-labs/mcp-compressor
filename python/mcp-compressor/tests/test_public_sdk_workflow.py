@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from mcp_compressor import CompressorClient
+from mcp_compressor import CompressorClient, to_ai_sdk_tools, to_mastra_tools
 
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURE = ROOT / "crates" / "mcp-compressor-core" / "tests" / "fixtures" / "alpha_server.py"
@@ -97,6 +97,25 @@ def test_public_python_sdk_quickstart_flow() -> None:
         response = proxy.invoke("echo", {"message": "public-python"})
         assert response == "alpha:public-python"
 
+        executable_tools = proxy.to_executable_tools()
+        assert (
+            executable_tools["alpha_invoke_tool"].execute(
+                {"tool_name": "echo", "tool_input": {"message": "executable-python"}}
+            )
+            == "alpha:executable-python"
+        )
+
+        mastra_tools = to_mastra_tools(executable_tools)
+        assert (
+            mastra_tools["alpha_invoke_tool"]["execute"](
+                {"tool_name": "echo", "tool_input": {"message": "mastra-python"}}
+            )
+            == "alpha:mastra-python"
+        )
+
+        wrapped = to_ai_sdk_tools(executable_tools, tool=lambda definition: {**definition, "wrapped": True})
+        assert wrapped["alpha_invoke_tool"]["wrapped"] is True
+
 
 def test_public_python_sdk_auth_provider_refreshes_per_remote_request() -> None:
     calls = 0
@@ -132,6 +151,22 @@ def test_public_python_sdk_auth_provider_refreshes_per_remote_request() -> None:
     assert first == "alpha:one"
     assert second == "alpha:two"
     assert calls >= 2
+
+
+def test_public_python_sdk_write_code_client_returns_environment(tmp_path: Path) -> None:
+    with CompressorClient(
+        servers={"alpha": {"command": PYTHON, "args": [str(FIXTURE)]}},
+        compression_level="max",
+    ) as proxy:
+        generated = proxy.write_code_client("python", tmp_path / "py", name="alpha")
+        assert generated.language == "python"
+        assert generated.environment == {"PYTHONPATH": str(tmp_path / "py")}
+        assert any(path.name == "alpha.py" for path in generated.files)
+
+        ts_generated = proxy.write_code_client("typescript", tmp_path / "ts", name="alpha")
+        assert ts_generated.language == "typescript"
+        assert ts_generated.environment == {}
+        assert any(path.name == "alpha.ts" for path in ts_generated.files)
 
 
 def test_public_python_sdk_schema_lookup_supports_multi_server() -> None:
