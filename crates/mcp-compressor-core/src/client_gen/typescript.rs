@@ -41,12 +41,19 @@ const SESSION_PID = {pid};
 const HEADERS = {{ Authorization: `Bearer ${{TOKEN}}`, "Content-Type": "application/json" }};
 
 async function execTool(tool: string, input: Record<string, unknown>): Promise<string> {{
-  const res = await fetch(`${{BRIDGE}}/exec`, {{
-    method: "POST",
-    headers: HEADERS,
-    body: JSON.stringify({{ tool, input }}),
-  }});
-  if (!res.ok) throw new Error(await res.text());
+  let res: Response;
+  try {{
+    res = await fetch(`${{BRIDGE}}/exec`, {{
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({{ tool, input }}),
+    }});
+  }} catch (error) {{
+    throw new Error(`mcp-compressor proxy is not running; restart the mcp-compressor process and try again. details: ${{error instanceof Error ? error.message : String(error)}}`);
+  }}
+  if (!res.ok) {{
+    throw new Error(`mcp-compressor proxy returned HTTP ${{res.status}}: ${{await res.text()}}`);
+  }}
   return res.text();
 }}
 "#,
