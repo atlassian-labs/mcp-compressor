@@ -132,10 +132,18 @@ pub fn print_banner(
         lines.push(separator.clone());
         lines.push(blank.clone());
         if let Some(script) = info.script_path {
-            lines.push(pad_line(&format!("Script:  {script}"), content_width, false));
+            lines.push(pad_line(
+                &format!("Script:  {script}"),
+                content_width,
+                false,
+            ));
         }
         if let Some(bridge) = info.bridge_url {
-            lines.push(pad_line(&format!("Bridge:  {bridge}"), content_width, false));
+            lines.push(pad_line(
+                &format!("Bridge:  {bridge}"),
+                content_width,
+                false,
+            ));
         }
         if let Some(invoke) = info.invoke_prefix {
             lines.push(pad_line(
@@ -193,25 +201,13 @@ fn format_chart(
         };
         let filled = (ratio * chart_width as f64).round() as usize;
         let filled = filled.min(chart_width);
-        let bar = format!(
-            "{}{}",
-            "█".repeat(filled),
-            "░".repeat(chart_width - filled)
-        );
+        let bar = format!("{}{}", "█".repeat(filled), "░".repeat(chart_width - filled));
         let pct = ratio * 100.0;
         let label = format!("{:<8}", capitalize(level));
         let mut line = pad_line(&format!("{label} {bar} {pct:5.1}%"), width, false);
 
         if level == active_level && !cli_mode {
-            // Highlight active level in green
-            if let Some(fade_pos) = line.find('░') {
-                line = format!(
-                    "{}\x1b[1;32m{}\x1b[0m{}",
-                    &line[..2],
-                    &line[2..fade_pos],
-                    &line[fade_pos..]
-                );
-            }
+            line = highlight_bar(&line);
         }
         lines.push(line);
     }
@@ -224,26 +220,39 @@ fn format_chart(
     };
     let filled = (cli_ratio * chart_width as f64).round() as usize;
     let filled = filled.min(chart_width);
-    let bar = format!(
-        "{}{}",
-        "█".repeat(filled),
-        "░".repeat(chart_width - filled)
-    );
+    let bar = format!("{}{}", "█".repeat(filled), "░".repeat(chart_width - filled));
     let pct = cli_ratio * 100.0;
     let mut line = pad_line(&format!("CLI mode {bar} {pct:5.1}%"), width, false);
     if cli_mode {
-        if let Some(fade_pos) = line.find('░') {
-            line = format!(
-                "{}\x1b[1;32m{}\x1b[0m{}",
-                &line[..2],
-                &line[2..fade_pos],
-                &line[fade_pos..]
-            );
-        }
+        line = highlight_bar(&line);
     }
     lines.push(line);
 
     lines
+}
+
+/// Highlight the filled █ portion of a bar line in green using char-safe splits.
+fn highlight_bar(line: &str) -> String {
+    // Find the first '░' (dim block) char position using char indices
+    if let Some(fade_byte) = line.char_indices().find(|(_, c)| *c == '░').map(|(i, _)| i) {
+        // Find the last '│' before the bar content — the prefix up to and including "│  "
+        // We work purely with byte positions from char_indices, so this is safe.
+        let prefix_end = line
+            .char_indices()
+            .take_while(|(_, c)| *c != '█' && *c != '░')
+            .last()
+            .map(|(i, c)| i + c.len_utf8())
+            .unwrap_or(0);
+        format!(
+            "{}\x1b[1;32m{}\x1b[0m{}",
+            &line[..prefix_end],
+            &line[prefix_end..fade_byte],
+            &line[fade_byte..]
+        )
+    } else {
+        // No dim blocks — whole bar is filled, highlight entirely
+        format!("\x1b[1;32m{line}\x1b[0m")
+    }
 }
 
 fn capitalize(level: &CompressionLevel) -> String {
@@ -309,4 +318,41 @@ fn terminal_width() -> usize {
         }
     }
     80
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn highlight_bar_handles_unicode_box_border() {
+        let line =
+            "│  Medium   █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  15.5%  │";
+        let highlighted = highlight_bar(line);
+        assert!(highlighted.contains("\x1b[1;32m"));
+        assert!(highlighted.contains("Medium"));
+        assert_eq!(strip_ansi(&highlighted), line);
+    }
+
+    #[test]
+    fn format_chart_handles_cli_mode_bar_with_unicode_border() {
+        let stats = CompressionStats {
+            original_size: 129,
+            compressed: vec![
+                (CompressionLevel::Low, 80),
+                (CompressionLevel::Medium, 20),
+                (CompressionLevel::High, 10),
+                (CompressionLevel::Max, 5),
+            ],
+            cli_size: 3,
+        };
+
+        let lines = format_chart(&stats, 80, &CompressionLevel::Medium, true);
+        let cli_line = lines
+            .iter()
+            .find(|line| line.contains("CLI mode"))
+            .expect("CLI mode line");
+        assert!(cli_line.contains("\x1b[1;32m"));
+        assert!(strip_ansi(cli_line).starts_with("│  CLI mode"));
+    }
 }
