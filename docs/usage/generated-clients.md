@@ -85,8 +85,21 @@ The Atlassian examples use OAuth. The first run opens a browser if no stored cre
     const proxy = await new CompressorClient({ servers, compressionLevel: "max" }).connect();
     try {
       proxy.writeClient("cli", "./bin", { name: "atlassian" });
-      proxy.writeClient("python", "./generated-py", { name: "atlassian" });
-      proxy.writeClient("typescript", "./generated-ts", { name: "atlassian" });
+
+      const pythonClient = proxy.writeCodeClient({
+        language: "python",
+        outputDir: "./generated-py",
+        name: "atlassian",
+      });
+
+      const typescriptClient = proxy.writeCodeClient({
+        language: "typescript",
+        outputDir: "./generated-ts",
+        name: "atlassian",
+      });
+
+      console.log(pythonClient.environment); // { PYTHONPATH: "./generated-py" }
+      console.log(typescriptClient.files);
     } finally {
       proxy.close();
     }

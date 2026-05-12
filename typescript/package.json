@@ -39,6 +39,10 @@
     "./rust-core": {
       "import": "./dist/rust_core.js",
       "types": "./dist/rust_core.d.ts"
+    },
+    "./adapters": {
+      "import": "./dist/adapters.js",
+      "types": "./dist/adapters.d.ts"
     }
   },
   "bin": {
