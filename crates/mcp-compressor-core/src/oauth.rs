@@ -335,82 +335,86 @@ fn write_callback_response(
 
 fn callback_html(status: u16, body: &str) -> String {
     let success = status == 200;
-    let title = if success { "Authorization complete" } else { "Authorization failed" };
-    let badge = if success { "Success" } else { "Action needed" };
-    let accent = if success { "#22A06B" } else { "#C9372C" };
-    let mark = if success { "✓" } else { "!" };
-    let escaped_body = escape_html(body);
+    let title = if success {
+        "Authorization complete"
+    } else {
+        "Authorization failed"
+    };
+    let message = if success {
+        "The requesting app has been successfully authorized. You may close this window."
+            .to_string()
+    } else {
+        escape_html(body)
+    };
+    let accent = if success { "#22A06B" } else { "#AE2E24" };
+    let icon = if success { "&#10003;" } else { "!" };
     format!(
         r#"<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{title} · mcp-compressor</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{title}</title>
   <style>
     :root {{
-      --ds-background-neutral: #F7F8F9;
-      --ds-surface: #FFFFFF;
-      --ds-text: #172B4D;
-      --ds-text-subtle: #44546F;
-      --ds-border: #DCDFE4;
-      --ds-accent: {accent};
-      --ds-shadow: 0 8px 16px rgba(9, 30, 66, 0.15);
+      --text: #172B4D;
+      --text-subtle: #44546F;
+      --surface: #FFFFFF;
+      --bg: #F4F5F7;
+      --border: rgba(9, 30, 66, 0.13);
+      --shadow: 0 10px 10px rgba(0, 0, 0, 0.1);
+      --accent: {accent};
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
     }}
     * {{ box-sizing: border-box; }}
+    html, body {{ min-height: 100%; margin: 0; }}
     body {{
-      margin: 0;
       min-height: 100vh;
-      display: grid;
-      place-items: center;
-      padding: 32px;
-      background: var(--ds-background-neutral);
-      color: var(--ds-text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
       line-height: 1.5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 24px;
     }}
-    main {{
-      width: min(560px, 100%);
-      background: var(--ds-surface);
-      border: 1px solid var(--ds-border);
+    .card {{
+      background: var(--surface);
       border-radius: 8px;
-      box-shadow: var(--ds-shadow);
-      padding: 32px;
+      box-shadow: var(--shadow);
+      width: min(400px, 100%);
+      padding: 48px 40px;
+      text-align: center;
     }}
-    .mark {{
-      width: 48px;
-      height: 48px;
+    .icon {{
+      width: 64px;
+      height: 64px;
       border-radius: 50%;
-      display: grid;
-      place-items: center;
-      color: #FFFFFF;
-      background: var(--ds-accent);
-      font-size: 28px;
-      font-weight: 700;
-      margin-bottom: 20px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 32px;
+      line-height: 64px;
+      margin: 0 auto 24px;
     }}
-    .badge {{
-      display: inline-block;
-      color: var(--ds-accent);
-      border: 1px solid var(--ds-accent);
-      border-radius: 999px;
-      padding: 2px 10px;
-      font-size: 12px;
-      font-weight: 700;
-      margin-bottom: 12px;
+    h1 {{
+      margin: 0 0 12px;
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text);
     }}
-    h1 {{ margin: 0 0 12px; font-size: 24px; line-height: 1.2; }}
-    p {{ margin: 0 0 16px; color: var(--ds-text-subtle); }}
-    .footer {{ margin-top: 24px; font-size: 13px; }}
+    p {{
+      margin: 0;
+      color: var(--text-subtle);
+    }}
   </style>
 </head>
 <body>
-  <main>
-    <div class="mark">{mark}</div>
-    <div class="badge">{badge}</div>
+  <main class="card" role="main">
+    <div class="icon" aria-hidden="true">{icon}</div>
     <h1>{title}</h1>
-    <p>{escaped_body}</p>
-    <p class="footer">You can close this tab and return to mcp-compressor.</p>
+    <p>{message}</p>
   </main>
 </body>
 </html>"#,
@@ -720,9 +724,10 @@ mod tests {
 
         assert!(response.starts_with("HTTP/1.1 200 OK"));
         assert!(response.contains("Authorization complete"));
-        assert!(response.contains("OAuth complete &lt;script&gt;"));
+        assert!(response.contains("The requesting app has been successfully authorized"));
         assert!(!response.contains("OAuth complete <script>"));
-        assert!(response.contains("--ds-text"));
+        // removed Atlassian-specific assertion);
+        assert!(response.contains("You may close this window"));
     }
 
     #[test]
@@ -735,6 +740,7 @@ mod tests {
         assert!(response.contains("Content-Type: text/html; charset=utf-8"));
         assert!(response.contains("Authorization failed"));
         assert!(response.contains("nope"));
+        assert!(response.contains("Authorization failed"));
     }
 
     #[test]
