@@ -1,134 +1,91 @@
 # Contributing to `mcp-compressor`
 
-Contributions are welcome, and they are greatly appreciated!
-Every little bit helps, and credit will always be given.
+Contributions are welcome. Please keep changes focused, add tests for behavior changes, and update docs for user-facing changes.
 
-Pull requests, issues and comments are welcome. For pull requests, please:
+## Repository layout
 
-* Add tests for new features and bug fixes
-* Follow the existing style
-* Separate unrelated changes into multiple pull requests
+- `crates/mcp-compressor-core` — shared Rust implementation and CLI runtime.
+- `crates/mcp-compressor` — public Rust crate and public `mcp-compressor` binary target.
+- `crates/mcp-compressor-python` — PyO3 extension crate.
+- `crates/mcp-compressor-node` — napi-rs extension crate.
+- `python/mcp-compressor` — Python package exposing `mcp_compressor`.
+- `typescript` — TypeScript package `@atlassian/mcp-compressor`.
+- `tests` — repository-level integration tests.
+- `docs` — MkDocs documentation.
 
-For bigger changes, please make sure you start a discussion first by creating an issue and explaining the intended change.
+## Prerequisites
 
-You can contribute in many ways:
+Install:
 
-# Types of Contributions
+- Git
+- Python 3.11+
+- `uv`
+- Rust/Cargo
+- Bun
+- Node.js/npm
 
-## Report Bugs
-
-Report bugs at https://github.com/atlassian-labs/mcp-compressor/issues
-
-If you are reporting a bug, please include:
-
-- Your operating system name and version.
-- Any details about your local setup that might be helpful in troubleshooting.
-- Detailed steps to reproduce the bug.
-
-## Fix Bugs
-
-Look through the GitHub issues for bugs.
-Anything tagged with "bug" and "help wanted" is open to whoever wants to implement a fix for it.
-
-## Implement Features
-
-Look through the GitHub issues for features.
-Anything tagged with "enhancement" and "help wanted" is open to whoever wants to implement it.
-
-## Write Documentation
-
-mcp-compressor could always use more documentation, whether as part of the official docs, in docstrings, or even on the web in blog posts, articles, and such.
-
-## Submit Feedback
-
-The best way to send feedback is to file an issue at https://github.com/atlassian-labs/mcp-compressor/issues.
-
-If you are proposing a new feature:
-
-- Explain in detail how it would work.
-- Keep the scope as narrow as possible, to make it easier to implement.
-- Remember that this is a volunteer-driven project, and that contributions
-  are welcome :)
-
-# Get Started!
-
-Ready to contribute? Here's how to set up `mcp-compressor` for local development.
-Please note this documentation assumes you already have `uv` and `Git` installed and ready to go.
-
-1. Fork the `mcp-compressor` repo on GitHub.
-
-2. Clone your fork locally:
+## Set up the repository
 
 ```bash
-cd <directory_in_which_repo_should_be_created>
 git clone git@github.com:YOUR_NAME/mcp-compressor.git
-```
-
-3. Now we need to install the environment. Navigate into the directory
-
-```bash
 cd mcp-compressor
-```
-
-Then, install and activate the environment with:
-
-```bash
 uv sync
-```
-
-4. Install pre-commit to run linters/formatters at commit time:
-
-```bash
 uv run pre-commit install
 ```
 
-5. Create a branch for local development:
+For the Python package native extension:
 
 ```bash
-git checkout -b name-of-your-bugfix-or-feature
+cd python/mcp-compressor
+uv run maturin develop
 ```
 
-Now you can make your changes locally.
+For the TypeScript package native addon:
 
-6. Don't forget to add test cases for your added functionality to the `tests` directory.
+```bash
+cd typescript
+bun install
+bun run build:native
+```
 
-7. When you're done making changes, check that your changes pass the formatting tests.
+## Common checks
+
+Run repository-level checks:
 
 ```bash
 make check
 ```
 
-Now, validate that all unit tests are passing:
+Run repository-level tests:
 
 ```bash
 make test
 ```
 
-9. Before raising a pull request you should also run tox.
-   This will run the tests across different versions of Python:
+Targeted checks are often faster while developing:
 
 ```bash
-tox
+# Rust
+cargo check -p mcp-compressor-core
+PYTHON="$PWD/.venv/bin/python" cargo test -p mcp-compressor-core --test generated_clients -- --nocapture
+
+# Python package
+cd python/mcp-compressor
+PYTHON="$PWD/../../.venv/bin/python" uv run pytest -q tests
+uv run ruff check mcp_compressor tests
+uv run ty check --project . --python .venv mcp_compressor tests
+
+# TypeScript package
+cd typescript
+bun run check
 ```
 
-This requires you to have multiple versions of python installed.
-This step is also triggered in the CI/CD pipeline, so you could also choose to skip this step locally.
+## Pull request guidelines
 
-10. Commit your changes and push your branch to GitHub:
+Before opening a PR:
 
-```bash
-git add .
-git commit -m "Your detailed description of your changes."
-git push origin name-of-your-bugfix-or-feature
-```
-
-11. Submit a pull request through the GitHub website.
-
-# Pull Request Guidelines
-
-Before you submit a pull request, check that it meets these guidelines:
-
-1. The pull request should include tests.
-
-2. If the pull request adds functionality, the docs should be updated.
-   Put your new functionality into a function with a docstring, and add the feature to the list in `README.md`.
+1. Add or update tests for behavior changes.
+2. Update docs for public CLI/SDK changes.
+3. Keep unrelated changes in separate PRs.
+4. Run the relevant targeted checks plus `make check` when practical.
+5. Avoid leaking implementation names such as `mcp_compressor_rust` or `mcp_compressor_core` into public user docs.

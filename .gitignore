@@ -186,6 +186,7 @@ cython_debug/
 *.node
 typescript/native/index.js
 typescript/native/index.d.ts
+typescript/native/
 
 # Abstra
 # Abstra is an AI-powered process automation framework.

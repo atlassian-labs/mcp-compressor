@@ -18,9 +18,17 @@ check: ## Run code quality tools.
 	@uv run deptry .
 
 .PHONY: test
-test: ## Test the code with pytest
-	@echo "🚀 Testing code: Running pytest"
-	@uv run python -m pytest --doctest-modules
+test: ## Run representative Python, Rust, and TypeScript tests
+	@echo "🚀 Testing repository-level Python integration tests"
+	@uv run python -m pytest --doctest-modules tests
+	@echo "🚀 Testing Rust core library"
+	@PYTHON="$$PWD/.venv/bin/python" cargo test -p mcp-compressor-core --lib -- --nocapture
+	@echo "🚀 Testing Rust integration targets compile"
+	@PYTHON="$$PWD/.venv/bin/python" cargo test -p mcp-compressor-core --tests --no-run
+	@echo "🚀 Testing Python package"
+	@cd python/mcp-compressor && PYTHON="$$PWD/../../.venv/bin/python" uv run pytest -q tests
+	@echo "🚀 Testing TypeScript package"
+	@cd typescript && bun run check
 
 .PHONY: build
 build: clean-build ## Build wheel file
