@@ -65,7 +65,7 @@
     "check:ci": "bun run lint && bun run format:check && bun run typecheck && vitest run --exclude tests/e2e.test.ts"
   },
   "publishConfig": {
-    "registry": "https://packages.atlassian.com/api/npm/atlassian-npm/"
+    "registry": "https://packages.atlassian.com/api/npm/npm-public/"
   },
   "dependencies": {
     "commander": "^14.0.3",
