@@ -41,7 +41,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24"
-          registry-url: "https://registry.npmjs.org"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -91,6 +90,19 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.publish != true
         run: echo "Validation complete. Set publish=true or publish a GitHub release to publish to npm."
 
-      - name: Publish to npm
+      - name: Get Artifact Publish Token
         if: github.event_name == 'release' || inputs.publish == true
-        run: npm publish /tmp/mcp-compressor-typescript-package.tgz --access public --registry https://registry.npmjs.org
+        id: publish-token
+        uses: atlassian-labs/artifact-publish-token@v1.0.1
+        with:
+          output-modes: npm
+
+      - name: Set publish registry
+        if: github.event_name == 'release' || inputs.publish == true
+        working-directory: .
+        run: |
+          printf '\n@atlassian:registry=https://packages.atlassian.com/api/npm/npm-public/\n' >> "${{ github.workspace }}/.npmrc-public"
+
+      - name: Publish to Artifactory npm-public
+        if: github.event_name == 'release' || inputs.publish == true
+        run: npm publish /tmp/mcp-compressor-typescript-package.tgz --access public --userconfig "${{ github.workspace }}/.npmrc-public"

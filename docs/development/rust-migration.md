@@ -75,9 +75,15 @@ The `Publish Python Package` workflow builds the PyO3 wheel/source distribution 
 
 ### TypeScript package publishing
 
-The `Publish TypeScript Package` workflow builds the TypeScript package plus napi native addon, packs it, smoke-tests the packed artifact, and publishes directly to npmjs as `@atlassian/mcp-compressor`. It is configured for npm trusted publishing via GitHub OIDC (`id-token: write`), matching the Python trusted-publishing approach as closely as npm supports.
+The `Publish TypeScript Package` workflow builds the TypeScript package plus napi native addon, packs it, smoke-tests the packed artifact, and publishes through Atlassian Artifactory `npm-public`, which forwards to public npmjs for allow-listed packages.
 
-Before the first trusted publish, configure npm package trusted publishing for `@atlassian/mcp-compressor` to allow this repository/workflow to publish from `.github/workflows/publish-typescript-package.yml`.
+The workflow derives the package version from the release tag, for example `v1.2.3`, using `scripts/prepare_typescript_release.py`.
+
+Publishing uses the same artifact-token flow as other Atlassian package workflows:
+
+1. request an npm publish token with `atlassian-labs/artifact-publish-token`,
+2. append `@atlassian:registry=https://packages.atlassian.com/api/npm/npm-public/` to the generated npmrc,
+3. publish `@atlassian/mcp-compressor` with `npm publish --access public --userconfig ...`.
 
 ### Manual validation
 
