@@ -5,20 +5,28 @@ install: ## Install the virtual environment and install the pre-commit hooks
 	@uv run pre-commit install
 
 .PHONY: check
-check: ## Run code quality tools.
-	@echo "🚀 Checking lock file consistency with 'pyproject.toml'"
+check: ## Run Python, Rust, and TypeScript checks.
+	@echo "🚀 Checking Python lock file consistency with 'pyproject.toml'"
 	@uv lock --locked
-	@echo "🚀 Linting code: Running pre-commit"
+	@echo "🚀 Running Python pre-commit checks"
 	@uv run pre-commit run -a
-	@echo "🚀 Static type checking: Running ty"
+	@echo "🚀 Static type checking Python: Running ty"
 	@uv run ty check
-	@echo "🚀 Checking for obsolete dependencies: Running deptry"
+	@echo "🚀 Checking Python dependencies: Running deptry"
 	@uv run deptry .
+	@echo "🚀 Checking Rust core"
+	@cargo check -p mcp-compressor-core --features python,node
+	@echo "🚀 Checking TypeScript package"
+	@cd typescript && bun run check:ci
 
 .PHONY: test
-test: ## Test the code with pytest
-	@echo "🚀 Testing code: Running pytest"
+test: ## Test Python, Rust, and TypeScript packages
+	@echo "🚀 Testing Python package"
 	@uv run python -m pytest --doctest-modules
+	@echo "🚀 Testing Rust core"
+	@cargo test -p mcp-compressor-core
+	@echo "🚀 Testing TypeScript package"
+	@cd typescript && bun run test
 
 .PHONY: build
 build: clean-build ## Build wheel file

@@ -1,68 +1,69 @@
-# Notice of included third-party dependencies
+# Third-party notices
 
-mcp-compressor depends on the open source code described below. Each listed dependency may also have additional
-third-party, open source dependencies.
+mcp-compressor is a multi-language project made up of:
 
----
+- a Python package published as `mcp-compressor`
+- a TypeScript package published as `@atlassian/mcp-compressor`
+- a shared Rust core crate in `crates/mcp-compressor-core`
 
-**loguru (https://github.com/Delgan/loguru)**
+This notice summarizes the direct third-party dependencies used by those package surfaces. Each dependency may include additional transitive dependencies with their own license terms; consult the relevant lockfiles (`uv.lock`, `typescript/bun.lock`, and `Cargo.lock`) for the complete resolved dependency graph used for builds.
 
-Copyright © 2017 Delgan (Github user)
+The mcp-compressor source code is licensed under the repository `LICENSE` file.
 
-License: MIT
+## Python package direct dependencies
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+Declared in `pyproject.toml`:
 
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+- `anyio`
+- `cryptography`
+- `keyring`
+- `py-key-value-aio`
+- `fastmcp`
+- `loguru`
+- `loguru-logging-intercept`
+- `mcp`
+- `pydantic`
+- `psutil`
+- `starlette`
+- `toons`
+- `typer`
+- `uvicorn`
+- `click`
+- `just-bash`
+- `httpx`
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+## TypeScript package direct dependencies
 
----
+Declared in `typescript/package.json`:
 
-**fastmcp (GitHub - PrefectHQ/fastmcp: 🚀 The fast, Pythonic way to build MCP servers and clients.)**
+- `@modelcontextprotocol/sdk`
+- `@toon-format/toon`
+- `commander`
+- `fastmcp`
+- `zod`
+- `just-bash` (optional peer dependency)
 
-Copyright © 2025 Jeremiah Lowin
+## Rust core direct dependencies
 
-License: Apache 2.0 (Apache License, Version 2.0 | Apache Software Foundation )
+Declared in `crates/mcp-compressor-core/Cargo.toml`:
 
----
+- `serde`
+- `serde_json`
+- `thiserror`
+- `rand`
+- `tokio`
+- `rmcp`
+- `axum`
+- `async-trait`
+- `dirs`
+- `reqwest`
+- `clap`
+- `open`
+- `toon-format`
+- `pyo3` (optional Python binding feature)
+- `napi` (optional Node.js binding feature)
+- `napi-derive` (optional Node.js binding feature)
 
-**loguru-logging-intercept (https://github.com/MatthewScholefield/loguru-logging-intercept)**
+## Development and documentation tooling
 
-Copyright © 2021 Matthew D. Scholefield
-
-License: MIT
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
----
-
-**mcp (https://github.com/modelcontextprotocol/python-sdk)**
-
-Copyright © 2024 Anthropic, PBC
-
-License: MIT
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
----
-
-**typer (https://github.com/fastapi/typer)**
-
-Copyright © 2019 Sebastián Ramírez
-
-License: MIT
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+The repository also uses third-party development tools for tests, linting, formatting, documentation, and packaging. These are declared in the package manager manifests and lockfiles for each ecosystem.

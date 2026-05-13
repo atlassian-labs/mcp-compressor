@@ -53,7 +53,7 @@ If you are proposing a new feature:
 # Get Started!
 
 Ready to contribute? Here's how to set up `mcp-compressor` for local development.
-Please note this documentation assumes you already have `uv` and `Git` installed and ready to go.
+Please note this documentation assumes you already have `uv`, `Git`, Rust/Cargo, and Bun installed and ready to go.
 
 1. Fork the `mcp-compressor` repo on GitHub.
 
@@ -64,16 +64,17 @@ cd <directory_in_which_repo_should_be_created>
 git clone git@github.com:YOUR_NAME/mcp-compressor.git
 ```
 
-3. Now we need to install the environment. Navigate into the directory
+3. Now install the repository dependencies. Navigate into the directory:
 
 ```bash
 cd mcp-compressor
 ```
 
-Then, install and activate the environment with:
+Install the Python environment and TypeScript dependencies with:
 
 ```bash
 uv sync
+cd typescript && bun install --frozen-lockfile && cd ..
 ```
 
 4. Install pre-commit to run linters/formatters at commit time:
@@ -90,31 +91,34 @@ git checkout -b name-of-your-bugfix-or-feature
 
 Now you can make your changes locally.
 
-6. Don't forget to add test cases for your added functionality to the `tests` directory.
+6. Don't forget to add test cases for your added functionality in the relevant package test directory (`tests/`, `crates/mcp-compressor-core/tests/`, or `typescript/tests/`).
 
-7. When you're done making changes, check that your changes pass the formatting tests.
+7. When you're done making changes, run the relevant checks. For the full workspace:
 
 ```bash
 make check
-```
-
-Now, validate that all unit tests are passing:
-
-```bash
 make test
 ```
 
-9. Before raising a pull request you should also run tox.
-   This will run the tests across different versions of Python:
+For targeted checks while iterating:
+
+```bash
+uv run pytest -q tests/test_main.py
+cargo test -p mcp-compressor-core
+cd typescript && bun run check:ci
+```
+
+8. Before raising a pull request that affects Python compatibility, you can also run tox.
+   This runs the Python tests across supported Python versions:
 
 ```bash
 tox
 ```
 
-This requires you to have multiple versions of python installed.
-This step is also triggered in the CI/CD pipeline, so you could also choose to skip this step locally.
+This requires you to have multiple supported Python versions installed.
+This step is also triggered in CI, so you can skip it locally when CI coverage is enough.
 
-10. Commit your changes and push your branch to GitHub:
+9. Commit your changes and push your branch to GitHub:
 
 ```bash
 git add .
@@ -122,7 +126,7 @@ git commit -m "Your detailed description of your changes."
 git push origin name-of-your-bugfix-or-feature
 ```
 
-11. Submit a pull request through the GitHub website.
+10. Submit a pull request through the GitHub website.
 
 # Pull Request Guidelines
 
