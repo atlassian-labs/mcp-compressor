@@ -40,7 +40,7 @@ allow-direct-references = true
 
 [tool.ty.environment]
 python = "./.venv"
-python-version = "3.10"
+python-version = "3.11"
 
 [tool.uv]
 package = false
