@@ -197,7 +197,7 @@ Important workflows:
 - `.github/workflows/atlassian-mcp-integration.yml` — real-world Atlassian MCP tests.
 - `.github/workflows/release-artifacts.yml` — cross-platform artifact smoke tests.
 - `.github/workflows/publish-rust-crate.yml` — publishes Rust crates from release tags.
-- `.github/workflows/publish-python-package.yml` — publishes Python package from release tags.
+- `.github/workflows/on-release-main.yml` — publishes Python package from release tags.
 - `.github/workflows/publish-typescript-package.yml` — publishes TypeScript package from release tags.
 
 Release versions are derived from tags where possible. Avoid hardcoding release versions in source unless a package manager requires a placeholder.
