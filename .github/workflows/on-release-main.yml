@@ -3,63 +3,109 @@ name: release-main
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish, for example v1.2.3 or v0.15.0a1
+        required: true
+        type: string
+      publish:
+        description: Actually publish to PyPI. Leave false for validation only.
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
 
 jobs:
-  set-version:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Export tag
-        id: vars
-        run: echo tag=${GITHUB_REF#refs/*/} >> $GITHUB_OUTPUT
-        if: ${{ github.event_name == 'release' }}
-
-      - name: Update project version
-        run: |
-          sed -i "s/^version = \".*\"/version = \"$RELEASE_VERSION\"/" pyproject.toml
-        env:
-          RELEASE_VERSION: ${{ steps.vars.outputs.tag }}
-        if: ${{ github.event_name == 'release' }}
-
-      - name: Upload updated pyproject.toml
-        uses: actions/upload-artifact@v4
-        with:
-          name: pyproject-toml
-          path: pyproject.toml
-
-  publish:
+  publish-python-package:
+    name: Publish Python package
     runs-on: ubuntu-latest
-    needs: [set-version]
     permissions:
+      contents: read
       id-token: write
     steps:
-      - name: Check out
+      - name: Check out release ref
         uses: actions/checkout@v6
-
-      - name: Set up the environment
-        uses: ./.github/actions/setup-python-env
-
-      - name: Download updated pyproject.toml
-        uses: actions/download-artifact@v4
         with:
-          name: pyproject-toml
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
 
-      - name: Build package
-        run: uv build
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Publish package
-        run: uv publish --trusted-publishing always
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Derive package version from tag
+        id: version
+        shell: bash
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          VERSION="$(python scripts/prepare_python_release.py "$TAG")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing Python package at version $VERSION"
+
+      - name: Build wheel and source distribution
+        working-directory: python/mcp-compressor
+        run: uvx maturin build --release --sdist --out dist
+
+      - name: Smoke-test wheel
+        shell: bash
+        run: |
+          python -m venv /tmp/mcp-compressor-python-publish-smoke
+          VENV_PYTHON=/tmp/mcp-compressor-python-publish-smoke/bin/python
+          "$VENV_PYTHON" -m pip install --upgrade pip
+          "$VENV_PYTHON" -m pip install python/mcp-compressor/dist/*.whl
+          mkdir -p /tmp/mcp-compressor-python-publish-import
+          cd /tmp/mcp-compressor-python-publish-import
+          "$VENV_PYTHON" - <<'PY'
+          from mcp_compressor import CompressorClient, ToolSpec, compress_tool_listing
+          listing = compress_tool_listing(
+              "high",
+              [ToolSpec(name="echo", description="Echo a message.", input_schema={"type": "object", "properties": {"message": {"type": "string"}}})],
+          )
+          assert "echo" in listing and "message" in listing
+          assert CompressorClient is not None
+          PY
+
+      - name: Upload Python distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions-${{ steps.version.outputs.version }}
+          path: python/mcp-compressor/dist/*
+
+      - name: Stop before publish in validation mode
+        if: github.event_name == 'workflow_dispatch' && inputs.publish != true
+        run: echo "Validation complete. Set publish=true or publish a GitHub release to publish to PyPI."
+
+      - name: Publish to PyPI
+        if: github.event_name == 'release' || inputs.publish == true
+        working-directory: python/mcp-compressor
+        run: uv publish --trusted-publishing always dist/*
 
   deploy-docs:
-    needs: publish
+    name: Deploy docs
+    needs: publish-python-package
     runs-on: ubuntu-latest
     steps:
-      - name: Check out
+      - name: Check out release ref
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
 
-      - name: Set up the environment
-        uses: ./.github/actions/setup-python-env
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
 
       - name: Deploy documentation
         run: uv run mkdocs gh-deploy --force
