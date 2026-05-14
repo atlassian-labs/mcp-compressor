@@ -182,7 +182,7 @@ jobs:
 
       - name: Publish to Artifactory npm-public
         if: github.event_name == 'release' || inputs.publish == true
-        run: npm publish /tmp/mcp-compressor-typescript-package.tgz --access public --tag "${{ steps.version.outputs.dist_tag }}" --userconfig "${{ github.workspace }}/.npmrc-public"
+        run: npm publish /tmp/mcp-compressor-typescript-package.tgz --tag "${{ steps.version.outputs.dist_tag }}" --userconfig "${{ github.workspace }}/.npmrc-public"
 
   publish-rust-crate:
     name: Publish Rust crates
