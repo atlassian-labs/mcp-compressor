@@ -30,6 +30,9 @@ def test_typescript_release_script_accepts_semver_tags() -> None:
 
     assert script.version_from_tag("v1.2.3") == "1.2.3"
     assert script.version_from_tag("refs/tags/v1.2.3-alpha.1") == "1.2.3-alpha.1"
+    assert script.version_from_tag("v0.15.0a2") == "0.15.0-alpha.2"
+    assert script.version_from_tag("v0.15.0b3") == "0.15.0-beta.3"
+    assert script.version_from_tag("v0.15.0rc4") == "0.15.0-rc.4"
 
 
 def test_rust_release_script_accepts_semver_tags() -> None:
@@ -37,3 +40,6 @@ def test_rust_release_script_accepts_semver_tags() -> None:
 
     assert script.version_from_tag("v1.2.3") == "1.2.3"
     assert script.version_from_tag("refs/tags/v1.2.3-alpha.1") == "1.2.3-alpha.1"
+    assert script.version_from_tag("v0.15.0a2") == "0.15.0-alpha.2"
+    assert script.version_from_tag("v0.15.0b3") == "0.15.0-beta.3"
+    assert script.version_from_tag("v0.15.0rc4") == "0.15.0-rc.4"
