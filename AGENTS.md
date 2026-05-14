@@ -1,313 +1,240 @@
 # AGENTS.md
 
-This file provides guidance for coding agents working in this repository.
+Guidance for coding agents working in this repository.
 
-## Repo purpose
+## Project purpose
 
-`mcp-compressor` is a Python CLI and MCP proxy server that wraps an upstream MCP server and reduces the token footprint exposed to LLMs.
+`mcp-compressor` helps agents use large MCP servers without sending every backend tool description and schema to the model up front. It provides:
 
-At a high level it:
-- connects to an upstream MCP server over stdio, streamable HTTP, or SSE
-- proxies that server through FastMCP
-- replaces a large tool surface with a compressed wrapper interface
-- optionally supports CLI mode and TOON output formatting
-- persists OAuth state for remote servers using encrypted local storage
+- a Rust CLI MCP proxy (`mcp-compressor`),
+- Rust, Python, and TypeScript SDKs,
+- generated CLI/Python/TypeScript clients,
+- Just Bash integration,
+- remote streamable HTTP backend support,
+- OAuth and dynamic auth-provider support,
+- local TypeScript tool compression for AI SDK-style tools.
 
-## Important source files
+The implementation is Rust-first. Python and TypeScript bindings should stay thin and delegate core behavior to Rust whenever practical.
 
-- `mcp_compressor/main.py`
-  - CLI entrypoint (`main`, `entrypoint`)
-  - transport selection and creation
-  - proxy server startup (`_server`, `_cli_mode_server`, `_proxy_client`)
-  - OAuth storage helpers (`_build_token_storage`, `_get_or_create_encryption_key`)
-  - `clear-oauth` subcommand
-- `mcp_compressor/tools.py`
-  - `CompressedTools` middleware class
-  - compressed tool listing/schema lookup/invocation
-  - include/exclude tool filtering
-  - validation error formatting
-  - TOON output conversion
-- `mcp_compressor/logging.py`
-  - `configure_logging(log_level)` — loguru setup and stdlib logging intercept
-  - `suppress_recoverable_oauth_traceback_logging(transport)` — narrow log filter context manager for recoverable OAuth retries
-  - `_RecoverableOAuthTracebackFilter` — the log filter implementation
-- `mcp_compressor/cli_tools.py`
-  - CLI-facing tool help and argument handling
-- `mcp_compressor/cli_bridge.py`
-  - local HTTP bridge used in CLI mode
-- `mcp_compressor/cli_script.py`
-  - generated CLI script management
-- `mcp_compressor/types.py`
-  - enums and shared types (`CompressionLevel`, `LogLevel`, `TransportType`)
-- `tests/`
-  - unit/integration coverage for transports, middleware, CLI mode, and proxy behavior
+## Repository layout
 
-## How the proxy works
+- `crates/mcp-compressor/` — public Rust crate and installable `mcp-compressor` binary.
+- `crates/mcp-compressor-core/` — core Rust implementation: compression, config parsing, MCP runtime, proxy server, OAuth, generated clients, SDK helpers, and FFI DTOs.
+- `crates/mcp-compressor-python/` — PyO3 extension crate backing the Python package.
+- `crates/mcp-compressor-node/` — napi-rs native addon backing the TypeScript package.
+- `python/mcp-compressor/` — public Python package. Public import is `mcp_compressor`.
+- `typescript/` — public TypeScript package `@atlassian/mcp-compressor`.
+- `docs/` — public documentation site.
+- `tests/` — repository-level Python integration and real-world tests.
 
-### Connection setup
+## Public API names
 
-`main()` → `_async_main()` → `_server()` or `_cli_mode_server()`
+Do not leak implementation/migration names into public docs or examples.
 
-1. Infers transport type from the command/URL argument
-2. Creates a FastMCP transport (stdio, streamable HTTP, or SSE)
-3. Opens a `ProxyClient` via `_proxy_client(transport)`, which:
-   - wraps the connection with log suppression for recoverable OAuth errors
-   - on failure matching the stale-OAuth-500 signature, clears cached OAuth state and retries once
-4. Creates a proxy `FastMCP` server via `FastMCP.as_proxy(backend=client)`
-5. Installs `CompressedTools` middleware on the proxy server
+Use:
 
-### Compression middleware
+- Python package/import: `mcp-compressor` / `mcp_compressor`
+- TypeScript package: `@atlassian/mcp-compressor`
+- Rust crate: `mcp-compressor` / `mcp_compressor`
+- CLI: `mcp-compressor`
 
-`CompressedTools` (in `tools.py`) is the core behavior of this repo.
+Avoid public references to old or internal names such as `mcp-compressor-rust`, `mcp_compressor_rust`, or `mcp-compressor-core` unless you are editing explicitly internal/development documentation.
 
-It:
-- hides all upstream backend tools from clients
-- registers a small fixed set of wrapper tools instead:
-  - `get_tool_schema(tool_name)` — returns the full upstream schema on demand
-  - `invoke_tool(tool_name, tool_input)` — calls the upstream tool
-  - `list_tools()` — returned only at `max` compression level
-- formats compressed tool listings at four levels: `low`, `medium`, `high`, `max`
-- applies optional include/exclude filters on the backend tool set
-- enriches validation failures with the real upstream schema
-- optionally converts JSON text outputs to TOON format
-- exposes a hidden resource `compressor://uncompressed-tools` with the raw upstream tool list
-
-### CLI mode
-
-CLI mode exposes a single `<server>_help` tool to the LLM, and generates a local shell script that maps subcommands to upstream tool invocations via a local HTTP bridge.
-
-Key files:
-- `mcp_compressor/cli_tools.py` — help text and arg parsing
-- `mcp_compressor/cli_bridge.py` — local HTTP bridge
-- `mcp_compressor/cli_script.py` — shell script generation and lifecycle management
-
-### OAuth and token persistence
-
-For remote (HTTP/SSE) servers, `mcp-compressor`:
-- delegates the OAuth flow entirely to FastMCP's `OAuth` client
-- adds encrypted persistent token storage via:
-  - OS keyring (preferred) or file-based fallback for the encryption key
-  - `py-key-value-aio` + `cryptography.fernet` for the encrypted token store
-- provides a `clear-oauth` CLI command to reset cached state
-- suppresses noisy upstream traceback logs when a stale-cache OAuth error is automatically recovered
-
-## Core architectural patterns
-
-### 1. Prefer thin integration code over protocol reimplementation
-This project relies heavily on FastMCP and the MCP Python SDK. Prefer using their built-in types and flows rather than reimplementing protocol behavior locally.
-
-Examples:
-- use FastMCP transports and `ProxyClient`
-- use FastMCP `OAuth` for the OAuth flow; local code only adds persistent storage and clear-oauth UX
-- keep local logic focused on compressed tool exposure, encrypted token persistence, and CLI UX
-
-### 2. Keep changes narrow and composable
-The repo is relatively small and organized around a few key flows. Prefer adding small helpers over broad refactors unless a broader change is clearly justified.
-
-Good examples already in the codebase:
-- small transport helper functions in `main.py`
-- encapsulated middleware logic in `CompressedTools`
-- targeted helpers for OAuth cache clearing and retry behavior in `main.py`
-- logging setup and suppression isolated in `logging.py`
-
-### 3. Preserve pass-through semantics
-This wrapper should generally preserve upstream behavior unless it is intentionally transforming output.
-
-When changing behavior, be careful not to break:
-- tool invocation pass-through
-- prompt/resource pass-through
-- validation error reporting
-- upstream schema fidelity
-
-### 4. Keep compression behavior explicit
-Compression levels are a core product behavior. Changes to tool descriptions, hidden tools, CLI help output, or invocation flows should be evaluated in the context of:
-- `low`
-- `medium`
-- `high`
-- `max`
-
-### 5. Prefer focused tests over broad end-to-end testing
-The existing test suite favors targeted unit and integration tests. Follow that pattern.
-
-## Development workflow
-
-### Environment setup
-This repo uses `uv`.
-
-Common commands:
+Run this guard after public API/doc changes:
 
 ```bash
-make install
-make test
+uv run python scripts/check_public_api_names.py
+```
+
+## Core architecture principles
+
+1. **Keep the core in Rust.** Compression semantics, config normalization, proxy routing, OAuth persistence, generated-client behavior, and SDK session logic should live in Rust when feasible.
+2. **Keep bindings thin.** Python and TypeScript should provide idiomatic wrappers, type shapes, and package ergonomics, but avoid duplicating core behavior.
+3. **Keep framework adapters separate.** TypeScript framework helpers such as AI SDK/Mastra adapters belong in TS-specific adapter modules. Do not add TS-framework concepts to Python or Rust APIs.
+4. **Preserve MCP semantics.** The proxy should pass through backend tool/resource/prompt behavior unless intentionally transforming the tool surface or output format.
+5. **Be explicit about compression.** Changes to tool listings, wrapper descriptions, help text, schema lookup, or invocation can affect token savings. Test all compression levels when changing compression behavior.
+6. **Do not reintroduce stdio subprocess requirements for SDK use.** SDK clients should start local Rust sessions/proxies in-process rather than invoking the `mcp-compressor` CLI as a subprocess.
+
+## Important Rust modules
+
+- `compression/` — compression levels and tool/schema formatting.
+- `config/` — MCP config parsing and topology.
+- `server/` — backend connections, compressed server state, MCP frontend registration, and tool cache.
+- `proxy/` — local authenticated HTTP proxy used by SDKs and generated clients.
+- `client_gen/` — generated shell CLI, Python, and TypeScript clients.
+- `cli/` — generated CLI argument mapping/parsing.
+- `app/` — top-level CLI options, paths, runtime modes, and startup banner.
+- `oauth.rs` — OAuth callback listener and credential/state stores.
+- `sdk.rs` — public Rust SDK (`CompressorClient`, `CompressorProxy`, `ServerConfig`, etc.).
+- `ffi/` — DTOs and helpers consumed by PyO3/napi crates.
+
+## CLI behavior to preserve
+
+- Standard MCP proxy mode:
+
+  ```bash
+  mcp-compressor -c medium -- python server.py
+  ```
+
+- Backend server arguments belong after `--`:
+
+  ```bash
+  mcp-compressor -- https://example.com/mcp -H "Authorization=Bearer ${TOKEN}" --timeout 30
+  ```
+
+- `--server-name` is for direct backend commands/URLs only. It must not be combined with MCP JSON config, because config keys define server names.
+- CLI Mode installs generated shell commands to a PATH-style location unless `--output-dir` is provided.
+- Code Mode uses `--code-mode python|typescript` and defaults generated code to `./dist` when `--output-dir` is omitted.
+- Deprecated aliases `--python-mode` and `--typescript-mode` may exist for compatibility, but new docs/examples should prefer `--code-mode`.
+
+## SDK behavior to preserve
+
+All three language SDKs should expose the same mental model:
+
+```text
+CompressorClient -> CompressorProxy -> tools/schema/invoke/generated clients
+```
+
+Python:
+
+```python
+from mcp_compressor import CompressorClient
+```
+
+TypeScript:
+
+```ts
+import { CompressorClient } from "@atlassian/mcp-compressor";
+```
+
+Rust:
+
+```rust
+use mcp_compressor::sdk::{CompressorClient, ServerConfig};
+```
+
+SDKs should support:
+
+- direct backend command/URL configs,
+- MCP JSON config where applicable,
+- compression levels,
+- include/exclude filters,
+- TOON output,
+- CLI/Just Bash transform modes,
+- generated CLI/Python/TypeScript clients,
+- dynamic per-request auth providers for remote HTTP backends.
+
+## TypeScript local tool compression
+
+The TS package also supports in-process compression of local tool functions via `compressTools(...)`. This is for AI SDK-style tools and should remain TypeScript-specific unless a real equivalent use case appears in another language.
+
+## OAuth/auth guidance
+
+- Remote streamable HTTP backends can use explicit `-H KEY=VALUE` backend headers after `--`.
+- SDK auth providers should refresh per request for remote HTTP backends.
+- OAuth callback UI should remain self-contained and should not load remote assets/scripts.
+- OAuth credential/state writes should remain atomic.
+- Do not log secrets. If debugging auth headers, log only presence/redacted lengths.
+
+## Testing and validation
+
+Use the narrowest relevant checks first, then broader checks before PRs.
+
+General:
+
+```bash
 make check
 make docs-test
 ```
 
-Direct commands are also common:
+Rust:
 
 ```bash
-uv sync
-uv run pytest -q
-uv run ruff check .
-uv run ty check
+cargo check -p mcp-compressor-core
+cargo check -p mcp-compressor
+PYTHON="$PWD/.venv/bin/python" cargo test -p mcp-compressor-core --lib -- --nocapture
+PYTHON="$PWD/.venv/bin/python" cargo test -p mcp-compressor-core --tests --no-run
 ```
 
-### Testing guidance
-When making changes, run the smallest relevant test subset first.
-
-Examples:
+Python package:
 
 ```bash
-uv run pytest -q tests/test_main.py
-uv run pytest -q tests/test_tools.py
-uv run pytest -q tests/test_cli.py
-uv run pytest -q tests/test_integration.py
+cd python/mcp-compressor
+uv run maturin develop
+PYTHON="$PWD/../../.venv/bin/python" uv run pytest -q tests
+uv run ruff check mcp_compressor tests
+uv run ty check --project . --python .venv mcp_compressor tests
 ```
 
-Only run broader checks when the change justifies it.
-
-### Linting/type checking
-The repo uses:
-- Ruff
-- ty
-- deptry
-- pre-commit
-
-If you touch Python code, at minimum run Ruff on the changed files and the most relevant tests.
-
-## Code style and best practices
-
-- Keep functions small and single-purpose where practical.
-- Match existing naming and file layout before introducing new modules.
-- Preserve typed signatures; this repo uses modern typing heavily.
-- Prefer simple helper functions over deeply nested inline logic.
-- Keep user-facing error messages actionable.
-- For tests, prefer monkeypatching/fakes for narrow behavior instead of spinning up unnecessary infrastructure.
-- Avoid changing unrelated formatting or refactoring unrelated code while fixing a targeted issue.
-
-## OAuth-specific guidance
-
-OAuth support should stay mostly delegated to FastMCP.
-
-Local code in this repo is primarily responsible for:
-- encrypted persistent token storage
-- clearing cached OAuth state (`clear-oauth`)
-- suppressing recoverable stale-cache traceback logs (see `mcp_compressor/logging.py`)
-
-Avoid reimplementing OAuth protocol logic locally unless absolutely necessary.
-
-## Working with local dependency clones
-
-This repo is set up so coding agents can inspect important dependency source code locally.
-
-### Use `dependencies/` when needed
-If the `dependencies/` directory exists, agents should use the cloned repos there when they need to inspect upstream implementation details, docs, or tests.
-
-This is especially helpful for:
-- FastMCP transport and proxy behavior
-- FastMCP OAuth/client behavior
-- MCP Python SDK auth/protocol behavior
-
-### If `dependencies/` does not exist
-Agents should create it and clone the relevant repos into it.
-
-Important: `dependencies/` is intentionally gitignored at the top level and should remain uncommitted.
-
-Recommended initial clones:
+TypeScript package:
 
 ```bash
-git clone https://github.com/jlowin/fastmcp.git dependencies/fastmcp
-git clone https://github.com/modelcontextprotocol/python-sdk.git dependencies/python-sdk
+cd typescript
+bun run build:native
+PYTHON="$PWD/../.venv/bin/python" bun run check
 ```
 
-Use these repos as read-only local context unless the task explicitly involves editing them.
-
-### Relevant upstream repos
-- FastMCP: `https://github.com/jlowin/fastmcp`
-- MCP Python SDK: `https://github.com/modelcontextprotocol/python-sdk`
-
-### Getting FastMCP documentation
-
-FastMCP docs are written in MDX and live in `dependencies/fastmcp/docs/`.
-
-**Always check out the tag matching the installed version before reading docs:**
+Repository integration tests:
 
 ```bash
-# Check which version is installed
-uv run python -c "import fastmcp; print(fastmcp.__version__)"
-
-# Checkout the corresponding tag in the clone
-cd dependencies/fastmcp && git fetch --tags && git checkout v<VERSION>
+uv run pytest -q tests/test_public_cli_workflows.py
+uv run pytest -q tests/test_rust_core_normal_mode.py
 ```
 
-For example, if the installed version is `3.1.1`:
+Real-world Atlassian MCP tests require:
 
 ```bash
-cd dependencies/fastmcp && git fetch --tags && git checkout v3.1.1
+ATLASSIAN_MCP_BASIC_TOKEN=...
 ```
 
-**Key doc directories in `dependencies/fastmcp/docs/`:**
+and normally run via the dedicated GitHub environment/workflow.
 
-| Directory | What's in it |
-|---|---|
-| `getting-started/` | Installation, quickstart |
-| `clients/` | Client API, transports, OAuth auth |
-| `clients/auth/` | OAuth, Bearer, CIMD auth flows |
-| `servers/` | Server API, tools, resources, prompts, middleware, auth |
-| `servers/providers/` | Proxy, local, filesystem, OpenAPI providers |
-| `servers/auth/` | OAuth server, OIDC proxy, token verification |
-| `integrations/` | Claude, Cursor, Gemini, GitHub, and other integrations |
-| `python-sdk/` | Auto-generated API reference for all FastMCP modules |
-| `patterns/` | Testing, CLI, contrib patterns |
+## CI/release workflows
 
-**Most relevant for this repo:**
+Important workflows:
 
-- `dependencies/fastmcp/docs/clients/auth/oauth.mdx` — OAuth client flow and token storage
-- `dependencies/fastmcp/docs/clients/transports.mdx` — transport types and configuration
-- `dependencies/fastmcp/docs/servers/providers/proxy.mdx` — ProxyClient and proxy server behavior
-- `dependencies/fastmcp/docs/servers/middleware.mdx` — Middleware API that `CompressedTools` uses
-- `dependencies/fastmcp/docs/python-sdk/fastmcp-client-auth-oauth.mdx` — full OAuth class reference
-- `dependencies/fastmcp/docs/python-sdk/fastmcp-server-providers-proxy.mdx` — full ProxyClient reference
+- `.github/workflows/main.yml` — primary checks.
+- `.github/workflows/atlassian-mcp-integration.yml` — real-world Atlassian MCP tests.
+- `.github/workflows/release-artifacts.yml` — cross-platform artifact smoke tests.
+- `.github/workflows/publish-rust-crate.yml` — publishes Rust crates from release tags.
+- `.github/workflows/publish-python-package.yml` — publishes Python package from release tags.
+- `.github/workflows/publish-typescript-package.yml` — publishes TypeScript package from release tags.
 
-## Practical change guidelines for agents
+Release versions are derived from tags where possible. Avoid hardcoding release versions in source unless a package manager requires a placeholder.
 
-Before changing code:
-1. identify the smallest affected path
-2. inspect relevant tests first
-3. inspect upstream FastMCP / python-sdk behavior if the issue touches transports, OAuth, or MCP protocol semantics
-4. check out the matching FastMCP tag in `dependencies/fastmcp` and read the relevant docs
+## Documentation guidance
 
-When changing code:
-1. keep the implementation small
-2. avoid duplicating upstream behavior locally
-3. preserve backward-compatible CLI behavior where possible
-4. add focused tests for the changed behavior
+Docs are public-facing. Prefer clear user concepts over implementation history.
 
-Before finishing:
-1. run targeted tests
-2. run `make check` to verify lint, types, and deps are clean
-3. summarize the behavioral change and any remaining risks
+- Use tabs for equivalent Python/TypeScript/Rust/CLI examples.
+- Use `Code Mode` as the umbrella term for generated Python/TypeScript clients.
+- Keep Atlassian examples OAuth-first unless demonstrating explicit headers.
+- Keep the README and docs index aligned; `docs/index.md` includes `README.md`.
+- Do not add migration/parity reports to public docs.
 
-## When to consult upstream dependency code
+Run:
 
-Check `dependencies/fastmcp` (docs and source) for questions about:
-- `ProxyClient` behavior
-- transport creation and options
-- FastMCP OAuth flow, token storage, stale-client retry behavior
-- `Middleware` base class API
-- `FastMCP.as_proxy(...)` behavior
-- `Tool`, `Resource`, `Prompt` model types
+```bash
+make docs-test
+```
 
-Check `dependencies/python-sdk` for questions about:
-- MCP auth state machine behavior
-- refresh-token handling
-- authorization flow details (the `OAuthClientProvider.async_auth_flow` generator)
-- lower-level protocol/auth semantics
+## Dependency and upstream inspection
 
-## Summary
+If you need to inspect dependency behavior, prefer official docs/source:
 
-The best changes in this repo are usually:
-- small
-- well-tested
-- aligned with FastMCP/MCP SDK behavior
-- focused on wrapper-specific behavior rather than protocol reinvention
+- `rmcp` for Rust MCP SDK behavior.
+- `napi-rs` for Node native bindings.
+- `PyO3`/`maturin` for Python native bindings.
+- `FastMCP` for Python fixture server behavior.
+- `just-bash` for Just Bash command integration.
+
+Use web or cloned dependency sources when behavior is version-sensitive.
+
+## PR hygiene
+
+- Keep PRs focused.
+- Include validation commands in PR descriptions.
+- Avoid broad refactors unless they simplify current architecture.
+- Do not commit generated native artifacts such as `.node` files or built wheels.
+- Avoid shell deletion in commands; use appropriate file tools or safe temp directories.
+- If CodeQL flags a true issue, harden the code. Suppress only when it is clearly a generated-binding false positive and document why.
