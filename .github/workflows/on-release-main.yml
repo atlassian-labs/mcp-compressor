@@ -128,6 +128,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Build native addon for checks
+        run: bun run build:native
+
       - name: Run package checks
         run: bun run check:ci
 
@@ -254,6 +257,8 @@ jobs:
 
   deploy-docs:
     name: Deploy docs
+    permissions:
+      contents: write
     needs:
       - publish-python-package
       - publish-typescript-package
