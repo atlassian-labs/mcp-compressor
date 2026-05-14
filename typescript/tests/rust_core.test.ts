@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CompressorClient,
+  compressTools,
   installJustBashCommands,
   interpolateRecord,
   interpolateString,
@@ -370,6 +371,100 @@ describe("Public TypeScript SDK workflow", () => {
       proxy.close();
       client.close();
     }
+  });
+});
+
+describe("local TypeScript tool compression", () => {
+  it("compresses local tools into schema and invoke wrappers", async () => {
+    const tools = compressTools(
+      {
+        weather: {
+          description: "Get weather for a city.\n\nIncludes current temperature.",
+          inputSchema: {
+            type: "object",
+            properties: { city: { type: "string" } },
+            required: ["city"],
+          },
+          execute: async (input) => ({ city: String(input.city), temperature: 72 }),
+        },
+      },
+      { compressionLevel: "medium" },
+    );
+
+    expect(Object.keys(tools).sort()).toEqual(["get_tool_schema", "invoke_tool"]);
+    expect(tools.get_tool_schema?.description).toContain("weather(city)");
+    expect(tools.get_tool_schema?.description).toContain("Get weather for a city");
+    expect(tools.get_tool_schema?.description).not.toContain("Includes current temperature.");
+
+    await expect(tools.get_tool_schema?.execute({ tool_name: "weather" })).resolves.toContain(
+      "temperature",
+    );
+    await expect(
+      tools.invoke_tool?.execute({ tool_name: "weather", tool_input: { city: "Sydney" } }),
+    ).resolves.toBe('{"city":"Sydney","temperature":72}');
+  });
+
+  it("supports max compression, prefixes, and AI SDK adapters", async () => {
+    const tools = compressTools(
+      {
+        echo: {
+          description: "Echo a message.",
+          inputSchema: {
+            type: "object",
+            properties: { message: { type: "string" } },
+            required: ["message"],
+          },
+          execute: (input) => `echo:${String(input.message)}`,
+        },
+      },
+      { compressionLevel: "max", namePrefix: "local" },
+    );
+
+    expect(Object.keys(tools).sort()).toEqual([
+      "local_get_tool_schema",
+      "local_invoke_tool",
+      "local_list_tools",
+    ]);
+    await expect(tools.local_list_tools?.execute()).resolves.toBe("");
+    await expect(
+      tools.local_invoke_tool?.execute({ tool_name: "echo", tool_input: { message: "hi" } }),
+    ).resolves.toBe("echo:hi");
+
+    const aiTools = toAISDKTools(tools, { tool: (definition) => ({ ...definition, ai: true }) });
+    expect(aiTools.local_invoke_tool).toMatchObject({ ai: true });
+  });
+
+  it("accepts schema adapters for non-JSON schema objects", async () => {
+    const tools = compressTools(
+      {
+        adapted: {
+          description: "Adapted schema tool.",
+          inputSchema: "schema-token",
+          execute: (input) => String(input.value),
+        },
+      },
+      {
+        schemaAdapter: () => ({
+          type: "object",
+          properties: { value: { type: "string" } },
+          required: ["value"],
+        }),
+      },
+    );
+
+    await expect(
+      tools.invoke_tool?.execute({ tool_name: "adapted", tool_input: { value: "ok" } }),
+    ).resolves.toBe("ok");
+  });
+
+  it("reports missing tools clearly", async () => {
+    const tools = compressTools({});
+    await expect(tools.get_tool_schema?.execute({ tool_name: "missing" })).rejects.toThrow(
+      "Tool not found: missing",
+    );
+    await expect(
+      tools.invoke_tool?.execute({ tool_name: "missing", tool_input: {} }),
+    ).rejects.toThrow("Tool not found: missing");
   });
 });
 

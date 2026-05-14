@@ -3,6 +3,7 @@ export * from "./errors.js";
 export * from "./rust_core.js";
 export * from "./just_bash_host.js";
 export * from "./adapters.js";
+export * from "./local_tools.js";
 export {
   interpolateString,
   interpolateRecord,

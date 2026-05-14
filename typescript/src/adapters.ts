@@ -1,8 +1,8 @@
-export interface ExecutableTool {
+export interface ExecutableTool<TResult = string> {
   name: string;
   description?: string;
   inputSchema: Record<string, unknown>;
-  execute(input?: Record<string, unknown>): Promise<string>;
+  execute(input?: Record<string, unknown>): Promise<TResult>;
 }
 
 export interface AISDKToolFactory<TTool = unknown> {
@@ -14,10 +14,10 @@ export interface AISDKToolFactory<TTool = unknown> {
 }
 
 export function toAISDKTools<TTool = unknown>(
-  tools: Record<string, ExecutableTool>,
+  tools: Record<string, ExecutableTool<string>>,
   options: { tool?: AISDKToolFactory<TTool> } = {},
-): Record<string, TTool | Omit<ExecutableTool, "name">> {
-  const result: Record<string, TTool | Omit<ExecutableTool, "name">> = {};
+): Record<string, TTool | Omit<ExecutableTool<string>, "name">> {
+  const result: Record<string, TTool | Omit<ExecutableTool<string>, "name">> = {};
   for (const [name, executable] of Object.entries(tools)) {
     const definition = {
       description: executable.description,
@@ -30,9 +30,9 @@ export function toAISDKTools<TTool = unknown>(
 }
 
 export function toMastraTools(
-  tools: Record<string, ExecutableTool>,
-): Record<string, Omit<ExecutableTool, "name">> {
-  const result: Record<string, Omit<ExecutableTool, "name">> = {};
+  tools: Record<string, ExecutableTool<string>>,
+): Record<string, Omit<ExecutableTool<string>, "name">> {
+  const result: Record<string, Omit<ExecutableTool<string>, "name">> = {};
   for (const [name, executable] of Object.entries(tools)) {
     result[name] = {
       description: executable.description,
