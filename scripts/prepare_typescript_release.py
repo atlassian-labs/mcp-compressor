@@ -26,11 +26,19 @@ def version_from_tag(tag: str) -> str:
     )
 
 
+def npm_dist_tag_for_version(version: str) -> str:
+    return "next" if "-" in version else "latest"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("tag")
+    parser.add_argument("--print-npm-dist-tag", action="store_true")
     args = parser.parse_args()
     version = version_from_tag(args.tag)
+    if args.print_npm_dist_tag:
+        print(npm_dist_tag_for_version(version))
+        return
     data = json.loads(PACKAGE_JSON.read_text())
     data["version"] = version
     PACKAGE_JSON.write_text(json.dumps(data, indent=2) + "\n")
