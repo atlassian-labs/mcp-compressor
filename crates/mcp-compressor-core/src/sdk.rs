@@ -336,9 +336,14 @@ impl CompressorProxy {
     }
 
     async fn invoke_wrapper_tool(&self, wrapper: &str, input: Value) -> Result<String, Error> {
+        let exec_url = self.proxy.exec_url();
+        ensure_loopback_proxy_url(&exec_url)?;
         let client = reqwest::Client::new();
         let response = client
-            .post(self.proxy.exec_url())
+            // codeql[rust/cleartext-transmission]
+            // This session token is sent only to the local loopback proxy after
+            // ensure_loopback_proxy_url rejects non-loopback and non-http URLs.
+            .post(exec_url)
             .header("Authorization", format!("Bearer {}", self.token()))
             .json(&json!({
                 "tool": wrapper,
@@ -452,6 +457,29 @@ impl CompressorProxy {
     }
 }
 
+fn ensure_loopback_proxy_url(url: &str) -> Result<(), Error> {
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|error| Error::Config(format!("invalid proxy URL {url:?}: {error}")))?;
+    if parsed.scheme() != "http" {
+        return Err(Error::Config(format!(
+            "refusing to send proxy session token to non-http URL: {url}"
+        )));
+    }
+    let Some(host) = parsed.host_str() else {
+        return Err(Error::Config(format!("proxy URL has no host: {url}")));
+    };
+    let is_loopback_ip = host
+        .parse::<std::net::IpAddr>()
+        .map(|addr| addr.is_loopback())
+        .unwrap_or(false);
+    if host != "localhost" && !is_loopback_ip {
+        return Err(Error::Config(format!(
+            "refusing to send proxy session token to non-loopback URL: {url}"
+        )));
+    }
+    Ok(())
+}
+
 #[async_trait]
 pub trait ExecutableTool: Send + Sync {
     fn name(&self) -> &str;
@@ -544,6 +572,14 @@ mod tests {
             }
             FfiSdkServerConfig::CommandOrUrl(_) => panic!("expected structured config"),
         }
+    }
+
+    #[test]
+    fn loopback_proxy_url_guard_allows_only_local_http_urls() {
+        assert!(ensure_loopback_proxy_url("http://127.0.0.1:1234/exec").is_ok());
+        assert!(ensure_loopback_proxy_url("http://localhost:1234/exec").is_ok());
+        assert!(ensure_loopback_proxy_url("https://127.0.0.1:1234/exec").is_err());
+        assert!(ensure_loopback_proxy_url("http://example.com:1234/exec").is_err());
     }
 
     #[test]
