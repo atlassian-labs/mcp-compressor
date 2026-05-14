@@ -15,6 +15,9 @@ on:
     branches:
       - rust-core-migration-trunk
 
+permissions:
+  contents: read
+
 jobs:
   rust-cli-binary:
     name: Rust CLI binary (${{ matrix.os }})

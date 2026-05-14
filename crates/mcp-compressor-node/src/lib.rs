@@ -120,6 +120,8 @@ pub fn clear_oauth_credentials_json(target: Option<String>) -> napi::Result<Stri
 }
 
 #[napi]
+// codeql[cpp/access-invalid-pointer]: This exported napi class contains only Rust-owned fields.
+// napi-rs generates the JS wrapper; this line does not dereference raw pointers.
 pub struct NativeCompressedSession {
     inner: FfiCompressedSession,
     auth_header_stores: Vec<HeaderStore>,
