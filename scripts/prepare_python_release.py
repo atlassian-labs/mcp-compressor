@@ -5,15 +5,22 @@ import argparse
 import re
 from pathlib import Path
 
-SEMVER_RE = re.compile(r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
+# Python package versions follow PEP 440. This intentionally accepts prerelease
+# tags such as `v0.15.0a1` in addition to ordinary release tags such as `v1.2.3`.
+PEP440_RELEASE_TAG_RE = re.compile(
+    r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:(a|b|rc)(0|[1-9]\d*))?"
+    r"(?:\.post(0|[1-9]\d*))?"
+    r"(?:\.dev(0|[1-9]\d*))?$"
+)
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "python" / "mcp-compressor" / "pyproject.toml"
 
 
 def version_from_tag(tag: str) -> str:
     version = tag.removeprefix("refs/tags/").removeprefix("v")
-    if not SEMVER_RE.match(version):
-        raise SystemExit(f"Tag {tag!r} is not a supported semver tag such as v1.2.3")
+    if not PEP440_RELEASE_TAG_RE.match(version):
+        raise SystemExit(f"Tag {tag!r} is not a supported Python release tag such as v1.2.3 or v0.15.0a1")
     return version
 
 
