@@ -1,11 +1,69 @@
-# API Reference
+# API reference
 
-The Rust-core migration branch no longer documents the legacy `mcp_compressor` Python package.
+Use the package-level references below to find the public API surface for each language.
 
-Rust-backed package API references currently live with their package-specific tests and source:
+## Python
 
-- `python/mcp-compressor/mcp_compressor/`
-- `typescript/src/rust_core.ts`
-- `crates/mcp-compressor-core/`
+Import from `mcp_compressor`:
 
-A generated API reference for the new Rust-backed Python and TypeScript packages will be added once the migration packaging layout is finalized.
+```python
+from mcp_compressor import CompressorClient, ToolSpec
+```
+
+Key public objects:
+
+- `CompressorClient`
+- `CompressorProxy`
+- `ProxyTool`
+- `ProxyResponse`
+- `ExecutableTool`
+- `GeneratedCodeClient`
+- `ToolSpec`
+- `compress_tool_listing`
+- `format_tool_schema_response`
+- `parse_tool_argv`
+- `parse_mcp_config`
+- `create_just_bash_commands`
+
+## TypeScript
+
+Import from `@atlassian/mcp-compressor`:
+
+```ts
+import { CompressorClient, compressTools, toAISDKTools } from "@atlassian/mcp-compressor";
+```
+
+Key public exports:
+
+- `CompressorClient`
+- `CompressorProxy`
+- `ProxyTool`
+- `ProxyResponse`
+- `ExecutableTool`
+- `GeneratedCodeClient`
+- `compressTools`
+- `compressToolListing`
+- `formatToolSchemaResponse`
+- `parseToolArgv`
+- `parseMCPConfig`
+- `createJustBashCommands`
+- `toAISDKTools`
+- `toMastraTools`
+
+## Rust
+
+Import from `mcp_compressor`:
+
+```rust
+use mcp_compressor::sdk::{CompressorClient, ServerConfig};
+```
+
+Key public modules:
+
+- `mcp_compressor::sdk`
+- `mcp_compressor::compression`
+- `mcp_compressor::client_gen`
+- `mcp_compressor::cli`
+- `mcp_compressor::config`
+
+See [SDK reference overview](reference/sdk.md) for language-by-language examples.

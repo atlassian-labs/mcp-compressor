@@ -1,27 +1,29 @@
 # API status
 
-The Rust migration branch is under active development. This page describes current stability expectations.
+`mcp-compressor` is published as a multi-language library and CLI with aligned public APIs across Python, TypeScript, and Rust.
 
-## Stable enough to build against on the migration branch
+## Stable public surfaces
 
-- Rust core compression behavior.
-- Rust CLI standard compression mode.
-- Rust CLI CLI/Python/TypeScript generation modes.
+- CLI standard MCP compression mode.
+- CLI Mode for generated shell commands.
+- Code Mode for generated Python and TypeScript clients.
 - Python `CompressorClient` high-level SDK.
 - TypeScript `CompressorClient` high-level SDK.
 - Rust `CompressorClient` high-level SDK.
-- Explicit-header remote streamable HTTP backends.
+- TypeScript local in-process tool compression with `compressTools`.
+- Remote streamable HTTP MCP backends.
+- OAuth and explicit-header authentication.
+- Dynamic SDK auth providers.
 - Generated shell/Python/TypeScript clients.
 
 ## Still being hardened
 
-- Native OAuth flows across providers.
-- Just Bash command host integration semantics.
-- Cross-platform release artifacts.
-- Final Python package name and cutover from `mcp-compressor-rust` to `mcp-compressor`.
+- Native OAuth compatibility across a wider range of MCP providers.
+- Cross-platform binary/package release automation.
+- Generated API reference pages for Python and TypeScript.
 
 ## Compatibility notes
 
-- TypeScript legacy runtime/client/server code has been removed from the migration branch.
-- Python legacy top-level package has been removed from the migration branch.
-- Public SDKs should not expose Rust implementation details in object names.
+- Public imports should use `mcp_compressor`, `@atlassian/mcp-compressor`, and `mcp_compressor` for Rust.
+- Implementation crate/module names are internal details and should not appear in user-facing examples.
+- Deprecated CLI aliases `--python-mode` and `--typescript-mode` remain available, but `--code-mode python` and `--code-mode typescript` are preferred.

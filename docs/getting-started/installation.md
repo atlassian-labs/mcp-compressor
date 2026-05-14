@@ -6,15 +6,12 @@
 - SDKs for Python, TypeScript, and Rust,
 - generated clients for shell, Python, and TypeScript.
 
-!!! note "Migration branch package names"
-    On the Rust migration branch, the Python distribution is still published separately as `mcp-compressor-rust` until final cutover. The public Python import is already `mcp_compressor`.
-
 ## Install the SDK
 
 === "Python"
 
     ```bash
-    pip install mcp-compressor-rust
+    pip install mcp-compressor
     ```
 
     Then import:
@@ -22,8 +19,6 @@
     ```python
     from mcp_compressor import CompressorClient
     ```
-
-    The temporary distribution name is `mcp-compressor-rust`, but users import `mcp_compressor`.
 
 === "TypeScript"
 
@@ -78,8 +73,8 @@
 === "Python wrapper"
 
     ```bash
-    pip install mcp-compressor-rust
-    mcp-compressor-rust --help
+    pip install mcp-compressor
+    mcp-compressor --help
     ```
 
     The wrapper delegates to the Rust binary. Set `MCP_COMPRESSOR_BINARY` if the binary is not on `PATH`.

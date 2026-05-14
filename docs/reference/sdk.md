@@ -1,6 +1,6 @@
 # SDK reference overview
 
-This page is a human-oriented map of the main SDK objects. Generated API references can be added once the migration package layout is finalized.
+This page maps the main SDK objects across Python, TypeScript, and Rust.
 
 ## Auth provider semantics
 
