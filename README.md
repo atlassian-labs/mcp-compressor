@@ -78,6 +78,7 @@ The SDK starts the Rust proxy in-process. Generated clients call that proxy usin
 - [Compressed MCP proxy](https://atlassian-labs.github.io/mcp-compressor/usage/cli/#standard-mcp-proxy) for existing MCP clients.
 - [Compression levels](https://atlassian-labs.github.io/mcp-compressor/concepts/how-it-works/#compression-levels): `low`, `medium`, `high`, `max`.
 - [Python, TypeScript, and Rust SDKs](https://atlassian-labs.github.io/mcp-compressor/usage/sdks/) with aligned `CompressorClient` APIs.
+- [Local TypeScript tool compression](https://atlassian-labs.github.io/mcp-compressor/usage/sdks/#compress-local-typescript-tools) for AI SDK-style in-process tools.
 - [CLI Mode and Code Mode generated clients](https://atlassian-labs.github.io/mcp-compressor/usage/generated-clients/): shell commands plus Python/TypeScript functions.
 - [Just Bash integration](https://atlassian-labs.github.io/mcp-compressor/usage/just-bash/) for command-oriented agents.
 - [Remote streamable HTTP MCP backends](https://atlassian-labs.github.io/mcp-compressor/usage/auth-and-remote/).

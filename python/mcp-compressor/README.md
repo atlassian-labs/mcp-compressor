@@ -1,13 +1,16 @@
-# mcp-compressor-rust
+# mcp-compressor Python SDK
 
-Experimental Rust-backed Python package for `mcp-compressor`.
+Python SDK and CLI wrapper for `mcp-compressor`.
 
-The package name is temporary while the Rust-core migration is validated. The public API should be treated as the future Python SDK shape: users create a `CompressorClient` around one or more MCP server configs and use the resulting proxy/tools. The fact that the implementation is Rust-backed is not part of the user-facing programming model.
+The public Python import is `mcp_compressor`:
+
+```python
+from mcp_compressor import CompressorClient
+```
 
 ## Quick start
 
-The primary SDK object is `CompressorClient`. It starts a Rust-backed local proxy in-process and returns a `CompressorProxy`; no `mcp-compressor` stdio subprocess is required.
-
+The primary SDK object is `CompressorClient`. It starts a local Rust-backed proxy in-process and returns a `CompressorProxy`; no `mcp-compressor` stdio subprocess is required.
 
 ```python
 from mcp_compressor import CompressorClient
@@ -19,9 +22,6 @@ servers = {
     },
     "atlassian": {
         "url": "https://mcp.atlassian.com/v1/mcp",
-        "headers": {
-            "Authorization": f"Basic {token}",
-        },
     },
 }
 
@@ -46,22 +46,19 @@ with CompressorClient(
 `CompressorClient` accepts these modes:
 
 - `compressed` — expose compressed wrapper tools such as `<server>_get_tool_schema` and `<server>_invoke_tool`.
-- `cli` — expose CLI/help transform metadata through the Rust core session.
-- `bash` — expose Just Bash provider metadata through the Rust core session.
+- `cli` — expose CLI/help transform metadata through the shared Rust runtime.
+- `bash` — expose Just Bash provider metadata through the shared Rust runtime.
+
 Generated Python and TypeScript clients are produced with `proxy.write_client(...)` rather than by selecting a long-lived session mode.
 
 ## Just Bash metadata
 
-Just Bash mode exposes the compressed proxy bridge plus typed provider metadata. Language hosts can use this metadata to register backend MCP tools as Just Bash commands without the Rust core executing shell commands itself:
+Just Bash mode exposes the compressed proxy bridge plus typed provider metadata. Language hosts can use this metadata to register backend MCP tools as Just Bash commands without the Rust runtime executing shell commands itself:
 
 ```python
-with CompressorClient(servers=servers, mode="bash") as proxy:
-    for provider in proxy.just_bash_providers:
-        print(provider.provider_name, provider.help_tool_name)
-        for command in provider.tools:
-            print(command.command_name, command.backend_tool_name, command.invoke_tool_name)
+from mcp_compressor import CompressorClient, create_just_bash_commands
 
-    # Python hosts can also create callable command objects from the metadata.
+with CompressorClient(servers=servers, mode="bash") as proxy:
     commands = {cmd.command_name: cmd for cmd in create_just_bash_commands(proxy)}
     print(commands["atlassian_get-accessible-atlassian-resources"]([]))
 ```
@@ -70,7 +67,7 @@ Duplicate backend command names are prefixed with the provider name, for example
 
 ## Generated clients
 
-A connected proxy can write shell, Python, or TypeScript clients that call the live Rust proxy:
+A connected proxy can write shell, Python, or TypeScript clients that call the live proxy:
 
 ```python
 with CompressorClient(servers=servers, compression_level="max") as proxy:
@@ -85,10 +82,10 @@ Build a local wheel and verify it imports from a clean virtualenv:
 
 ```bash
 uvx maturin build --release --out dist
-python -m venv /tmp/mcp-compressor-rust-wheel-test
-/tmp/mcp-compressor-rust-wheel-test/bin/python -m pip install "$PWD"/dist/*.whl
+python -m venv /tmp/mcp-compressor-wheel-test
+/tmp/mcp-compressor-wheel-test/bin/python -m pip install "$PWD"/dist/*.whl
 cd /tmp
-/tmp/mcp-compressor-rust-wheel-test/bin/python -c "from mcp_compressor import CompressorClient, ToolSpec"
+/tmp/mcp-compressor-wheel-test/bin/python -c "from mcp_compressor import CompressorClient, ToolSpec"
 ```
 
 CI runs the same kind of wheel smoke test before uploading the built wheel as an artifact.

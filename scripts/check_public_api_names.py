@@ -11,7 +11,7 @@ FORBIDDEN = {
 SEARCH_ROOTS = [
     Path("docs"),
     Path("README.md"),
-    Path("python/mcp-compressor-rust/README.md"),
+    Path("python/mcp-compressor/README.md"),
     Path("typescript/README.md"),
     Path("tests"),
 ]

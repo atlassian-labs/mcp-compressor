@@ -15,6 +15,7 @@ nav:
   - Concepts:
       - How it works: concepts/how-it-works.md
       - Configuration: concepts/configuration.md
+      - Architecture: architecture.md
   - Usage:
       - CLI: usage/cli.md
       - SDKs: usage/sdks.md
@@ -29,9 +30,7 @@ nav:
       - API status: reference/api-status.md
       - API modules: modules.md
   - Development:
-      - Rust migration: development/rust-migration.md
-      - CLI parity report: development/cli-parity-report.md
-      - Rust core design: rust-core-design.md
+      - Internal implementation notes: rust-core-design.md
 plugins:
   - search
   - include-markdown

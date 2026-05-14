@@ -1,5 +1,5 @@
 [project]
-name = "mcp-compressor-rust"
+name = "mcp-compressor"
 version = "0.1.0"
 description = "Rust-backed experimental Python package for mcp-compressor."
 readme = "README.md"
@@ -7,7 +7,7 @@ requires-python = ">=3.11,<4.0"
 authors = [{ name = "Tim Esler", email = "tesler@atlassian.com" }]
 
 [project.scripts]
-mcp-compressor-rust = "mcp_compressor.cli:entrypoint"
+mcp-compressor = "mcp_compressor.cli:entrypoint"
 
 [project.urls]
 Homepage = "https://atlassian-labs.github.io/mcp-compressor/"
