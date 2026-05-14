@@ -143,6 +143,37 @@ Applications often need framework-ready callable tool objects rather than direct
 
 The executable tool shape is intentionally simple: name, description, input schema, and an execute function.
 
+## Compress local TypeScript tools
+
+For TypeScript applications that already have in-process tools, such as AI SDK tools, you can compress those tools without starting an MCP server or proxy. This returns the same `ExecutableTool` shape used by the rest of the TypeScript SDK.
+
+=== "TypeScript"
+
+    ```ts
+    import { compressTools, toAISDKTools } from "@atlassian/mcp-compressor";
+    import { tool } from "ai";
+
+    const rawTools = {
+      weather: {
+        description: "Get weather for a city.",
+        inputSchema: {
+          type: "object",
+          properties: { city: { type: "string" } },
+          required: ["city"],
+        },
+        execute: async ({ city }: { city: string }) => ({ city, temperature: 72 }),
+      },
+    };
+
+    const compressed = compressTools(rawTools, {
+      compressionLevel: "medium",
+    });
+
+    const aiTools = toAISDKTools(compressed, { tool });
+    ```
+
+    If your framework uses a non-JSON-schema object, pass `schemaAdapter` to convert it before compression.
+
 ## Compression options
 
 The SDKs expose the same main compression options as the CLI.
