@@ -184,7 +184,7 @@ jobs:
         if: github.event_name == 'release' || inputs.publish == true
         working-directory: .
         run: |
-          printf '\n@atlassian:registry=https://packages.atlassian.com/api/npm/npm-public/\n' >> "${{ github.workspace }}/.npmrc-public"
+          printf '\n@atlassian:registry=https://packages.atlassian.com/artifactory/api/npm/npm-public/\n' >> "${{ github.workspace }}/.npmrc-public"
 
       - name: Publish to Artifactory npm-public
         if: github.event_name == 'release' || inputs.publish == true
