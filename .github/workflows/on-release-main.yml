@@ -128,10 +128,14 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build native addon for checks
-        run: bun run build:native
+      - name: Build native addon and CLI binary for checks
+        run: |
+          bun run build:native
+          cargo build -p mcp-compressor --bin mcp-compressor
 
       - name: Run package checks
+        env:
+          MCP_COMPRESSOR_CORE_BINARY: ${{ github.workspace }}/target/debug/mcp-compressor
         run: bun run check:ci
 
       - name: Build TypeScript package and native addon
@@ -231,10 +235,12 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           for attempt in {1..20}; do
-            if cargo search mcp-compressor-core --limit 5 | grep -q "^mcp-compressor-core = \"$VERSION\""; then
+            if cargo info "mcp-compressor-core@$VERSION" >/tmp/mcp-compressor-core-info 2>&1; then
+              cat /tmp/mcp-compressor-core-info
               echo "mcp-compressor-core $VERSION is visible in crates.io index"
               exit 0
             fi
+            cat /tmp/mcp-compressor-core-info || true
             echo "Waiting for mcp-compressor-core $VERSION in crates.io index (attempt $attempt/20)..."
             sleep 30
           done
