@@ -115,6 +115,9 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Set up Python environment for fixture servers
+        uses: ./.github/actions/setup-python-env
+
       - name: Derive package version from tag
         id: version
         working-directory: .
@@ -136,6 +139,7 @@ jobs:
       - name: Run package checks
         env:
           MCP_COMPRESSOR_CORE_BINARY: ${{ github.workspace }}/target/debug/mcp-compressor
+          PYTHON: ${{ github.workspace }}/.venv/bin/python
         run: bun run check:ci
 
       - name: Build TypeScript package and native addon
