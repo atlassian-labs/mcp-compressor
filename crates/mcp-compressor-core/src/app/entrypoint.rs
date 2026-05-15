@@ -2,7 +2,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
-use crate::app::options::{CliCommand, CliOptions, MultiServerArg};
+use crate::app::options::{CliCommand, CliOptions, LlmCommand, MultiServerArg};
 use crate::app::runtime::{run_cli_mode, run_compressed_server, run_just_bash_mode};
 use crate::oauth::clear_oauth_store;
 use crate::server::{
@@ -36,7 +36,7 @@ pub fn run() -> Result<(), CliError> {
 async fn run_async(cli: CliOptions) -> Result<(), CliError> {
     cli.validate().map_err(CliError::Usage)?;
     if let Some(command) = &cli.command_kind {
-        return run_command(command);
+        return run_command(command).await;
     }
     let server = build_server(&cli).await?;
 
@@ -103,7 +103,10 @@ async fn build_server(cli: &CliOptions) -> Result<CompressedServer, CliError> {
     }
 }
 
-fn run_command(command: &CliCommand) -> Result<(), CliError> {
+async fn run_command(command: &CliCommand) -> Result<(), CliError> {
+    if let Some(llm_command) = command.llm_command() {
+        return run_llm_command(llm_command).await;
+    }
     let removed = clear_oauth_store(command.clear_oauth_target())
         .map_err(|error| CliError::Runtime(error.to_string()))?;
     if removed.is_empty() {
@@ -114,6 +117,64 @@ fn run_command(command: &CliCommand) -> Result<(), CliError> {
             removed.len(),
             if removed.len() == 1 { "y" } else { "ies" }
         );
+    }
+    Ok(())
+}
+
+async fn run_llm_command(command: &LlmCommand) -> Result<(), CliError> {
+    match command {
+        LlmCommand::Status(options) => {
+            let config = options.config(false).map_err(CliError::Usage)?;
+            let status = crate::llm_assist::install_status(&config)
+                .map_err(|error| CliError::Runtime(error.to_string()))?;
+            println!(
+                "llama-server: {}",
+                if status.llama_server_ready {
+                    "ready"
+                } else {
+                    "missing"
+                }
+            );
+            if let Some(path) = status.llama_server_path {
+                println!("llama-server path: {}", path.display());
+            }
+            println!("model: {}", status.model_ref);
+            println!(
+                "model status: {}",
+                if status.model_ready {
+                    "ready"
+                } else {
+                    "missing"
+                }
+            );
+            println!("model path: {}", status.model_path.display());
+        }
+        LlmCommand::Pull(options) => {
+            let config = options.config(true).map_err(CliError::Usage)?;
+            let prepared = crate::llm_assist::pull_llm_assets(config)
+                .await
+                .map_err(|error| CliError::Runtime(error.to_string()))?;
+            println!(
+                "llama-server ready: {}",
+                prepared.llama_server_path.display()
+            );
+            println!("model ready: {}", prepared.model_path.display());
+        }
+        LlmCommand::Remove(options) => {
+            crate::llm_assist::remove_managed_llm_assets(options.cache_dir())
+                .map_err(|error| CliError::Runtime(error.to_string()))?;
+            println!("Removed managed LLM assets from the mcp-compressor cache.");
+        }
+        LlmCommand::Test(options) => {
+            let config = options.config(true).map_err(CliError::Usage)?;
+            let assistant = crate::llm_assist::LlmAssistant::from_config(config);
+            assistant.start_background_preparation();
+            let response = assistant
+                .complete("You are a concise local utility model.", options.prompt())
+                .await
+                .map_err(|error| CliError::Runtime(error.to_string()))?;
+            println!("{response}");
+        }
     }
     Ok(())
 }

@@ -19,6 +19,7 @@ pub mod compression;
 pub mod config;
 pub mod error;
 pub mod ffi;
+pub mod llm_assist;
 pub mod oauth;
 pub mod proxy;
 pub mod sdk;

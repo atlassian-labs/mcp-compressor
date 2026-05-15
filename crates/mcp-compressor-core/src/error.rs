@@ -26,4 +26,10 @@ pub enum Error {
 
     #[error("config error: {0}")]
     Config(String),
+
+    #[error("HTTP error: {0}")]
+    Http(#[from] reqwest::Error),
+
+    #[error("LLM assist error: {0}")]
+    LlmAssist(String),
 }

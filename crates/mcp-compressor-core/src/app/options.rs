@@ -1,5 +1,6 @@
-use std::path::PathBuf;
 use crate::ffi::FfiClientArtifactKind;
+use crate::llm_assist::{ModelRef, DEFAULT_MODEL_REF};
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
@@ -168,13 +169,98 @@ pub enum CliCommand {
         /// Backend server name or URL to clear. If omitted, all Rust OAuth state is removed.
         target: Option<String>,
     },
+
+    /// Manage optional local LLM assistance assets.
+    Llm {
+        #[command(subcommand)]
+        command: LlmCommand,
+    },
 }
 
 impl CliCommand {
     pub fn clear_oauth_target(&self) -> Option<&str> {
         match self {
             Self::ClearOauth { target } => target.as_deref(),
+            Self::Llm { .. } => None,
         }
+    }
+
+    pub fn llm_command(&self) -> Option<&LlmCommand> {
+        match self {
+            Self::Llm { command } => Some(command),
+            Self::ClearOauth { .. } => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum LlmCommand {
+    /// Show local llama-server/model installation status.
+    Status(LlmCommandOptions),
+    /// Download/install llama-server and the configured model.
+    Pull(LlmCommandOptions),
+    /// Remove managed LLM runtime and model assets from the cache.
+    Remove(LlmCommandOptions),
+    /// Download/install assets and run a test prompt.
+    Test(LlmTestOptions),
+}
+
+#[derive(Debug, Clone, Parser)]
+pub struct LlmCommandOptions {
+    /// Model reference, for example LiquidAI/LFM2.5-350M-GGUF:Q4_K_M.
+    #[arg(long = "model", default_value = DEFAULT_MODEL_REF)]
+    model: String,
+
+    /// Override mcp-compressor LLM cache directory.
+    #[arg(long = "cache-dir")]
+    cache_dir: Option<PathBuf>,
+
+    /// Explicit llama-server binary path.
+    #[arg(long = "llama-server")]
+    llama_server_path: Option<PathBuf>,
+}
+
+impl LlmCommandOptions {
+    pub fn config(
+        &self,
+        allow_download: bool,
+    ) -> Result<crate::llm_assist::LlmRuntimeConfig, String> {
+        let mut config = crate::llm_assist::LlmRuntimeConfig::local_default(allow_download)
+            .with_model(ModelRef::parse(&self.model).map_err(|error| error.to_string())?);
+        if let Some(cache_dir) = &self.cache_dir {
+            config = config.with_cache_dir(cache_dir.clone());
+        }
+        if let Some(path) = &self.llama_server_path {
+            config = config.with_llama_server_path(path.clone());
+        }
+        Ok(config)
+    }
+
+    pub fn cache_dir(&self) -> Option<PathBuf> {
+        self.cache_dir.clone()
+    }
+}
+
+#[derive(Debug, Clone, Parser)]
+pub struct LlmTestOptions {
+    #[command(flatten)]
+    options: LlmCommandOptions,
+
+    /// Prompt to send to the local model.
+    #[arg(long = "prompt", default_value = "Say hello in one short sentence.")]
+    prompt: String,
+}
+
+impl LlmTestOptions {
+    pub fn config(
+        &self,
+        allow_download: bool,
+    ) -> Result<crate::llm_assist::LlmRuntimeConfig, String> {
+        self.options.config(allow_download)
+    }
+
+    pub fn prompt(&self) -> &str {
+        &self.prompt
     }
 }
 
