@@ -123,25 +123,6 @@ atlassian-labs/artifact-publish-token@v1.0.1
 
 with `output-modes: npm` to create `.npmrc-public`.
 
-## Manual TypeScript fallback
-
-If GitHub Actions publishing is blocked by Artifactory permissions, maintainers can publish locally after obtaining permission:
-
-```bash
-atlas packages permission grant
-cd typescript
-bun run build
-bun run build:native
-npm version 0.15.0-alpha.1 --no-git-tag-version
-npm publish --tag next
-git checkout -- package.json bun.lock
-```
-
-Use `--tag latest` for stable releases.
-
-!!! warning
-    Local publishing only builds the native addon for the current platform. Prefer the GitHub workflow for official releases.
-
 ## Docs publish
 
 Docs are deployed by the release workflow with:
