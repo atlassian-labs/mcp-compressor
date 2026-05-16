@@ -196,9 +196,10 @@ Important workflows:
 - `.github/workflows/main.yml` — primary checks.
 - `.github/workflows/atlassian-mcp-integration.yml` — real-world Atlassian MCP tests.
 - `.github/workflows/release-artifacts.yml` — cross-platform artifact smoke tests.
-- `.github/workflows/on-release-main.yml` — unified release workflow for Python, TypeScript, Rust crates, and docs.
+- `.github/workflows/on-release-main.yml` — unified release entrypoint for Python, Rust crates, TypeScript dispatch, and docs.
+- `.github/workflows/publish-typescript-package.yml` — TypeScript npm-public publish workflow dispatched on the `release` branch so Artifactory receives branch-based OIDC claims.
 
-Release versions are derived from tags where possible. Avoid hardcoding release versions in source unless a package manager requires a placeholder.
+Release versions are derived from tags where possible. Avoid hardcoding release versions in source unless a package manager requires a placeholder. See `docs/development-release.md` before changing release workflows.
 
 ## Documentation guidance
 

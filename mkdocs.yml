@@ -30,6 +30,7 @@ nav:
       - API status: reference/api-status.md
       - API modules: modules.md
   - Development:
+      - Release process: development-release.md
       - LLM assist design: llm-assist-design.md
       - Internal implementation notes: rust-core-design.md
 plugins:
