@@ -16,6 +16,9 @@ import {
   normalizeServers,
   toAISDKTools,
   toMastraTools,
+  transformToolsForCliMode,
+  transformToolsForCodeMode,
+  transformToolsForJustBash,
   type BackendConfig,
   type JsonConfigServerEntry,
 } from "../src/index.js";
@@ -465,6 +468,86 @@ describe("local TypeScript tool compression", () => {
     await expect(
       tools.invoke_tool?.execute({ tool_name: "missing", tool_input: {} }),
     ).rejects.toThrow("Tool not found: missing");
+  });
+
+  it("transforms executable tools into direct Just Bash commands plus help tools", async () => {
+    const bash = new Bash({ customCommands: [] });
+    const result = transformToolsForJustBash(
+      {
+        echo: {
+          name: "echo",
+          description: "Echo a message.",
+          inputSchema: {
+            type: "object",
+            properties: { message: { type: "string" } },
+            required: ["message"],
+          },
+          execute: async (input = {}) => `direct:${String(input.message)}`,
+        },
+      },
+      { bash, serverName: "alpha" },
+    );
+
+    expect(Object.keys(result.tools)).toEqual(["alpha_help"]);
+    expect(result.registrations.map((registration) => registration.commandName)).toEqual([
+      "alpha_echo",
+    ]);
+    const commandResult = await bash.exec("alpha_echo --message bash");
+    expect(commandResult.exitCode).toBe(0);
+    expect(commandResult.stdout.trim()).toBe("direct:bash");
+    await expect(result.tools.alpha_help?.execute()).resolves.toContain("alpha_echo");
+  });
+
+  it("transforms executable tools into generated code clients and help tools", async () => {
+    const transform = await transformToolsForCodeMode(
+      {
+        echo: {
+          name: "echo",
+          description: "Echo a message.",
+          inputSchema: {
+            type: "object",
+            properties: { message: { type: "string" } },
+            required: ["message"],
+          },
+          execute: async (input = {}) => `code:${String(input.message)}`,
+        },
+      },
+      { language: "python", serverName: "alpha", outputDir: join(tmpdir(), "mcp-code-mode") },
+    );
+    try {
+      expect(Object.keys(transform.tools)).toEqual(["alpha_help"]);
+      expect(Object.keys(transform.files)).toContain("alpha.py");
+      await expect(transform.tools.alpha_help?.execute()).resolves.toContain("Python Code Mode");
+      expect(transform.environment.PYTHONPATH).toContain("mcp-code-mode");
+    } finally {
+      transform.close();
+    }
+  });
+
+  it("transforms executable tools into generated CLI clients and help tools", async () => {
+    const transform = await transformToolsForCliMode(
+      {
+        echo: {
+          name: "echo",
+          description: "Echo a message.",
+          inputSchema: {
+            type: "object",
+            properties: { message: { type: "string" } },
+            required: ["message"],
+          },
+          execute: async (input = {}) => `cli:${String(input.message)}`,
+        },
+      },
+      { serverName: "alpha", outputDir: join(tmpdir(), "mcp-cli-mode") },
+    );
+    try {
+      expect(Object.keys(transform.tools)).toEqual(["alpha_help"]);
+      expect(Object.keys(transform.files)).toContain("alpha");
+      await expect(transform.tools.alpha_help?.execute()).resolves.toContain("CLI Mode");
+      expect(transform.environment.PATH).toContain("mcp-cli-mode");
+    } finally {
+      transform.close();
+    }
   });
 });
 

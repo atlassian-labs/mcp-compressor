@@ -12,7 +12,10 @@ pub mod session;
 #[cfg(test)]
 mod types;
 
-pub use client_gen::{generate_client_artifacts, FfiClientArtifactKind};
+pub use client_gen::{
+    generate_client_artifact_files, generate_client_artifacts, render_client_artifacts,
+    FfiClientArtifactKind,
+};
 pub use dto::{
     FfiBackendConfig, FfiCompressedSessionConfig, FfiCompressedSessionInfo,
     FfiGeneratorConfig, FfiJustBashCommandSpec, FfiJustBashProviderSpec, FfiMcpServer,

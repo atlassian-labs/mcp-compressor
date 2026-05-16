@@ -1,6 +1,7 @@
 import { compressToolListing, formatToolSchemaResponse, type ToolSpec } from "./rust_core.js";
 import type { CompressionLevel } from "./types.js";
 import type { ExecutableTool } from "./adapters.js";
+import { stringifyToolResult } from "./tool_specs.js";
 
 export interface LocalTool<TInput = Record<string, unknown>, TResult = unknown> {
   description?: string;
@@ -35,8 +36,7 @@ function asJsonSchema(
 }
 
 function normalizeResult(value: unknown, toonify: boolean): string {
-  if (typeof value === "string") return value;
-  const json = JSON.stringify(value);
+  const json = stringifyToolResult(value);
   if (!toonify) return json;
   // Keep local compression dependency-light for now. Runtime MCP proxy paths use
   // Rust TOON support; local in-process tools return JSON-compatible strings.

@@ -180,6 +180,31 @@ def generate_client_artifacts(
     return [Path(str(path)) for path in raw]
 
 
+def generate_client_artifact_files(
+    kind: str,
+    *,
+    cli_name: str,
+    bridge_url: str,
+    token: str,
+    tools: list[dict[str, Any]],
+    output_dir: str | Path,
+    session_pid: int = 0,
+) -> dict[str, str]:
+    config = {
+        "cli_name": cli_name,
+        "bridge_url": bridge_url,
+        "token": token,
+        "tools": tools,
+        "output_dir": str(output_dir),
+        "session_pid": session_pid,
+    }
+    raw = json.loads(_native.generate_client_artifact_files_json(kind, _json_dumps(config)))
+    if not isinstance(raw, dict):
+        msg = "Rust core generate_client_artifact_files_json returned non-object JSON"
+        raise TypeError(msg)
+    return {str(name): str(content) for name, content in raw.items()}
+
+
 def normalize_sdk_servers(servers: dict[str, Any]) -> list[BackendConfig]:
     raw = json.loads(_native.normalize_servers_json(_json_dumps(servers)))
     if not isinstance(raw, list):

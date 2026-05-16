@@ -1,11 +1,12 @@
 //! `ClientGenerator` trait and `GeneratorConfig` shared across all generators.
 //!
-//! Every generator receives the same `GeneratorConfig` and writes one or more
-//! artifact files to `output_dir`.  The generated files embed the session
-//! `token` and `bridge_url` so that tool calls are authenticated against the
-//! correct proxy process.
+//! Generators render artifacts in memory. Callers can then either inspect the
+//! generated file contents or persist them to `output_dir` with
+//! `write_artifacts`.
 
-use std::path::PathBuf;
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use crate::compression::engine::Tool;
 use crate::Error;
@@ -23,18 +24,68 @@ pub struct GeneratorConfig {
     pub tools: Vec<Tool>,
     /// PID of the proxy process, used for multi-session disambiguation.
     pub session_pid: u32,
-    /// Directory where artifact files are written.
+    /// Directory where artifact files are written when persistence is requested.
     pub output_dir: PathBuf,
 }
 
+/// One generated client artifact held in memory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeneratedArtifact {
+    pub file_name: String,
+    pub contents: String,
+    pub executable: bool,
+}
+
+impl GeneratedArtifact {
+    pub fn new(file_name: impl Into<String>, contents: impl Into<String>) -> Self {
+        Self {
+            file_name: file_name.into(),
+            contents: contents.into(),
+            executable: false,
+        }
+    }
+
+    pub fn executable(mut self) -> Self {
+        self.executable = true;
+        self
+    }
+}
+
 /// Trait implemented by every artifact generator.
-///
-/// `generate` writes its artifacts to `config.output_dir` and returns the
-/// list of paths it created.  Implementations must be pure (no network,
-/// no subprocess) — file I/O only.
 pub trait ClientGenerator {
-    /// Generate artifact file(s) and return their paths.
-    fn generate(&self, config: &GeneratorConfig) -> Result<Vec<PathBuf>, Error>;
+    /// Render artifact file(s) in memory.
+    fn render(&self, config: &GeneratorConfig) -> Result<Vec<GeneratedArtifact>, Error>;
+
+    /// Generate artifact file(s), write them to `config.output_dir`, and return their paths.
+    fn generate(&self, config: &GeneratorConfig) -> Result<Vec<PathBuf>, Error> {
+        let artifacts = self.render(config)?;
+        write_artifacts(&artifacts, &config.output_dir)
+    }
+}
+
+pub fn artifact_map(artifacts: &[GeneratedArtifact]) -> BTreeMap<String, String> {
+    artifacts
+        .iter()
+        .map(|artifact| (artifact.file_name.clone(), artifact.contents.clone()))
+        .collect()
+}
+
+pub fn write_artifacts(artifacts: &[GeneratedArtifact], output_dir: &Path) -> Result<Vec<PathBuf>, Error> {
+    fs::create_dir_all(output_dir)?;
+    let mut paths = Vec::with_capacity(artifacts.len());
+    for artifact in artifacts {
+        let path = output_dir.join(&artifact.file_name);
+        fs::write(&path, &artifact.contents)?;
+        #[cfg(unix)]
+        if artifact.executable {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = fs::metadata(&path)?.permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&path, permissions)?;
+        }
+        paths.push(path);
+    }
+    Ok(paths)
 }
 
 // ---------------------------------------------------------------------------

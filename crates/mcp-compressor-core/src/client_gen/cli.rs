@@ -9,39 +9,24 @@
 //! - Is marked executable (Unix `chmod 755`).
 
 use std::collections::HashSet;
-use std::fs;
-use std::path::PathBuf;
 
 use crate::cli::mapping::tool_name_to_subcommand;
-use crate::client_gen::generator::{ClientGenerator, GeneratorConfig};
+use crate::client_gen::generator::{ClientGenerator, GeneratedArtifact, GeneratorConfig};
 use crate::Error;
 
 pub struct CliGenerator;
 
 impl ClientGenerator for CliGenerator {
-    fn generate(&self, config: &GeneratorConfig) -> Result<Vec<PathBuf>, Error> {
-        fs::create_dir_all(&config.output_dir)?;
-        let path = config.output_dir.join(&config.cli_name);
-        let content = render_unix_script(config);
-        fs::write(&path, content)?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut permissions = fs::metadata(&path)?.permissions();
-            permissions.set_mode(0o755);
-            fs::set_permissions(&path, permissions)?;
-        }
+    fn render(&self, config: &GeneratorConfig) -> Result<Vec<GeneratedArtifact>, Error> {
+        let artifacts = vec![GeneratedArtifact::new(&config.cli_name, render_unix_script(config)).executable()];
 
         #[cfg(windows)]
-        {
-            let cmd_path = config.output_dir.join(format!("{}.cmd", config.cli_name));
-            fs::write(&cmd_path, render_windows_cmd(config))?;
-            return Ok(vec![path, cmd_path]);
-        }
+        artifacts.push(GeneratedArtifact::new(
+            format!("{}.cmd", config.cli_name),
+            render_windows_cmd(config),
+        ));
 
-        #[cfg(not(windows))]
-        Ok(vec![path])
+        Ok(artifacts)
     }
 }
 

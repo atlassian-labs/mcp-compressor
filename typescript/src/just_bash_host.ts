@@ -1,15 +1,11 @@
-import { defineCommand } from "just-bash";
-import type { Command, ExecResult } from "just-bash";
-
 import type { CompressorProxy, JustBashCommand } from "./native_client.js";
-import { parseToolArgv, type ToolSpec } from "./rust_core.js";
-export interface JustBashCommandRegistration {
-  providerName: string;
-  commandName: string;
-  backendToolName: string;
-  helpToolName: string;
-  command: Command;
-}
+import type { ToolSpec } from "./rust_core.js";
+import {
+  createJustBashCommandRegistrations,
+  installJustBashRegistrations,
+  type JustBashCommandRegistration,
+  type JustBashCommandSource,
+} from "./just_bash_commands.js";
 
 function commandToToolSpec(command: JustBashCommand): ToolSpec {
   return {
@@ -19,34 +15,12 @@ function commandToToolSpec(command: JustBashCommand): ToolSpec {
   };
 }
 
-function output(text: string): ExecResult {
-  return { stdout: text, stderr: "", exitCode: 0 };
-}
-
-function failure(error: unknown): ExecResult {
-  const message = error instanceof Error ? error.message : String(error);
-  return { stdout: "", stderr: `${message}\n`, exitCode: 1 };
-}
-
 export function installJustBashCommands(
   bash: unknown,
   proxy: CompressorProxy,
 ): JustBashCommandRegistration[] {
   const registrations = createJustBashCommands(proxy);
-  const host = bash as {
-    customCommands?: Command[];
-    registerCommand?: (command: Command) => void;
-  };
-  if (typeof host.registerCommand === "function") {
-    for (const registration of registrations) {
-      host.registerCommand(registration.command);
-    }
-  } else {
-    host.customCommands = [
-      ...(host.customCommands ?? []),
-      ...registrations.map((item) => item.command),
-    ];
-  }
+  installJustBashRegistrations(bash, registrations);
   return registrations;
 }
 
@@ -57,32 +31,24 @@ export function createJustBashCommands(proxy: CompressorProxy): JustBashCommandR
   const duplicateNames = new Set(
     rawNames.filter((name, index) => rawNames.indexOf(name) !== index),
   );
-  const registrations: JustBashCommandRegistration[] = [];
+  const sources: JustBashCommandSource[] = [];
   for (const provider of proxy.justBashProviders) {
     for (const tool of provider.tools) {
-      const spec = commandToToolSpec(tool);
-      const registeredCommandName = duplicateNames.has(tool.commandName)
+      const commandName = duplicateNames.has(tool.commandName)
         ? `${provider.providerName}_${tool.commandName}`
         : tool.commandName;
-      registrations.push({
+      sources.push({
         providerName: provider.providerName,
-        commandName: registeredCommandName,
+        commandName,
         backendToolName: tool.backendToolName,
         helpToolName: provider.helpToolName,
-        command: defineCommand(registeredCommandName, async (args) => {
-          try {
-            const toolInput = parseToolArgv(spec, args);
-            return output(
-              await proxy.invoke(tool.backendToolName, toolInput, {
-                server: provider.providerName,
-              }),
-            );
-          } catch (error) {
-            return failure(error);
-          }
-        }),
+        tool: commandToToolSpec(tool),
+        invoke: (toolInput) =>
+          proxy.invoke(tool.backendToolName, toolInput, {
+            server: provider.providerName,
+          }),
       });
     }
   }
-  return registrations;
+  return createJustBashCommandRegistrations(sources);
 }

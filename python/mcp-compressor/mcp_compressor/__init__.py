@@ -30,6 +30,11 @@ from mcp_compressor.just_bash_host import (
     create_just_bash_commands,
     install_just_bash_commands,
 )
+from mcp_compressor.transforms import (
+    JustBashLocalCommand,
+    JustBashTransformResult,
+    transform_tools_for_just_bash,
+)
 
 __all__ = [
     "BackendConfig",
@@ -41,7 +46,9 @@ __all__ = [
     "GeneratedCodeClient",
     "JustBashCallableCommand",
     "JustBashCommand",
+    "JustBashLocalCommand",
     "JustBashProvider",
+    "JustBashTransformResult",
     "ProxyResponse",
     "ProxyTool",
     "ToolSpec",
@@ -56,4 +63,5 @@ __all__ = [
     "parse_tool_argv",
     "start_compressed_session",
     "start_compressed_session_from_mcp_config",
+    "transform_tools_for_just_bash",
 ]

@@ -13,22 +13,17 @@
 //! Tool name convention: `snake_case → camelCase`
 //! e.g. `get_confluence_page → getConfluencePage`.
 
-use std::fs;
-use std::path::PathBuf;
-
-use crate::client_gen::generator::{ClientGenerator, GeneratorConfig};
+use crate::client_gen::generator::{ClientGenerator, GeneratedArtifact, GeneratorConfig};
 use crate::Error;
 
 pub struct TypeScriptGenerator;
 
 impl ClientGenerator for TypeScriptGenerator {
-    fn generate(&self, config: &GeneratorConfig) -> Result<Vec<PathBuf>, Error> {
-        fs::create_dir_all(&config.output_dir)?;
-        let ts_path = config.output_dir.join(format!("{}.ts", config.cli_name));
-        let dts_path = config.output_dir.join(format!("{}.d.ts", config.cli_name));
-        fs::write(&ts_path, render_ts_module(config))?;
-        fs::write(&dts_path, render_dts(config))?;
-        Ok(vec![ts_path, dts_path])
+    fn render(&self, config: &GeneratorConfig) -> Result<Vec<GeneratedArtifact>, Error> {
+        Ok(vec![
+            GeneratedArtifact::new(format!("{}.ts", config.cli_name), render_ts_module(config)),
+            GeneratedArtifact::new(format!("{}.d.ts", config.cli_name), render_dts(config)),
+        ])
     }
 }
 
@@ -169,6 +164,7 @@ fn required_params(tool: &crate::compression::engine::Tool) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use crate::client_gen::generator::test_helpers::{make_config, make_config_multiword_tool};
     use crate::client_gen::{ClientGenerator, GeneratorConfig};
     use crate::compression::engine::Tool;

@@ -11,7 +11,7 @@ use serde_json::Value;
 use mcp_compressor_core::compression::CompressionLevel;
 use mcp_compressor_core::ffi::{
     clear_oauth_credentials, compress_tool_listing, format_tool_schema_response,
-    generate_client_artifacts, list_oauth_credentials, normalize_sdk_servers, parse_mcp_config,
+    generate_client_artifact_files, generate_client_artifacts, list_oauth_credentials, normalize_sdk_servers, parse_mcp_config,
     parse_tool_argv, start_compressed_session, start_compressed_session_from_mcp_config,
     FfiBackendConfig, FfiClientArtifactKind, FfiCompressedSession, FfiCompressedSessionConfig,
     FfiGeneratorConfig, FfiSdkServersConfig, FfiTool,
@@ -77,18 +77,30 @@ fn parse_tool_argv_json(tool_json: &str, argv_json: &str) -> PyResult<String> {
     serde_json::to_string(&parsed).map_err(py_value_error)
 }
 
+fn parse_client_artifact_kind(kind: &str) -> PyResult<FfiClientArtifactKind> {
+    match kind {
+        "cli" => Ok(FfiClientArtifactKind::Cli),
+        "python" => Ok(FfiClientArtifactKind::Python),
+        "typescript" => Ok(FfiClientArtifactKind::TypeScript),
+        other => Err(py_value_error(format!("unsupported client artifact kind: {other}"))),
+    }
+}
+
 #[pyfunction]
 fn generate_client_artifacts_json(kind: &str, config_json: &str) -> PyResult<String> {
-    let kind = match kind {
-        "cli" => FfiClientArtifactKind::Cli,
-        "python" => FfiClientArtifactKind::Python,
-        "typescript" => FfiClientArtifactKind::TypeScript,
-        other => return Err(py_value_error(format!("unsupported client artifact kind: {other}"))),
-    };
+    let kind = parse_client_artifact_kind(kind)?;
     let config = parse_json::<FfiGeneratorConfig>(config_json)?;
     let paths = generate_client_artifacts(kind, config).map_err(py_value_error)?;
     serde_json::to_string(&paths.iter().map(|path| path.to_string_lossy().to_string()).collect::<Vec<_>>())
         .map_err(py_value_error)
+}
+
+#[pyfunction]
+fn generate_client_artifact_files_json(kind: &str, config_json: &str) -> PyResult<String> {
+    let kind = parse_client_artifact_kind(kind)?;
+    let config = parse_json::<FfiGeneratorConfig>(config_json)?;
+    let files = generate_client_artifact_files(kind, config).map_err(py_value_error)?;
+    serde_json::to_string(&files).map_err(py_value_error)
 }
 
 #[pyfunction]
@@ -209,6 +221,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(format_tool_schema_response_json, module)?)?;
     module.add_function(wrap_pyfunction!(parse_tool_argv_json, module)?)?;
     module.add_function(wrap_pyfunction!(generate_client_artifacts_json, module)?)?;
+    module.add_function(wrap_pyfunction!(generate_client_artifact_files_json, module)?)?;
     module.add_function(wrap_pyfunction!(normalize_servers_json, module)?)?;
     module.add_function(wrap_pyfunction!(parse_mcp_config_json, module)?)?;
     module.add_function(wrap_pyfunction!(start_compressed_session_json, module)?)?;
