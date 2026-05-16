@@ -1,0 +1,127 @@
+name: publish-typescript-package
+
+on:
+  push:
+    branches:
+      - release
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish, for example v1.2.3 or v0.15.0a1
+        required: true
+      publish:
+        description: Actually publish to npm-public. Leave false for validation only.
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish-typescript-package:
+    name: Publish TypeScript package
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - name: Check out release branch
+        uses: actions/checkout@v6
+
+      - name: Resolve release tag
+        id: tag
+        working-directory: .
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          elif [ -f .release-tag ]; then
+            TAG="$(cat .release-tag)"
+          else
+            echo "No release tag provided and .release-tag is missing. This workflow must be run from the release branch prepared by release-main." >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Using release tag $TAG"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python environment for fixture servers
+        uses: ./.github/actions/setup-python-env
+
+      - name: Derive package version from tag
+        id: version
+        working-directory: .
+        shell: bash
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          VERSION="$(python scripts/prepare_typescript_release.py "$TAG")"
+          DIST_TAG="$(python scripts/prepare_typescript_release.py "$TAG" --print-npm-dist-tag)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
+          echo "Publishing TypeScript package at version $VERSION with npm tag $DIST_TAG"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build native addon and CLI binary for checks
+        run: |
+          bun run build:native
+          cargo build -p mcp-compressor --bin mcp-compressor
+
+      - name: Run package checks
+        env:
+          MCP_COMPRESSOR_CORE_BINARY: ${{ github.workspace }}/target/debug/mcp-compressor
+          PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: bun run check:ci
+
+      - name: Build TypeScript package and native addon
+        run: |
+          bun run build
+          bun run build:native
+
+      - name: Pack package
+        shell: bash
+        run: bun pm pack --filename /tmp/mcp-compressor-typescript-package.tgz
+
+      - name: Smoke-test packed package
+        shell: bash
+        working-directory: .
+        run: |
+          mkdir -p /tmp/mcp-compressor-typescript-publish-smoke
+          cd /tmp/mcp-compressor-typescript-publish-smoke
+          printf '{"type":"module"}\n' > package.json
+          npm install --registry https://registry.npmjs.org /tmp/mcp-compressor-typescript-package.tgz
+          node --input-type=module -e 'import { CompressorClient, compressToolListing } from "@atlassian/mcp-compressor"; if (typeof CompressorClient !== "function") throw new Error("CompressorClient missing"); const listing = compressToolListing("high", [{ name: "echo", inputSchema: { type: "object", properties: { message: { type: "string" } } } }]); if (!listing.includes("echo") || !listing.includes("message")) throw new Error(`bad listing: ${listing}`);'
+
+      - name: Upload packed package
+        uses: actions/upload-artifact@v4
+        with:
+          name: typescript-package-${{ steps.version.outputs.version }}
+          path: /tmp/mcp-compressor-typescript-package.tgz
+
+      - name: Stop before TypeScript publish in validation mode
+        if: github.event_name == 'workflow_dispatch' && inputs.publish != true
+        run: echo "TypeScript validation complete. Set publish=true or push the prepared release branch to publish to npm-public."
+
+      - name: Get Artifact Publish Token
+        if: github.event_name == 'push' || inputs.publish == true
+        id: publish-token
+        uses: atlassian-labs/artifact-publish-token@v1.0.1
+        with:
+          output-modes: npm
+
+      - name: Publish to Artifactory npm-public
+        if: github.event_name == 'push' || inputs.publish == true
+        run: npm publish /tmp/mcp-compressor-typescript-package.tgz --tag "${{ steps.version.outputs.dist_tag }}" --userconfig "${{ github.workspace }}/.npmrc-public"
