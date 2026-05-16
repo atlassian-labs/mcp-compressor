@@ -113,18 +113,7 @@ For stable releases, it uses:
 
 ### Required npm-public configuration
 
-The package must be configured in Atlassian Artifactory npm-public allowlists. At the time this was set up, the relevant internal configuration was in:
-
-```text
-bitbucket.org/atlassian/buildeng-artifactory-configuration
-```
-
-The package paths should include:
-
-```text
-@atlassian/mcp-compressor/**
-.npm/@atlassian/mcp-compressor/**
-```
+The package must be configured in Atlassian Artifactory npm-public allowlists to enable Artifactory forwarding to npmjs.
 
 The workflow uses:
 
