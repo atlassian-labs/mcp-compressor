@@ -91,98 +91,78 @@ jobs:
 
   publish-typescript-package:
     name: Publish TypeScript package
+    if: github.event_name == 'release' || inputs.publish == true
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      id-token: write
-    defaults:
-      run:
-        working-directory: typescript
+      contents: write
+      actions: write
     steps:
       - name: Check out release ref
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Set up Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Set up Python environment for fixture servers
-        uses: ./.github/actions/setup-python-env
-
-      - name: Derive package version from tag
-        id: version
-        working-directory: .
+      - name: Prepare release branch
+        id: prepare
         shell: bash
         run: |
           TAG="${{ github.event.release.tag_name || inputs.tag }}"
-          VERSION="$(python scripts/prepare_typescript_release.py "$TAG")"
-          DIST_TAG="$(python scripts/prepare_typescript_release.py "$TAG" --print-npm-dist-tag)"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
-          echo "Publishing TypeScript package at version $VERSION with npm tag $DIST_TAG"
+          if [ -z "$TAG" ]; then
+            echo "Release tag is required" >&2
+            exit 1
+          fi
+          printf '%s\n' "$TAG" > .release-tag
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .release-tag
+          git commit -m "Prepare TypeScript release $TAG"
+          RELEASE_SHA="$(git rev-parse HEAD)"
+          git push origin HEAD:refs/heads/release --force
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Build native addon and CLI binary for checks
-        run: |
-          bun run build:native
-          cargo build -p mcp-compressor --bin mcp-compressor
-
-      - name: Run package checks
+      - name: Wait for TypeScript publish workflow
         env:
-          MCP_COMPRESSOR_CORE_BINARY: ${{ github.workspace }}/target/debug/mcp-compressor
-          PYTHON: ${{ github.workspace }}/.venv/bin/python
-        run: bun run check:ci
-
-      - name: Build TypeScript package and native addon
-        run: |
-          bun run build
-          bun run build:native
-
-      - name: Pack package
+          GH_TOKEN: ${{ github.token }}
         shell: bash
-        run: bun pm pack --filename /tmp/mcp-compressor-typescript-package.tgz
-
-      - name: Smoke-test packed package
-        shell: bash
-        working-directory: .
         run: |
-          mkdir -p /tmp/mcp-compressor-typescript-publish-smoke
-          cd /tmp/mcp-compressor-typescript-publish-smoke
-          printf '{"type":"module"}\n' > package.json
-          npm install --registry https://registry.npmjs.org /tmp/mcp-compressor-typescript-package.tgz
-          node --input-type=module -e 'import { CompressorClient, compressToolListing } from "@atlassian/mcp-compressor"; if (typeof CompressorClient !== "function") throw new Error("CompressorClient missing"); const listing = compressToolListing("high", [{ name: "echo", inputSchema: { type: "object", properties: { message: { type: "string" } } } }]); if (!listing.includes("echo") || !listing.includes("message")) throw new Error(`bad listing: ${listing}`);'
-
-      - name: Upload packed package
-        uses: actions/upload-artifact@v4
-        with:
-          name: typescript-package-${{ steps.version.outputs.version }}
-          path: /tmp/mcp-compressor-typescript-package.tgz
-
-      - name: Stop before TypeScript publish in validation mode
-        if: github.event_name == 'workflow_dispatch' && inputs.publish != true
-        run: echo "TypeScript validation complete. Set publish=true or publish a GitHub release to publish to npm-public."
-
-      - name: Get Artifact Publish Token
-        if: github.event_name == 'release' || inputs.publish == true
-        id: publish-token
-        uses: atlassian-labs/artifact-publish-token@v1.0.1
-        with:
-          output-modes: npm
-
-      - name: Publish to Artifactory npm-public
-        if: github.event_name == 'release' || inputs.publish == true
-        run: npm publish /tmp/mcp-compressor-typescript-package.tgz --tag "${{ steps.version.outputs.dist_tag }}" --userconfig "${{ github.workspace }}/.npmrc-public"
+          TAG="${{ steps.prepare.outputs.tag }}"
+          RELEASE_SHA="${{ steps.prepare.outputs.release_sha }}"
+          echo "Waiting for publish-typescript-package workflow on release branch for $TAG at $RELEASE_SHA"
+          for attempt in $(seq 1 60); do
+            RUN_JSON="$(gh run list \
+              --workflow publish-typescript-package.yml \
+              --branch release \
+              --limit 1 \
+              --json databaseId,status,conclusion,headSha \
+              --jq '.[0] // empty')"
+            if [ -z "$RUN_JSON" ]; then
+              echo "No TypeScript publish run found yet (attempt $attempt/60)"
+              sleep 20
+              continue
+            fi
+            RUN_ID="$(jq -r '.databaseId' <<<"$RUN_JSON")"
+            HEAD_SHA="$(jq -r '.headSha' <<<"$RUN_JSON")"
+            STATUS="$(jq -r '.status' <<<"$RUN_JSON")"
+            CONCLUSION="$(jq -r '.conclusion // ""' <<<"$RUN_JSON")"
+            if [ "$HEAD_SHA" != "$RELEASE_SHA" ]; then
+              echo "Latest TypeScript publish run $RUN_ID is for $HEAD_SHA, waiting for $RELEASE_SHA"
+              sleep 20
+              continue
+            fi
+            echo "Run $RUN_ID status=$STATUS conclusion=$CONCLUSION"
+            if [ "$STATUS" = "completed" ]; then
+              gh run view "$RUN_ID" --log-failed || true
+              if [ "$CONCLUSION" = "success" ]; then
+                exit 0
+              fi
+              echo "TypeScript publish workflow failed with conclusion=$CONCLUSION" >&2
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "Timed out waiting for TypeScript publish workflow" >&2
+          exit 1
 
   publish-rust-crate:
     name: Publish Rust crates
