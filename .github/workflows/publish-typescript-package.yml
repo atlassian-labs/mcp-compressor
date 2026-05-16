@@ -1,9 +1,6 @@
 name: publish-typescript-package
 
 on:
-  push:
-    branches:
-      - release
   workflow_dispatch:
     inputs:
       tag:
@@ -113,15 +110,15 @@ jobs:
 
       - name: Stop before TypeScript publish in validation mode
         if: github.event_name == 'workflow_dispatch' && inputs.publish != true
-        run: echo "TypeScript validation complete. Set publish=true or push the prepared release branch to publish to npm-public."
+        run: echo "TypeScript validation complete. Set publish=true to publish to npm-public."
 
       - name: Get Artifact Publish Token
-        if: github.event_name == 'push' || inputs.publish == true
+        if: inputs.publish == true
         id: publish-token
         uses: atlassian-labs/artifact-publish-token@v1.0.1
         with:
           output-modes: npm
 
       - name: Publish to Artifactory npm-public
-        if: github.event_name == 'push' || inputs.publish == true
+        if: inputs.publish == true
         run: npm publish /tmp/mcp-compressor-typescript-package.tgz --tag "${{ steps.version.outputs.dist_tag }}" --userconfig "${{ github.workspace }}/.npmrc-public"

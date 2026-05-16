@@ -121,6 +121,16 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
 
+      - name: Dispatch TypeScript publish workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh workflow run publish-typescript-package.yml \
+            --ref release \
+            -f tag="${{ steps.prepare.outputs.tag }}" \
+            -f publish=true
+
       - name: Wait for TypeScript publish workflow
         env:
           GH_TOKEN: ${{ github.token }}
