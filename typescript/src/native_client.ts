@@ -1,7 +1,7 @@
 import type { ExecutableTool } from "./adapters.js";
 
+import { generateClientFromBridge } from "./generated_clients.js";
 import {
-  generateClientArtifacts,
   normalizeSdkServers,
   startCompressedSession,
   startCompressedSessionWithAuthProviders,
@@ -389,8 +389,9 @@ export class CompressorProxy {
     options: { name?: string } = {},
   ): string[] {
     const info = this.info();
-    return generateClientArtifacts(kind, {
-      cliName: options.name ?? this.defaultServer ?? "mcp",
+    return generateClientFromBridge({
+      kind,
+      name: options.name ?? this.defaultServer ?? "mcp",
       bridgeUrl: info.bridge_url,
       token: info.token,
       tools: info.backend_tools.map((tool) => ({
@@ -399,8 +400,7 @@ export class CompressorProxy {
         inputSchema: tool.input_schema,
       })),
       outputDir,
-      sessionPid: 0,
-    });
+    }).paths;
   }
 
   writeCodeClient(options: {

@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use mcp_compressor_core::compression::CompressionLevel;
 use mcp_compressor_core::ffi::{
-    clear_oauth_credentials, compress_tool_listing, format_tool_schema_response, generate_client_artifacts,
+    clear_oauth_credentials, compress_tool_listing, format_tool_schema_response, generate_client_artifact_files, generate_client_artifacts,
     list_oauth_credentials, normalize_sdk_servers, parse_mcp_config, parse_tool_argv,
     remember_oauth_backend, start_compressed_session,
     start_compressed_session_from_mcp_config, FfiBackendConfig, FfiClientArtifactKind,
@@ -64,14 +64,18 @@ pub fn parse_tool_argv_json(tool_json: String, argv_json: String) -> napi::Resul
     serde_json::to_string(&parsed).map_err(napi_error)
 }
 
+fn parse_client_artifact_kind(kind: &str) -> napi::Result<FfiClientArtifactKind> {
+    match kind {
+        "cli" => Ok(FfiClientArtifactKind::Cli),
+        "python" => Ok(FfiClientArtifactKind::Python),
+        "typescript" | "ts" => Ok(FfiClientArtifactKind::TypeScript),
+        other => Err(napi_error(format!("invalid client artifact kind: {other}"))),
+    }
+}
+
 #[napi]
 pub fn generate_client_artifacts_json(kind: String, config_json: String) -> napi::Result<String> {
-    let kind = match kind.as_str() {
-        "cli" => FfiClientArtifactKind::Cli,
-        "python" => FfiClientArtifactKind::Python,
-        "typescript" | "ts" => FfiClientArtifactKind::TypeScript,
-        other => return Err(napi_error(format!("invalid client artifact kind: {other}"))),
-    };
+    let kind = parse_client_artifact_kind(&kind)?;
     let config = parse_json::<FfiGeneratorConfig>(&config_json)?;
     let paths = generate_client_artifacts(kind, config).map_err(napi_error)?;
     let values = paths
@@ -79,6 +83,14 @@ pub fn generate_client_artifacts_json(kind: String, config_json: String) -> napi
         .map(|path| Value::String(path.to_string_lossy().into_owned()))
         .collect::<Vec<_>>();
     serde_json::to_string(&values).map_err(napi_error)
+}
+
+#[napi]
+pub fn generate_client_artifact_files_json(kind: String, config_json: String) -> napi::Result<String> {
+    let kind = parse_client_artifact_kind(&kind)?;
+    let config = parse_json::<FfiGeneratorConfig>(&config_json)?;
+    let files = generate_client_artifact_files(kind, config).map_err(napi_error)?;
+    serde_json::to_string(&files).map_err(napi_error)
 }
 
 #[napi]

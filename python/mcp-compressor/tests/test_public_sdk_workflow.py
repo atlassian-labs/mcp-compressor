@@ -8,7 +8,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from mcp_compressor import CompressorClient
+from mcp_compressor import CompressorClient, ExecutableTool, transform_tools_for_just_bash
+from mcp_compressor.core import generate_client_artifact_files
 
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURE = ROOT / "crates" / "mcp-compressor-core" / "tests" / "fixtures" / "alpha_server.py"
@@ -166,6 +167,56 @@ def test_public_python_sdk_write_code_client_returns_environment(tmp_path: Path)
         assert ts_generated.language == "typescript"
         assert ts_generated.environment == {}
         assert any(path.name == "alpha.ts" for path in ts_generated.files)
+
+
+def test_public_python_sdk_direct_just_bash_transform() -> None:
+    class BashHost:
+        custom_commands: dict[str, object]
+
+        def __init__(self) -> None:
+            self.custom_commands = {}
+
+    tools = {
+        "echo": ExecutableTool(
+            name="echo",
+            description="Echo a message.",
+            input_schema={
+                "type": "object",
+                "properties": {"message": {"type": "string"}},
+                "required": ["message"],
+            },
+            execute=lambda input=None: f"direct:{(input or {})['message']}",
+        )
+    }
+    bash = BashHost()
+    result = transform_tools_for_just_bash(tools, bash=bash, server_name="alpha")
+    assert list(result.tools) == ["alpha_help"]
+    assert "alpha_echo" in bash.custom_commands
+    assert bash.custom_commands["alpha_echo"](["--message", "python-bash"]) == "direct:python-bash"
+    assert "alpha_echo" in result.tools["alpha_help"].execute()
+
+
+def test_public_python_sdk_generated_file_map(tmp_path: Path) -> None:
+    files = generate_client_artifact_files(
+        "python",
+        cli_name="alpha",
+        bridge_url="http://127.0.0.1:12345",
+        token="test-session-token",  # noqa: S106 - synthetic token for generated file test
+        tools=[
+            {
+                "name": "echo",
+                "description": "Echo a message.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"message": {"type": "string"}},
+                    "required": ["message"],
+                },
+            }
+        ],
+        output_dir=tmp_path,
+    )
+    assert "alpha.py" in files
+    assert "def echo" in files["alpha.py"]
 
 
 def test_public_python_sdk_schema_lookup_supports_multi_server() -> None:

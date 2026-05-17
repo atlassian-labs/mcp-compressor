@@ -63,6 +63,18 @@ export function generateClientArtifacts(
   ) as string[];
 }
 
+export function generateClientArtifactFiles(
+  kind: ClientArtifactKind,
+  config: ClientGeneratorConfig,
+): Record<string, string> {
+  return JSON.parse(
+    loadNativeCore().generateClientArtifactFilesJson(
+      kind,
+      stringify(toNativeGeneratorConfig(config)),
+    ),
+  ) as Record<string, string>;
+}
+
 export interface BackendConfig {
   name: string;
   commandOrUrl: string;

@@ -7,7 +7,9 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use crate::client_gen::cli::CliGenerator;
-use crate::client_gen::generator::{ClientGenerator, GeneratorConfig};
+use crate::client_gen::generator::{
+    artifact_map, write_artifacts, ClientGenerator, GeneratedArtifact, GeneratorConfig,
+};
 use crate::client_gen::python::PythonGenerator;
 use crate::client_gen::typescript::TypeScriptGenerator;
 use crate::compression::engine::Tool;
@@ -387,7 +389,7 @@ impl CompressorProxy {
         self.write_client(GeneratedClientKind::Cli, output_dir, name)
     }
 
-    pub fn write_code_client(
+    pub fn generate_code_client(
         &self,
         language: CodeLanguage,
         output_dir: impl AsRef<Path>,
@@ -397,7 +399,45 @@ impl CompressorProxy {
             CodeLanguage::Python => GeneratedClientKind::Python,
             CodeLanguage::TypeScript => GeneratedClientKind::TypeScript,
         };
-        self.write_client(kind, output_dir, name.into())
+        self.generate_client(kind, output_dir, name)
+    }
+
+    pub fn write_code_client(
+        &self,
+        language: CodeLanguage,
+        output_dir: impl AsRef<Path>,
+        name: Option<&str>,
+    ) -> Result<GeneratedClient, Error> {
+        let generated = self.generate_code_client(language, output_dir, name)?;
+        generated.write_to_disk()
+    }
+
+    pub fn generate_client(
+        &self,
+        kind: GeneratedClientKind,
+        output_dir: impl AsRef<Path>,
+        name: Option<&str>,
+    ) -> Result<GeneratedClient, Error> {
+        let generator_config = self.generator_config(output_dir, name);
+        let artifacts = match kind {
+            GeneratedClientKind::Cli => CliGenerator.render(&generator_config),
+            GeneratedClientKind::Python => PythonGenerator.render(&generator_config),
+            GeneratedClientKind::TypeScript => TypeScriptGenerator.render(&generator_config),
+        }?;
+        let file_contents = artifact_map(&artifacts);
+        let files = artifacts
+            .iter()
+            .map(|artifact| generator_config.output_dir.join(&artifact.file_name))
+            .collect();
+        let environment = kind.environment(&generator_config);
+        Ok(GeneratedClient {
+            kind,
+            output_dir: generator_config.output_dir,
+            files,
+            file_contents,
+            artifacts,
+            environment,
+        })
     }
 
     pub fn write_client(
@@ -406,7 +446,12 @@ impl CompressorProxy {
         output_dir: impl AsRef<Path>,
         name: Option<&str>,
     ) -> Result<GeneratedClient, Error> {
-        let generator_config = GeneratorConfig {
+        let generated = self.generate_client(kind, output_dir, name)?;
+        generated.write_to_disk()
+    }
+
+    fn generator_config(&self, output_dir: impl AsRef<Path>, name: Option<&str>) -> GeneratorConfig {
+        GeneratorConfig {
             cli_name: name
                 .or(self.default_server.as_deref())
                 .unwrap_or("mcp")
@@ -416,19 +461,7 @@ impl CompressorProxy {
             tools: self.backend_tools.clone(),
             session_pid: 0,
             output_dir: output_dir.as_ref().to_path_buf(),
-        };
-        let files = match kind {
-            GeneratedClientKind::Cli => CliGenerator.generate(&generator_config),
-            GeneratedClientKind::Python => PythonGenerator.generate(&generator_config),
-            GeneratedClientKind::TypeScript => TypeScriptGenerator.generate(&generator_config),
-        }?;
-        let environment = kind.environment(&generator_config);
-        Ok(GeneratedClient {
-            kind,
-            output_dir: generator_config.output_dir,
-            files,
-            environment,
-        })
+        }
     }
 
     fn invoke_wrapper(&self, server: Option<&str>) -> Result<String, Error> {
@@ -522,8 +555,19 @@ pub enum CodeLanguage {
 pub struct GeneratedClient {
     pub kind: GeneratedClientKind,
     pub output_dir: PathBuf,
+    /// Paths where artifacts would be written, or were written after `write_to_disk`.
     pub files: Vec<PathBuf>,
+    /// Generated artifact contents keyed by file name.
+    pub file_contents: BTreeMap<String, String>,
     pub environment: HashMap<String, String>,
+    artifacts: Vec<GeneratedArtifact>,
+}
+
+impl GeneratedClient {
+    pub fn write_to_disk(mut self) -> Result<Self, Error> {
+        self.files = write_artifacts(&self.artifacts, &self.output_dir)?;
+        Ok(self)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

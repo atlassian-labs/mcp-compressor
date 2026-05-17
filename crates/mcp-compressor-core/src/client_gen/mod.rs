@@ -3,4 +3,4 @@ pub mod generator;
 pub mod python;
 pub mod typescript;
 
-pub use generator::{ClientGenerator, GeneratorConfig};
+pub use generator::{artifact_map, write_artifacts, ClientGenerator, GeneratedArtifact, GeneratorConfig};
