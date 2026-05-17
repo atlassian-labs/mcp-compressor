@@ -219,7 +219,7 @@ The SDKs expose the same main compression options as the CLI.
 |---|---|
 | `compressed` | Standard `get_tool_schema` / `invoke_tool` compressed surface. |
 | `cli` | Help-tool-oriented surface for generated shell command usage. |
-| `bash` | Just Bash provider metadata plus proxy routing. |
+| `bash` | Just Bash command integration for command-oriented agents. |
 
 === "Python"
 

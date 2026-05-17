@@ -61,7 +61,7 @@ Use this when your application wants to embed compression directly and call tool
 flowchart LR
     App[Python / TypeScript / Rust app]
     SDK[CompressorClient]
-    Proxy[Local Rust proxy\n/token auth]
+    Proxy[Local session proxy\n/token auth]
     Generated[Generated CLI / Python / TS clients]
     Backend[MCP backend servers]
 
@@ -71,7 +71,7 @@ flowchart LR
     Proxy --> Backend
 ```
 
-The SDK starts the Rust proxy in-process. Generated clients call that proxy using a session token. Your app does **not** need to spawn a `mcp-compressor` stdio subprocess.
+The SDK starts a local session proxy for generated clients. Generated clients call that proxy using a session token. Your app does **not** need to spawn a `mcp-compressor` stdio subprocess.
 
 ## Features
 
