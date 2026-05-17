@@ -10,7 +10,7 @@ from mcp_compressor import CompressorClient
 
 ## Quick start
 
-The primary SDK object is `CompressorClient`. It starts a local Rust-backed proxy in-process and returns a `CompressorProxy`; no `mcp-compressor` stdio subprocess is required.
+The primary SDK object is `CompressorClient`. It starts a local session and returns a `CompressorProxy`; no `mcp-compressor` stdio subprocess is required.
 
 ```python
 from mcp_compressor import CompressorClient
@@ -46,14 +46,14 @@ with CompressorClient(
 `CompressorClient` accepts these modes:
 
 - `compressed` — expose compressed wrapper tools such as `<server>_get_tool_schema` and `<server>_invoke_tool`.
-- `cli` — expose CLI/help transform metadata through the shared Rust runtime.
-- `bash` — expose Just Bash provider metadata through the shared Rust runtime.
+- `cli` — expose CLI/help tools for generated shell command usage.
+- `bash` — expose Just Bash command integration for command-oriented agents.
 
 Generated Python and TypeScript clients are produced with `proxy.write_client(...)` rather than by selecting a long-lived session mode.
 
 ## Just Bash metadata
 
-Just Bash mode exposes the compressed proxy bridge plus typed provider metadata. Language hosts can use this metadata to register backend MCP tools as Just Bash commands without the Rust runtime executing shell commands itself:
+Just Bash mode lets language hosts register backend MCP tools as shell-style commands:
 
 ```python
 from mcp_compressor import CompressorClient, create_just_bash_commands

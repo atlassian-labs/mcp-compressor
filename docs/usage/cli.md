@@ -33,7 +33,7 @@ mcp-compressor -c medium --transport streamable-http --port 9000 -- python serve
 
 ## CLI mode
 
-CLI mode writes a shell script that calls a local Rust proxy.
+CLI mode writes a shell script that calls the live local session created by `mcp-compressor`.
 
 ```bash
 mcp-compressor --cli-mode --server-name atlassian -- https://mcp.atlassian.com/v1/mcp
@@ -54,7 +54,7 @@ mcp-compressor --cli-mode --server-name alpha --output-dir ./bin -- python serve
 
 ## Code Mode
 
-Code Mode generates Python or TypeScript functions for backend MCP tools while keeping the local Rust proxy alive. By default, generated Code Mode files are written under `./dist` in the current working directory.
+Code Mode generates Python or TypeScript functions for backend MCP tools while keeping the local `mcp-compressor` session alive. By default, generated Code Mode files are written under `./dist` in the current working directory.
 
 ```bash
 mcp-compressor --code-mode python --server-name atlassian -- https://mcp.atlassian.com/v1/mcp
@@ -70,4 +70,4 @@ See [Code Mode and generated clients](generated-clients.md) for examples of gene
 mcp-compressor --just-bash-mode --server-name atlassian -- https://mcp.atlassian.com/v1/mcp
 ```
 
-Just Bash mode exposes provider metadata for language hosts to register commands. See [Just Bash](just-bash.md).
+Just Bash mode lets language hosts register MCP tools as shell-style commands. See [Just Bash](just-bash.md).

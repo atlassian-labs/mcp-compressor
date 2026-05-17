@@ -11,7 +11,7 @@ Most hosted MCP servers require authentication. `mcp-compressor` supports two pa
 
 When a remote backend requires OAuth and you do not provide an explicit `Authorization` header, `mcp-compressor` starts the native OAuth flow:
 
-1. discovers provider metadata,
+1. discovers the provider's OAuth endpoints,
 2. opens a browser to authorize,
 3. listens on a local loopback callback URL,
 4. exchanges the code for tokens,
