@@ -48,7 +48,7 @@ Python publishing uses PyPI trusted publishing from:
 .github/workflows/on-release-main.yml
 ```
 
-The workflow patches the package version from the release tag and publishes the `mcp-compressor` wheel/sdist with:
+The workflow patches the package version from the release tag, builds platform wheels for Linux, macOS, and Windows across supported CPython versions, builds one source distribution, and publishes them with:
 
 ```bash
 uv publish --trusted-publishing always dist/*
