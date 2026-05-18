@@ -48,7 +48,7 @@ Python publishing uses PyPI trusted publishing from:
 .github/workflows/on-release-main.yml
 ```
 
-The workflow patches the package version from the release tag, builds platform wheels for Linux, macOS, and Windows across supported CPython versions, builds one source distribution, and publishes them with:
+The workflow patches the package version from the release tag, builds platform wheels for Linux, macOS, and Windows across supported CPython versions, builds Linux wheels in a manylinux image for broad distro compatibility, builds one source distribution, and publishes them with:
 
 ```bash
 uv publish --trusted-publishing always dist/*
@@ -97,7 +97,7 @@ The main release workflow does **not** publish TypeScript directly from the tag 
    on the `release` branch,
 5. waits for the dispatched workflow to complete.
 
-The TypeScript workflow reads the tag from the workflow input, with `.release-tag` as a fallback, converts it to an npm-compatible version, builds the native addon, packs the package, smoke-tests the tarball, then publishes with the npm dist tag derived from the release tag.
+The TypeScript workflow reads the tag from the workflow input, with `.release-tag` as a fallback, converts it to an npm-compatible version, builds native addons on Linux, macOS, and Windows, bundles those native addons into the package, packs the package, smoke-tests the tarball, then publishes with the npm dist tag derived from the release tag.
 
 For prereleases, npm publish uses:
 

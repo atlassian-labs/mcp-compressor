@@ -51,7 +51,17 @@ jobs:
           VERSION="$(python scripts/prepare_python_release.py "$TAG")"
           echo "Building Python wheel at version $VERSION"
 
-      - name: Build wheel
+      - name: Build Linux wheel in manylinux image
+        if: runner.os == 'Linux'
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          working-directory: python/mcp-compressor
+          args: --release --out dist
+          manylinux: auto
+
+      - name: Build non-Linux wheel
+        if: runner.os != 'Linux'
         working-directory: python/mcp-compressor
         run: uvx maturin build --release --out dist
 
