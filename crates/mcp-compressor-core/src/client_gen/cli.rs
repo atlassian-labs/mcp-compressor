@@ -18,16 +18,21 @@ pub struct CliGenerator;
 
 impl ClientGenerator for CliGenerator {
     fn render(&self, config: &GeneratorConfig) -> Result<Vec<GeneratedArtifact>, Error> {
-        let artifacts = vec![GeneratedArtifact::new(&config.cli_name, render_unix_script(config)).executable()];
-
-        #[cfg(windows)]
-        artifacts.push(GeneratedArtifact::new(
-            format!("{}.cmd", config.cli_name),
-            render_windows_cmd(config),
-        ));
-
-        Ok(artifacts)
+        Ok(render_cli_artifacts(config))
     }
+}
+
+#[cfg(not(windows))]
+fn render_cli_artifacts(config: &GeneratorConfig) -> Vec<GeneratedArtifact> {
+    vec![GeneratedArtifact::new(&config.cli_name, render_unix_script(config)).executable()]
+}
+
+#[cfg(windows)]
+fn render_cli_artifacts(config: &GeneratorConfig) -> Vec<GeneratedArtifact> {
+    vec![
+        GeneratedArtifact::new(&config.cli_name, render_unix_script(config)).executable(),
+        GeneratedArtifact::new(format!("{}.cmd", config.cli_name), render_windows_cmd(config)),
+    ]
 }
 
 fn render_unix_script(config: &GeneratorConfig) -> String {
