@@ -20,13 +20,64 @@ permissions:
 
 jobs:
   build-python-wheels:
-    name: Build Python wheel (${{ matrix.os }}, py${{ matrix.python-version }})
+    name: Build Python wheel (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, macos-13, windows-latest]
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        include:
+          - target: linux-x86_64-cp311
+            os: ubuntu-latest
+            python-version: "3.11"
+            manylinux-python: /opt/python/cp311-cp311/bin/python
+          - target: linux-x86_64-cp312
+            os: ubuntu-latest
+            python-version: "3.12"
+            manylinux-python: /opt/python/cp312-cp312/bin/python
+          - target: linux-x86_64-cp313
+            os: ubuntu-latest
+            python-version: "3.13"
+            manylinux-python: /opt/python/cp313-cp313/bin/python
+          - target: linux-x86_64-cp314
+            os: ubuntu-latest
+            python-version: "3.14"
+            manylinux-python: /opt/python/cp314-cp314/bin/python
+          - target: macos-arm64-cp311
+            os: macos-latest
+            python-version: "3.11"
+          - target: macos-arm64-cp312
+            os: macos-latest
+            python-version: "3.12"
+          - target: macos-arm64-cp313
+            os: macos-latest
+            python-version: "3.13"
+          - target: macos-arm64-cp314
+            os: macos-latest
+            python-version: "3.14"
+          - target: macos-x86_64-cp311
+            os: macos-13
+            python-version: "3.11"
+          - target: macos-x86_64-cp312
+            os: macos-13
+            python-version: "3.12"
+          - target: macos-x86_64-cp313
+            os: macos-13
+            python-version: "3.13"
+          - target: macos-x86_64-cp314
+            os: macos-13
+            python-version: "3.14"
+          - target: windows-x86_64-cp311
+            os: windows-latest
+            python-version: "3.11"
+          - target: windows-x86_64-cp312
+            os: windows-latest
+            python-version: "3.12"
+          - target: windows-x86_64-cp313
+            os: windows-latest
+            python-version: "3.13"
+          - target: windows-x86_64-cp314
+            os: windows-latest
+            python-version: "3.14"
     steps:
       - name: Check out release ref
         uses: actions/checkout@v6
@@ -57,7 +108,7 @@ jobs:
         with:
           command: build
           working-directory: python/mcp-compressor
-          args: --release --out dist
+          args: --release --out dist --interpreter ${{ matrix.manylinux-python }}
           manylinux: auto
 
       - name: Build non-Linux wheel
@@ -91,7 +142,7 @@ jobs:
       - name: Upload Python wheel
         uses: actions/upload-artifact@v4
         with:
-          name: python-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          name: python-wheel-${{ matrix.target }}
           path: python/mcp-compressor/dist/*.whl
           if-no-files-found: error
 
