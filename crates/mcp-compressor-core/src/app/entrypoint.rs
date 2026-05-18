@@ -1,6 +1,6 @@
 use std::process::ExitCode;
 
-use clap::Parser;
+use clap::{error::ErrorKind, Parser};
 
 use crate::app::options::{CliCommand, CliOptions, LlmCommand, MultiServerArg};
 use crate::app::runtime::{run_cli_mode, run_compressed_server, run_just_bash_mode};
@@ -13,6 +13,10 @@ use crate::server::{
 pub fn main_exit_code() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
+        Err(CliError::Display(message)) => {
+            print!("{message}");
+            ExitCode::SUCCESS
+        }
         Err(CliError::Usage(message)) => {
             eprintln!("error: {message}");
             ExitCode::from(2)
@@ -25,7 +29,21 @@ pub fn main_exit_code() -> ExitCode {
 }
 
 pub fn run() -> Result<(), CliError> {
-    let cli = CliOptions::parse();
+    run_from(std::env::args())
+}
+
+pub fn run_from<I, T>(args: I) -> Result<(), CliError>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone,
+{
+    let cli = CliOptions::try_parse_from(args).map_err(|error| {
+        if matches!(error.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) {
+            CliError::Display(error.to_string())
+        } else {
+            CliError::Usage(error.to_string())
+        }
+    })?;
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -181,6 +199,7 @@ async fn run_llm_command(command: &LlmCommand) -> Result<(), CliError> {
 
 #[derive(Debug)]
 pub enum CliError {
+    Display(String),
     Usage(String),
     Runtime(String),
 }
