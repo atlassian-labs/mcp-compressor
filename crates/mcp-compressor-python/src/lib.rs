@@ -214,6 +214,26 @@ fn clear_oauth_credentials_json(target: Option<&str>) -> PyResult<String> {
     serde_json::to_string(&values).map_err(py_value_error)
 }
 
+#[pyfunction]
+fn run_cli_json(argv_json: &str) -> PyResult<i32> {
+    let argv: Vec<String> = parse_json(argv_json)?;
+    match mcp_compressor_core::app::entrypoint::run_from(argv) {
+        Ok(()) => Ok(0),
+        Err(mcp_compressor_core::app::entrypoint::CliError::Display(message)) => {
+            print!("{message}");
+            Ok(0)
+        }
+        Err(mcp_compressor_core::app::entrypoint::CliError::Usage(message)) => {
+            eprintln!("error: {message}");
+            Ok(2)
+        }
+        Err(mcp_compressor_core::app::entrypoint::CliError::Runtime(message)) => {
+            eprintln!("error: {message}");
+            Ok(1)
+        }
+    }
+}
+
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyCompressedSession>()?;
@@ -229,5 +249,6 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(start_compressed_session_from_mcp_config_json, module)?)?;
     module.add_function(wrap_pyfunction!(list_oauth_credentials_json, module)?)?;
     module.add_function(wrap_pyfunction!(clear_oauth_credentials_json, module)?)?;
+    module.add_function(wrap_pyfunction!(run_cli_json, module)?)?;
     Ok(())
 }
