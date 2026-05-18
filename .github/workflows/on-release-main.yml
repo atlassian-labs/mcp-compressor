@@ -19,12 +19,14 @@ permissions:
   contents: read
 
 jobs:
-  publish-python-package:
-    name: Publish Python package
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
+  build-python-wheels:
+    name: Build Python wheel (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, macos-13, windows-latest]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - name: Check out release ref
         uses: actions/checkout@v6
@@ -33,6 +35,68 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Derive package version from tag
+        shell: bash
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          VERSION="$(python scripts/prepare_python_release.py "$TAG")"
+          echo "Building Python wheel at version $VERSION"
+
+      - name: Build wheel
+        working-directory: python/mcp-compressor
+        run: uvx maturin build --release --out dist
+
+      - name: Smoke-test wheel
+        shell: bash
+        run: |
+          python -m venv /tmp/mcp-compressor-python-publish-smoke
+          if [ -x /tmp/mcp-compressor-python-publish-smoke/Scripts/python.exe ]; then
+            VENV_PYTHON=/tmp/mcp-compressor-python-publish-smoke/Scripts/python.exe
+          else
+            VENV_PYTHON=/tmp/mcp-compressor-python-publish-smoke/bin/python
+          fi
+          "$VENV_PYTHON" -m pip install --upgrade pip
+          "$VENV_PYTHON" -m pip install python/mcp-compressor/dist/*.whl
+          mkdir -p /tmp/mcp-compressor-python-publish-import
+          cd /tmp/mcp-compressor-python-publish-import
+          "$VENV_PYTHON" - <<'PY'
+          from mcp_compressor import CompressorClient, ToolSpec, compress_tool_listing
+          listing = compress_tool_listing(
+              "high",
+              [ToolSpec(name="echo", description="Echo a message.", input_schema={"type": "object", "properties": {"message": {"type": "string"}}})],
+          )
+          assert "echo" in listing and "message" in listing
+          assert CompressorClient is not None
+          PY
+
+      - name: Upload Python wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: python/mcp-compressor/dist/*.whl
+          if-no-files-found: error
+
+  publish-python-package:
+    name: Publish Python package
+    runs-on: ubuntu-latest
+    needs: build-python-wheels
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out release ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -51,28 +115,19 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Publishing Python package at version $VERSION"
 
-      - name: Build wheel and source distribution
-        working-directory: python/mcp-compressor
-        run: uvx maturin build --release --sdist --out dist
+      - name: Download built wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: python-wheel-*
+          path: python/mcp-compressor/dist
+          merge-multiple: true
 
-      - name: Smoke-test wheel
-        shell: bash
-        run: |
-          python -m venv /tmp/mcp-compressor-python-publish-smoke
-          VENV_PYTHON=/tmp/mcp-compressor-python-publish-smoke/bin/python
-          "$VENV_PYTHON" -m pip install --upgrade pip
-          "$VENV_PYTHON" -m pip install python/mcp-compressor/dist/*.whl
-          mkdir -p /tmp/mcp-compressor-python-publish-import
-          cd /tmp/mcp-compressor-python-publish-import
-          "$VENV_PYTHON" - <<'PY'
-          from mcp_compressor import CompressorClient, ToolSpec, compress_tool_listing
-          listing = compress_tool_listing(
-              "high",
-              [ToolSpec(name="echo", description="Echo a message.", input_schema={"type": "object", "properties": {"message": {"type": "string"}}})],
-          )
-          assert "echo" in listing and "message" in listing
-          assert CompressorClient is not None
-          PY
+      - name: Build source distribution
+        working-directory: python/mcp-compressor
+        run: uvx maturin sdist --out dist
+
+      - name: List Python distributions
+        run: ls -lh python/mcp-compressor/dist
 
       - name: Upload Python distributions
         uses: actions/upload-artifact@v4
