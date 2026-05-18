@@ -59,7 +59,7 @@ def test_python_cli_reports_missing_rust_core_binary(monkeypatch) -> None:
 
 def test_python_cli_skips_self_resolving_console_script(tmp_path: Path, monkeypatch) -> None:
     script = tmp_path / "mcp-compressor"
-    script.write_text("#!/bin/sh\nexec mcp-compressor \"$@\"\n")
+    script.write_text('#!/bin/sh\nexec mcp-compressor "$@"\n')
     script.chmod(0o755)
     commands: list[list[str]] = []
 
