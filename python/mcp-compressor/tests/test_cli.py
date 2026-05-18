@@ -57,6 +57,27 @@ def test_python_cli_reports_missing_rust_core_binary(monkeypatch) -> None:
     assert main(["--help"]) == 127
 
 
+def test_python_cli_skips_self_resolving_console_script(tmp_path: Path, monkeypatch) -> None:
+    script = tmp_path / "mcp-compressor"
+    script.write_text("#!/bin/sh\nexec mcp-compressor \"$@\"\n")
+    script.chmod(0o755)
+    commands: list[list[str]] = []
+
+    def popen(command: list[str]) -> None:
+        commands.append(command)
+        raise FileNotFoundError(command[0])
+
+    monkeypatch.delenv("MCP_COMPRESSOR_BINARY", raising=False)
+    monkeypatch.delenv("MCP_COMPRESSOR_CORE_BINARY", raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setattr("sys.argv", [str(script)])
+    monkeypatch.setattr("subprocess.Popen", popen)
+
+    assert main(["--help"]) == 127
+    assert [str(script), "--help"] not in commands
+    assert ["mcp-compressor", "--help"] not in commands
+
+
 def test_python_cli_ctrl_c_terminates_child_without_traceback(monkeypatch) -> None:
     process = InterruptingProcess(["mcp-compressor"])
 
