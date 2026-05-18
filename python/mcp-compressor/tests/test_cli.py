@@ -4,7 +4,7 @@ import os
 import signal
 from pathlib import Path
 
-from mcp_compressor.cli import main
+from mcp_compressor.cli import _candidate_binaries, _is_native_executable, main
 
 
 class InterruptingProcess:
@@ -85,3 +85,81 @@ def test_python_cli_ctrl_c_kills_stubborn_child(monkeypatch) -> None:
     assert main(["--cli-mode"]) == 128 + signal.SIGINT
     assert process.terminated
     assert process.killed
+
+
+# ---------------------------------------------------------------------------
+# Fork-bomb prevention tests
+# ---------------------------------------------------------------------------
+
+
+def test_is_native_executable_detects_elf(tmp_path: Path) -> None:
+    """A file starting with the ELF magic bytes is recognised as native."""
+    binary = tmp_path / "mcp-compressor"
+    binary.write_bytes(b"\x7fELF" + b"\x00" * 60)
+    binary.chmod(0o755)
+    assert _is_native_executable(str(binary))
+
+
+def test_is_native_executable_detects_macho(tmp_path: Path) -> None:
+    """A file starting with a Mach-O magic is recognised as native."""
+    binary = tmp_path / "mcp-compressor"
+    binary.write_bytes(b"\xcf\xfa\xed\xfe" + b"\x00" * 60)  # Mach-O 64-bit LE
+    binary.chmod(0o755)
+    assert _is_native_executable(str(binary))
+
+
+def test_is_native_executable_detects_pe(tmp_path: Path) -> None:
+    """A file starting with MZ (Windows PE stub) is recognised as native."""
+    binary = tmp_path / "mcp-compressor.exe"
+    binary.write_bytes(b"MZ\x90\x00" + b"\x00" * 60)
+    binary.chmod(0o755)
+    assert _is_native_executable(str(binary))
+
+
+def test_is_native_executable_rejects_python_shim(tmp_path: Path) -> None:
+    """A pip/uvx Python wrapper script is NOT a native executable."""
+    shim = tmp_path / "mcp-compressor"
+    shim.write_text("#!/usr/bin/env python\nimport sys; from mcp_compressor.cli import entrypoint; entrypoint()\n")
+    shim.chmod(0o755)
+    assert not _is_native_executable(str(shim))
+
+
+def test_is_native_executable_rejects_shell_script(tmp_path: Path) -> None:
+    """A plain shell script is NOT a native executable."""
+    shim = tmp_path / "mcp-compressor"
+    shim.write_text("#!/bin/sh\nexec python -m mcp_compressor \"$@\"\n")
+    shim.chmod(0o755)
+    assert not _is_native_executable(str(shim))
+
+
+def test_candidate_binaries_excludes_python_shim_on_path(tmp_path: Path, monkeypatch) -> None:
+    """When the only 'mcp-compressor' on PATH is a Python shim, it is skipped.
+
+    This is the core fork-bomb prevention check: the pip/uvx installed shim
+    must never appear in _candidate_binaries() or the shim would spawn itself
+    recursively, consuming all available memory.
+    """
+    shim = tmp_path / "mcp-compressor"
+    shim.write_text("#!/usr/bin/env python\nfrom mcp_compressor.cli import entrypoint; entrypoint()\n")
+    shim.chmod(0o755)
+
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.delenv("MCP_COMPRESSOR_BINARY", raising=False)
+    monkeypatch.delenv("MCP_COMPRESSOR_CORE_BINARY", raising=False)
+
+    candidates = _candidate_binaries()
+    assert str(shim) not in candidates
+
+
+def test_candidate_binaries_includes_native_binary_on_path(tmp_path: Path, monkeypatch) -> None:
+    """When 'mcp-compressor' on PATH is a native ELF binary, it IS included."""
+    binary = tmp_path / "mcp-compressor"
+    binary.write_bytes(b"\x7fELF" + b"\x00" * 60)
+    binary.chmod(0o755)
+
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.delenv("MCP_COMPRESSOR_BINARY", raising=False)
+    monkeypatch.delenv("MCP_COMPRESSOR_CORE_BINARY", raising=False)
+
+    candidates = _candidate_binaries()
+    assert str(binary) in candidates
