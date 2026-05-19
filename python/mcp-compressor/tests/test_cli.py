@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from importlib.metadata import version
 
 
 def test_python_cli_runs_packaged_native_help() -> None:
@@ -14,6 +15,17 @@ def test_python_cli_runs_packaged_native_help() -> None:
     assert result.returncode == 0
     assert "Usage:" in result.stdout
     assert "mcp-compressor" in result.stdout
+
+
+def test_python_cli_reports_package_version() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "mcp_compressor.cli", "--version"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert result.stdout.strip() == f"mcp-compressor {version('mcp-compressor')}"
 
 
 def test_python_cli_reports_usage_errors() -> None:
