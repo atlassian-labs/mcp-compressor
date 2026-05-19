@@ -1,3 +1,4 @@
+use std::fs;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
@@ -126,6 +127,7 @@ pub async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(
         tools,
         session_pid: std::process::id(),
         output_dir,
+        extra_cli_bridges: Vec::new(),
     };
     let paths = if let Some(kind) = client_artifact_kind {
         let ffi_config = FfiGeneratorConfig {
@@ -138,9 +140,7 @@ pub async fn run_cli_mode(cli: CliOptions, server: CompressedServer) -> Result<(
         };
         generate_client_artifacts(kind, ffi_config).map_err(|error| error.to_string())?
     } else {
-        CliGenerator
-            .generate(&config)
-            .map_err(|error| error.to_string())?
+        generate_or_update_cli_script(&config).map_err(|error| error.to_string())?
     };
     let script = paths
         .iter()
@@ -210,5 +210,23 @@ async fn wait_until_stopped() {
         return;
     }
 
-    std::future::pending::<()>().await;
+    match tokio::signal::ctrl_c().await {
+        Ok(()) => {}
+        Err(_) => std::future::pending::<()>().await,
+    }
+}
+
+fn generate_or_update_cli_script(
+    config: &GeneratorConfig,
+) -> Result<Vec<std::path::PathBuf>, crate::Error> {
+    use crate::client_gen::generator::write_artifacts;
+
+    let mut merged_config = config.clone();
+    let script_path = config.output_dir.join(&config.cli_name);
+    if let Ok(existing) = fs::read_to_string(&script_path) {
+        merged_config.extra_cli_bridges =
+            crate::client_gen::cli::read_live_bridge_entries(&existing);
+    }
+    let artifacts = CliGenerator.render(&merged_config)?;
+    write_artifacts(&artifacts, &config.output_dir)
 }

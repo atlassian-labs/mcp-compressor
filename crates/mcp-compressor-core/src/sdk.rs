@@ -374,8 +374,10 @@ impl CompressorProxy {
             .map(|tool| {
                 (
                     tool.name.clone(),
-                    Box::new(ProxyExecutableTool { proxy: self, tool: tool.clone() })
-                        as Box<dyn ExecutableTool>,
+                    Box::new(ProxyExecutableTool {
+                        proxy: self,
+                        tool: tool.clone(),
+                    }) as Box<dyn ExecutableTool>,
                 )
             })
             .collect()
@@ -450,7 +452,11 @@ impl CompressorProxy {
         generated.write_to_disk()
     }
 
-    fn generator_config(&self, output_dir: impl AsRef<Path>, name: Option<&str>) -> GeneratorConfig {
+    fn generator_config(
+        &self,
+        output_dir: impl AsRef<Path>,
+        name: Option<&str>,
+    ) -> GeneratorConfig {
         GeneratorConfig {
             cli_name: name
                 .or(self.default_server.as_deref())
@@ -461,6 +467,7 @@ impl CompressorProxy {
             tools: self.backend_tools.clone(),
             session_pid: 0,
             output_dir: output_dir.as_ref().to_path_buf(),
+            extra_cli_bridges: Vec::new(),
         }
     }
 
@@ -725,13 +732,18 @@ mod tests {
             .write_code_client(CodeLanguage::Python, tempdir.path(), Some("alpha"))
             .unwrap();
         assert_eq!(generated.kind, GeneratedClientKind::Python);
-        assert!(generated.files.iter().any(|path| path.ends_with("alpha.py")));
+        assert!(generated
+            .files
+            .iter()
+            .any(|path| path.ends_with("alpha.py")));
         assert_eq!(
             generated.environment.get("PYTHONPATH"),
             Some(&tempdir.path().to_string_lossy().to_string())
         );
 
-        let cli = proxy.write_cli_client(tempdir.path(), Some("alpha")).unwrap();
+        let cli = proxy
+            .write_cli_client(tempdir.path(), Some("alpha"))
+            .unwrap();
         assert_eq!(cli.kind, GeneratedClientKind::Cli);
     }
 

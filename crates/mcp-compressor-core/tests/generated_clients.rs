@@ -43,6 +43,7 @@ async fn running_proxy_config(output_dir: &std::path::Path) -> (GeneratorConfig,
         )],
         session_pid: std::process::id(),
         output_dir: output_dir.to_path_buf(),
+        extra_cli_bridges: Vec::new(),
     };
     (config, proxy)
 }

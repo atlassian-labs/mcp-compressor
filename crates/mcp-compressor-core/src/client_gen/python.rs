@@ -310,6 +310,7 @@ mod tests {
             )],
             session_pid: 1,
             output_dir: dir.path().to_path_buf(),
+            extra_cli_bridges: Vec::new(),
         };
         let paths = PythonGenerator.generate(&config).unwrap();
         let content = fs::read_to_string(&paths[0]).unwrap();

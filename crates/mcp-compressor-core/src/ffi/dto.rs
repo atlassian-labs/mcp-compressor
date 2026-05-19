@@ -7,9 +7,7 @@ use serde_json::Value;
 
 use crate::client_gen::generator::GeneratorConfig;
 use crate::compression::engine::Tool;
-use crate::server::{
-    BackendServerConfig, JustBashCommandSpec, JustBashProviderSpec,
-};
+use crate::server::{BackendServerConfig, JustBashCommandSpec, JustBashProviderSpec};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FfiTool {
@@ -128,6 +126,7 @@ impl From<FfiGeneratorConfig> for GeneratorConfig {
             tools: value.tools.into_iter().map(Into::into).collect(),
             session_pid: value.session_pid,
             output_dir: value.output_dir,
+            extra_cli_bridges: Vec::new(),
         }
     }
 }
