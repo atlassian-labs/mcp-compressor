@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::client_gen::cli::CliGenerator;
-use crate::client_gen::generator::{artifact_map, write_artifacts, ClientGenerator, GeneratedArtifact, GeneratorConfig};
+use crate::client_gen::generator::{
+    artifact_map, write_artifacts, ClientGenerator, GeneratedArtifact, GeneratorConfig,
+};
 use crate::client_gen::python::PythonGenerator;
 use crate::client_gen::typescript::TypeScriptGenerator;
 use crate::Error;
@@ -53,4 +55,12 @@ fn render_client_artifacts_from_config(
         FfiClientArtifactKind::Python => PythonGenerator.render(config),
         FfiClientArtifactKind::TypeScript => TypeScriptGenerator.render(config),
     }
+}
+
+pub fn maybe_toonify_output(output: &str) -> String {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(output) else {
+        return output.to_string();
+    };
+    toon_format::encode(&value, &toon_format::EncodeOptions::default())
+        .unwrap_or_else(|_| output.to_string())
 }

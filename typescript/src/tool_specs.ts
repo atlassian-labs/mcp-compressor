@@ -1,7 +1,7 @@
 import type { ExecutableTool } from "./adapters.js";
 import type { ToolSpec } from "./rust_core.js";
 
-export function executableToolToSpec(name: string, tool: ExecutableTool): ToolSpec {
+export function executableToolToSpec(name: string, tool: ExecutableTool<unknown>): ToolSpec {
   return {
     name,
     description: tool.description,
@@ -9,7 +9,7 @@ export function executableToolToSpec(name: string, tool: ExecutableTool): ToolSp
   };
 }
 
-export function executableToolsToSpecs(tools: Record<string, ExecutableTool>): ToolSpec[] {
+export function executableToolsToSpecs(tools: Record<string, ExecutableTool<unknown>>): ToolSpec[] {
   return Object.entries(tools).map(([name, tool]) => executableToolToSpec(name, tool));
 }
 

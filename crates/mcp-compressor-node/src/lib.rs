@@ -9,12 +9,12 @@ use serde_json::Value;
 
 use mcp_compressor_core::compression::CompressionLevel;
 use mcp_compressor_core::ffi::{
-    clear_oauth_credentials, compress_tool_listing, format_tool_schema_response, generate_client_artifact_files, generate_client_artifacts,
-    list_oauth_credentials, normalize_sdk_servers, parse_mcp_config, parse_tool_argv,
-    remember_oauth_backend, start_compressed_session,
-    start_compressed_session_from_mcp_config, FfiBackendConfig, FfiClientArtifactKind,
-    FfiCompressedSession, FfiCompressedSessionConfig, FfiGeneratorConfig, FfiSdkServersConfig,
-    FfiTool,
+    clear_oauth_credentials, compress_tool_listing, format_tool_schema_response,
+    generate_client_artifact_files, generate_client_artifacts, list_oauth_credentials,
+    maybe_toonify_output, normalize_sdk_servers, parse_mcp_config, parse_tool_argv,
+    remember_oauth_backend, start_compressed_session, start_compressed_session_from_mcp_config,
+    FfiBackendConfig, FfiClientArtifactKind, FfiCompressedSession, FfiCompressedSessionConfig,
+    FfiGeneratorConfig, FfiSdkServersConfig, FfiTool,
 };
 
 fn napi_error(error: impl std::fmt::Display) -> NapiError {
@@ -36,11 +36,15 @@ struct ProviderBackendConfig {
 
 type HeaderStore = Arc<RwLock<BTreeMap<String, String>>>;
 
-fn headers_from_store(store: HeaderStore) -> Result<BTreeMap<String, String>, mcp_compressor_core::Error> {
+fn headers_from_store(
+    store: HeaderStore,
+) -> Result<BTreeMap<String, String>, mcp_compressor_core::Error> {
     store
         .read()
         .map(|headers| headers.clone())
-        .map_err(|error| mcp_compressor_core::Error::Config(format!("auth header store poisoned: {error}")))
+        .map_err(|error| {
+            mcp_compressor_core::Error::Config(format!("auth header store poisoned: {error}"))
+        })
 }
 
 #[napi]
@@ -62,6 +66,11 @@ pub fn parse_tool_argv_json(tool_json: String, argv_json: String) -> napi::Resul
     let argv = parse_json::<Vec<String>>(&argv_json)?;
     let parsed = parse_tool_argv(tool, argv).map_err(napi_error)?;
     serde_json::to_string(&parsed).map_err(napi_error)
+}
+
+#[napi]
+pub fn maybe_toonify_output_json(output: String) -> String {
+    maybe_toonify_output(&output)
 }
 
 fn parse_client_artifact_kind(kind: &str) -> napi::Result<FfiClientArtifactKind> {
@@ -86,7 +95,10 @@ pub fn generate_client_artifacts_json(kind: String, config_json: String) -> napi
 }
 
 #[napi]
-pub fn generate_client_artifact_files_json(kind: String, config_json: String) -> napi::Result<String> {
+pub fn generate_client_artifact_files_json(
+    kind: String,
+    config_json: String,
+) -> napi::Result<String> {
     let kind = parse_client_artifact_kind(&kind)?;
     let config = parse_json::<FfiGeneratorConfig>(&config_json)?;
     let files = generate_client_artifact_files(kind, config).map_err(napi_error)?;
@@ -96,8 +108,7 @@ pub fn generate_client_artifact_files_json(kind: String, config_json: String) ->
 #[napi]
 pub fn normalize_servers_json(servers_json: String) -> napi::Result<String> {
     let servers = parse_json::<FfiSdkServersConfig>(&servers_json)?;
-    serde_json::to_string(&normalize_sdk_servers(servers).map_err(napi_error)?)
-        .map_err(napi_error)
+    serde_json::to_string(&normalize_sdk_servers(servers).map_err(napi_error)?).map_err(napi_error)
 }
 
 #[napi]
@@ -159,7 +170,11 @@ impl NativeCompressedSession {
         let store = self
             .auth_header_stores
             .get(provider_index as usize)
-            .ok_or_else(|| napi_error(format!("auth provider index out of range: {provider_index}")))?;
+            .ok_or_else(|| {
+                napi_error(format!(
+                    "auth provider index out of range: {provider_index}"
+                ))
+            })?;
         let mut guard = store
             .write()
             .map_err(|error| napi_error(format!("auth header store poisoned: {error}")))?;
@@ -175,7 +190,9 @@ pub async fn start_compressed_session_json(
 ) -> napi::Result<NativeCompressedSession> {
     let config = parse_json::<FfiCompressedSessionConfig>(&config_json)?;
     let backends = parse_json::<Vec<FfiBackendConfig>>(&backends_json)?;
-    let inner = start_compressed_session(config, backends).await.map_err(napi_error)?;
+    let inner = start_compressed_session(config, backends)
+        .await
+        .map_err(napi_error)?;
     Ok(NativeCompressedSession {
         inner,
         auth_header_stores: Vec::new(),
@@ -196,13 +213,13 @@ pub async fn start_compressed_session_with_provider_backends_json(
         .collect::<Vec<_>>();
     let mut backend_configs = Vec::new();
     for backend in backends {
-        let mut config = BackendServerConfig::new(backend.name, backend.command_or_url, backend.args);
+        let mut config =
+            BackendServerConfig::new(backend.name, backend.command_or_url, backend.args);
         if let Some(index) = backend.provider_index {
-            let store = Arc::clone(
-                providers
-                    .get(index)
-                    .ok_or_else(|| napi_error(format!("auth provider index out of range: {index}")))?,
-            );
+            let store =
+                Arc::clone(providers.get(index).ok_or_else(|| {
+                    napi_error(format!("auth provider index out of range: {index}"))
+                })?);
             config = config
                 .with_header_provider(Arc::new(move || headers_from_store(Arc::clone(&store))))
                 .with_auth_mode(BackendAuthMode::ExplicitHeaders);
