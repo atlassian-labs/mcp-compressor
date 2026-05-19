@@ -1,6 +1,6 @@
 [package]
 name          = "mcp-compressor-core"
-version       = "0.1.0"
+version       = "0.19.8"
 edition       = "2021"
 description   = "Internal Rust core for mcp-compressor. Prefer the public mcp-compressor crate."
 license       = "Apache-2.0"

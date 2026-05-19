@@ -1,6 +1,6 @@
 [package]
 name          = "mcp-compressor"
-version       = "0.1.0"
+version       = "0.19.8"
 edition       = "2021"
 description   = "Compress MCP tool surfaces and generate CLI, Python, and TypeScript clients."
 license       = "Apache-2.0"
@@ -16,7 +16,7 @@ name = "mcp-compressor"
 path = "src/main.rs"
 
 [dependencies]
-mcp-compressor-core = { path = "../mcp-compressor-core", version = "0.1.0" }
+mcp-compressor-core = { path = "../mcp-compressor-core", version = "0.19.8" }
 
 [dev-dependencies]
 serde_json = "1"
