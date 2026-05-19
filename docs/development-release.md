@@ -48,7 +48,7 @@ Python publishing uses PyPI trusted publishing from:
 .github/workflows/on-release-main.yml
 ```
 
-The workflow patches the package version from the release tag, builds platform wheels for Linux, macOS arm64, macOS x64, and Windows across supported CPython versions, builds Linux wheels in a manylinux image for broad distro compatibility, labels wheel jobs by target platform/Python tag, builds one source distribution, and publishes them with:
+The workflow patches the package version from the release tag, builds one abi3 wheel per platform for Linux, macOS arm64, macOS x64, and Windows that supports CPython 3.11 and newer, builds Linux wheels in a manylinux image for broad distro compatibility, labels wheel jobs by target platform, builds one source distribution, and publishes them with:
 
 ```bash
 uv publish --trusted-publishing always dist/*
