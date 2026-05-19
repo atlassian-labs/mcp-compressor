@@ -482,7 +482,9 @@ describe("local TypeScript tool compression", () => {
             properties: { message: { type: "string" } },
             required: ["message"],
           },
-          execute: async (input = {}) => `direct:${String(input.message)}`,
+          execute: async (input = {}): Promise<unknown> => ({
+            rows: [{ message: String(input.message), ok: true }],
+          }),
         },
       },
       { bash, serverName: "alpha" },
@@ -494,8 +496,15 @@ describe("local TypeScript tool compression", () => {
     ]);
     const commandResult = await bash.exec("alpha_echo --message bash");
     expect(commandResult.exitCode).toBe(0);
-    expect(commandResult.stdout.trim()).toBe("direct:bash");
-    await expect(result.tools.alpha_help?.execute()).resolves.toContain("alpha_echo");
+    expect(commandResult.stdout).toContain("rows[1]{message,ok}:");
+    expect(commandResult.stdout).toContain("bash,true");
+    expect(result.tools.alpha_help?.description).toContain(
+      "Functionality associated with the alpha toolset is provided via bash commands.",
+    );
+    expect(result.tools.alpha_help?.description).toContain("alpha_echo");
+    await expect(result.tools.alpha_help?.execute()).resolves.toBe(
+      result.tools.alpha_help?.description,
+    );
   });
 
   it("transforms executable tools into generated code clients and help tools", async () => {
@@ -517,7 +526,13 @@ describe("local TypeScript tool compression", () => {
     try {
       expect(Object.keys(transform.tools)).toEqual(["alpha_help"]);
       expect(Object.keys(transform.files)).toContain("alpha.py");
-      await expect(transform.tools.alpha_help?.execute()).resolves.toContain("Python Code Mode");
+      const helpTool = transform.tools.alpha_help;
+      expect(helpTool?.description).toContain(
+        "Functionality associated with the alpha toolset is provided via generated Python code.",
+      );
+      expect(helpTool?.description).toContain("Primary module:");
+      expect(helpTool?.description).not.toContain("Code Mode");
+      await expect(helpTool?.execute()).resolves.toBe(helpTool?.description);
       expect(transform.environment.PYTHONPATH).toContain("mcp-code-mode");
     } finally {
       transform.close();
@@ -525,6 +540,7 @@ describe("local TypeScript tool compression", () => {
   });
 
   it("transforms executable tools into generated CLI clients and help tools", async () => {
+    const outputDir = join(tmpdir(), "mcp-cli-mode");
     const transform = await transformToolsForCliMode(
       {
         echo: {
@@ -535,18 +551,59 @@ describe("local TypeScript tool compression", () => {
             properties: { message: { type: "string" } },
             required: ["message"],
           },
-          execute: async (input = {}) => `cli:${String(input.message)}`,
+          execute: async (input = {}): Promise<unknown> => ({
+            rows: [{ message: String(input.message), ok: true }],
+          }),
         },
       },
-      { serverName: "alpha", outputDir: join(tmpdir(), "mcp-cli-mode") },
+      { serverName: "alpha", outputDir },
     );
     try {
       expect(Object.keys(transform.tools)).toEqual(["alpha_help"]);
       expect(Object.keys(transform.files)).toContain("alpha");
-      await expect(transform.tools.alpha_help?.execute()).resolves.toContain("CLI Mode");
+      const helpTool = transform.tools.alpha_help;
+      expect(helpTool?.description).toContain(
+        "Functionality associated with the alpha toolset is provided via the `alpha` CLI.",
+      );
+      expect(helpTool?.description).toContain("USAGE:");
+      expect(helpTool?.description).toContain("Run 'alpha --help' in the shell for usage.");
+      expect(helpTool?.description).not.toContain("PATH hint");
+      expect(helpTool?.description).not.toContain("CLI Mode");
+      await expect(helpTool?.execute()).resolves.toBe(helpTool?.description);
       expect(transform.environment.PATH).toContain("mcp-cli-mode");
     } finally {
       transform.close();
+    }
+  });
+
+  it("defaults CLI transform output to a user PATH directory", async () => {
+    const previousHome = process.env.HOME;
+    const home = mkdtempSync(join(tmpdir(), "mcp-cli-home-"));
+    process.env.HOME = home;
+    const transform = await transformToolsForCliMode(
+      {
+        echo: {
+          name: "echo",
+          description: "Echo a message.",
+          inputSchema: { type: "object", properties: {} },
+          execute: async () => "ok",
+        },
+      },
+      { serverName: "alpha" },
+    );
+    try {
+      const expectedDir = join(home, ".local", "bin");
+      expect(transform.paths).toEqual([join(expectedDir, "alpha")]);
+      expect(transform.environment.PATH).toBe(`${expectedDir}:$PATH`);
+      expect(transform.tools.alpha_help?.description).toContain("`alpha` CLI");
+      expect(transform.tools.alpha_help?.description).not.toContain("PATH hint");
+    } finally {
+      transform.close();
+      if (previousHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = previousHome;
+      }
     }
   });
 });

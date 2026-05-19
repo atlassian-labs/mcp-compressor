@@ -26,6 +26,10 @@ export function formatToolSchemaResponse(tool: ToolSpec): string {
   return loadNativeCore().formatToolSchemaResponseJson(stringify(toNativeTool(tool)));
 }
 
+export function maybeToonifyOutput(output: string): string {
+  return loadNativeCore().maybeToonifyOutputJson(output);
+}
+
 export function parseToolArgv(tool: ToolSpec, argv: string[]): Record<string, unknown> {
   return JSON.parse(
     loadNativeCore().parseToolArgvJson(stringify(toNativeTool(tool)), stringify(argv)),

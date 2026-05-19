@@ -10,7 +10,7 @@ export interface LocalToolBridge {
 }
 
 export async function startLocalToolBridge(
-  tools: Record<string, ExecutableTool>,
+  tools: Record<string, ExecutableTool<unknown>>,
 ): Promise<LocalToolBridge> {
   const http = await import("node:http");
   const token = crypto.randomUUID();
