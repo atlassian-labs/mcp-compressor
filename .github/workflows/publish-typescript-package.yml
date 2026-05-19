@@ -26,12 +26,16 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact-suffix: linux-x64-gnu
+            napi-target: ""
           - os: macos-latest
             artifact-suffix: darwin-arm64
-          - os: macos-13
+            napi-target: ""
+          - os: macos-latest
             artifact-suffix: darwin-x64
+            napi-target: x86_64-apple-darwin
           - os: windows-latest
             artifact-suffix: win32-x64-msvc
+            napi-target: ""
     defaults:
       run:
         working-directory: typescript
@@ -54,7 +58,12 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build native addon
+        if: matrix.napi-target == ''
         run: bun run build:native
+
+      - name: Build targeted native addon
+        if: matrix.napi-target != ''
+        run: bunx napi build --manifest-path ../crates/mcp-compressor-node/Cargo.toml --platform --release --output-dir native --target ${{ matrix.napi-target }}
 
       - name: Upload native addon
         uses: actions/upload-artifact@v4

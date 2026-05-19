@@ -30,54 +30,54 @@ jobs:
             os: ubuntu-latest
             python-version: "3.11"
             manylinux-python: /opt/python/cp311-cp311/bin/python
+            maturin-target: ""
           - target: linux-x86_64-cp312
             os: ubuntu-latest
             python-version: "3.12"
             manylinux-python: /opt/python/cp312-cp312/bin/python
+            maturin-target: ""
           - target: linux-x86_64-cp313
             os: ubuntu-latest
             python-version: "3.13"
             manylinux-python: /opt/python/cp313-cp313/bin/python
+            maturin-target: ""
           - target: linux-x86_64-cp314
             os: ubuntu-latest
             python-version: "3.14"
             manylinux-python: /opt/python/cp314-cp314/bin/python
-          - target: macos-arm64-cp311
+            maturin-target: ""
+          - target: macos-universal2-cp311
             os: macos-latest
             python-version: "3.11"
-          - target: macos-arm64-cp312
+            maturin-target: universal2-apple-darwin
+          - target: macos-universal2-cp312
             os: macos-latest
             python-version: "3.12"
-          - target: macos-arm64-cp313
+            maturin-target: universal2-apple-darwin
+          - target: macos-universal2-cp313
             os: macos-latest
             python-version: "3.13"
-          - target: macos-arm64-cp314
+            maturin-target: universal2-apple-darwin
+          - target: macos-universal2-cp314
             os: macos-latest
             python-version: "3.14"
-          - target: macos-x86_64-cp311
-            os: macos-13
-            python-version: "3.11"
-          - target: macos-x86_64-cp312
-            os: macos-13
-            python-version: "3.12"
-          - target: macos-x86_64-cp313
-            os: macos-13
-            python-version: "3.13"
-          - target: macos-x86_64-cp314
-            os: macos-13
-            python-version: "3.14"
+            maturin-target: universal2-apple-darwin
           - target: windows-x86_64-cp311
             os: windows-latest
             python-version: "3.11"
+            maturin-target: ""
           - target: windows-x86_64-cp312
             os: windows-latest
             python-version: "3.12"
+            maturin-target: ""
           - target: windows-x86_64-cp313
             os: windows-latest
             python-version: "3.13"
+            maturin-target: ""
           - target: windows-x86_64-cp314
             os: windows-latest
             python-version: "3.14"
+            maturin-target: ""
     steps:
       - name: Check out release ref
         uses: actions/checkout@v6
@@ -112,9 +112,14 @@ jobs:
           manylinux: auto
 
       - name: Build non-Linux wheel
-        if: runner.os != 'Linux'
+        if: runner.os != 'Linux' && matrix.maturin-target == ''
         working-directory: python/mcp-compressor
         run: uvx maturin build --release --out dist
+
+      - name: Build targeted non-Linux wheel
+        if: runner.os != 'Linux' && matrix.maturin-target != ''
+        working-directory: python/mcp-compressor
+        run: uvx maturin build --release --out dist --target ${{ matrix.maturin-target }}
 
       - name: Smoke-test wheel
         shell: bash
