@@ -30,9 +30,9 @@ jobs:
           - os: macos-latest
             artifact-suffix: darwin-arm64
             napi-target: ""
-          - os: macos-latest
+          - os: macos-15-intel
             artifact-suffix: darwin-x64
-            napi-target: x86_64-apple-darwin
+            napi-target: ""
           - os: windows-latest
             artifact-suffix: win32-x64-msvc
             napi-target: ""
@@ -57,18 +57,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Install targeted Rust target
-        if: matrix.napi-target != ''
-        working-directory: .
-        run: rustup target add ${{ matrix.napi-target }}
-
       - name: Build native addon
-        if: matrix.napi-target == ''
         run: bun run build:native
-
-      - name: Build targeted native addon
-        if: matrix.napi-target != ''
-        run: bunx napi build --manifest-path ../crates/mcp-compressor-node/Cargo.toml --platform --release --output-dir native --target ${{ matrix.napi-target }}
 
       - name: Upload native addon
         uses: actions/upload-artifact@v4

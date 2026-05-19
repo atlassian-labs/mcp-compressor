@@ -46,22 +46,38 @@ jobs:
             python-version: "3.14"
             manylinux-python: /opt/python/cp314-cp314/bin/python
             maturin-target: ""
-          - target: macos-universal2-cp311
+          - target: macos-arm64-cp311
             os: macos-latest
             python-version: "3.11"
-            maturin-target: universal2-apple-darwin
-          - target: macos-universal2-cp312
+            maturin-target: ""
+          - target: macos-arm64-cp312
             os: macos-latest
             python-version: "3.12"
-            maturin-target: universal2-apple-darwin
-          - target: macos-universal2-cp313
+            maturin-target: ""
+          - target: macos-arm64-cp313
             os: macos-latest
             python-version: "3.13"
-            maturin-target: universal2-apple-darwin
-          - target: macos-universal2-cp314
+            maturin-target: ""
+          - target: macos-arm64-cp314
             os: macos-latest
             python-version: "3.14"
-            maturin-target: universal2-apple-darwin
+            maturin-target: ""
+          - target: macos-x86_64-cp311
+            os: macos-15-intel
+            python-version: "3.11"
+            maturin-target: ""
+          - target: macos-x86_64-cp312
+            os: macos-15-intel
+            python-version: "3.12"
+            maturin-target: ""
+          - target: macos-x86_64-cp313
+            os: macos-15-intel
+            python-version: "3.13"
+            maturin-target: ""
+          - target: macos-x86_64-cp314
+            os: macos-15-intel
+            python-version: "3.14"
+            maturin-target: ""
           - target: windows-x86_64-cp311
             os: windows-latest
             python-version: "3.11"
