@@ -57,6 +57,11 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install targeted Rust target
+        if: matrix.napi-target != ''
+        working-directory: .
+        run: rustup target add ${{ matrix.napi-target }}
+
       - name: Build native addon
         if: matrix.napi-target == ''
         run: bun run build:native
