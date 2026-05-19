@@ -48,7 +48,7 @@ Python publishing uses PyPI trusted publishing from:
 .github/workflows/on-release-main.yml
 ```
 
-The workflow patches the package version from the release tag, builds one abi3 wheel per platform for Linux, macOS arm64, macOS x64, and Windows that supports CPython 3.11 and newer, builds Linux wheels in a manylinux image for broad distro compatibility, labels wheel jobs by target platform, builds one source distribution, and publishes them with:
+The workflow patches the package version from the release tag, builds one abi3 wheel per platform for Linux x64, Linux ARM64, macOS arm64, macOS x64, and Windows that supports CPython 3.11 and newer, builds Linux wheels in a manylinux image for broad distro compatibility, labels wheel jobs by target platform, builds one source distribution, and publishes them with:
 
 ```bash
 uv publish --trusted-publishing always dist/*
@@ -97,7 +97,7 @@ The main release workflow does **not** publish TypeScript directly from the tag 
    on the `release` branch,
 5. waits for the dispatched workflow to complete.
 
-The TypeScript workflow reads the tag from the workflow input, with `.release-tag` as a fallback, converts it to an npm-compatible version, builds native addons on Linux, macOS arm64, macOS x64, and Windows using the documented GitHub-hosted macOS Intel runner for x64 artifacts, bundles those native addons into the package, packs the package, smoke-tests the tarball, then publishes with the npm dist tag derived from the release tag.
+The TypeScript workflow reads the tag from the workflow input, with `.release-tag` as a fallback, converts it to an npm-compatible version, builds native addons on Linux x64, Linux ARM64, macOS arm64, macOS x64, and Windows using the documented GitHub-hosted macOS Intel runner for x64 artifacts, bundles those native addons into the package, packs the package, smoke-tests the tarball, then publishes with the npm dist tag derived from the release tag.
 
 For prereleases, npm publish uses:
 

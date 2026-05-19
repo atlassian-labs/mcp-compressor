@@ -31,6 +31,11 @@ jobs:
             python-version: "3.11"
             manylinux-python: /opt/python/cp311-cp311/bin/python
             maturin-target: ""
+          - target: linux-aarch64-abi3
+            os: ubuntu-24.04-arm
+            python-version: "3.11"
+            manylinux-python: /opt/python/cp311-cp311/bin/python
+            maturin-target: ""
           - target: macos-arm64-abi3
             os: macos-latest
             python-version: "3.11"

@@ -27,6 +27,9 @@ jobs:
           - os: ubuntu-latest
             artifact-suffix: linux-x64-gnu
             napi-target: ""
+          - os: ubuntu-24.04-arm
+            artifact-suffix: linux-arm64-gnu
+            napi-target: ""
           - os: macos-latest
             artifact-suffix: darwin-arm64
             napi-target: ""
