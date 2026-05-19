@@ -26,6 +26,15 @@ pub struct GeneratorConfig {
     pub session_pid: u32,
     /// Directory where artifact files are written when persistence is requested.
     pub output_dir: PathBuf,
+    /// Additional existing CLI bridge entries to preserve when rendering CLI scripts.
+    pub extra_cli_bridges: Vec<CliBridgeEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CliBridgeEntry {
+    pub session_pid: u32,
+    pub bridge_url: String,
+    pub token: String,
 }
 
 /// One generated client artifact held in memory.
@@ -70,7 +79,10 @@ pub fn artifact_map(artifacts: &[GeneratedArtifact]) -> BTreeMap<String, String>
         .collect()
 }
 
-pub fn write_artifacts(artifacts: &[GeneratedArtifact], output_dir: &Path) -> Result<Vec<PathBuf>, Error> {
+pub fn write_artifacts(
+    artifacts: &[GeneratedArtifact],
+    output_dir: &Path,
+) -> Result<Vec<PathBuf>, Error> {
     fs::create_dir_all(output_dir)?;
     let mut paths = Vec::with_capacity(artifacts.len());
     for artifact in artifacts {
@@ -146,6 +158,7 @@ pub mod test_helpers {
             ],
             session_pid: 12345,
             output_dir: output_dir.to_path_buf(),
+            extra_cli_bridges: Vec::new(),
         }
     }
 

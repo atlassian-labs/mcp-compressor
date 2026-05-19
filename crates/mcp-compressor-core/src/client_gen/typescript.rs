@@ -360,6 +360,7 @@ mod tests {
             )],
             session_pid: 1,
             output_dir: dir.path().to_path_buf(),
+            extra_cli_bridges: Vec::new(),
         };
         let paths = TypeScriptGenerator.generate(&config).unwrap();
         let ts = find_ts(&paths);

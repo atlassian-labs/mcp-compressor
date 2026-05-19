@@ -62,6 +62,20 @@ def _wait_http(url: str, token: str, timeout: float = 20.0) -> None:
     raise AssertionError(f"proxy did not become ready: {url}")
 
 
+def _token_from_generated_cli(script: Path, bridge_url: str) -> str:
+    content = script.read_text()
+    if "BRIDGES = " in content:
+        bridges_line = next(line for line in content.splitlines() if line.strip().startswith("BRIDGES = "))
+        bridges = json.loads(bridges_line.split("=", 1)[1].strip())
+        for entry in bridges.values():
+            if entry.get("bridge") == bridge_url:
+                return cast("str", entry["token"])
+        if len(bridges) == 1:
+            return cast("str", next(iter(bridges.values()))["token"])
+        raise AssertionError(f"bridge token not found for {bridge_url}")
+    return content.split("TOKEN=", 1)[1].split("\n", 1)[0].strip("'\"")
+
+
 def _start_proxy_mode(
     *extra_args: str,
     script_name: str | None = "atlassian",
@@ -103,7 +117,7 @@ def _start_proxy_mode(
                 token = None
                 if script_name is not None:
                     script = Path(output_dir) / script_name
-                    token = script.read_text().split("TOKEN=", 1)[1].split("\n", 1)[0].strip("'\"")
+                    token = _token_from_generated_cli(script, bridge_url)
                     _wait_http(bridge_url, token)
                 return child, output_dir, bridge_url, token
         if child.poll() is not None:

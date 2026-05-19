@@ -18,7 +18,9 @@ fn rust_cli_help_describes_supported_modes() {
         .assert()
         .success()
         .stdout(predicate::str::contains("<URL_OR_COMMAND>"))
-        .stdout(predicate::str::contains("Backend URL or command plus backend arguments"))
+        .stdout(predicate::str::contains(
+            "Backend URL or command plus backend arguments",
+        ))
         .stdout(predicate::str::contains("--compression <COMPRESSION>"))
         .stdout(predicate::str::contains("--config <CONFIG_PATH>"))
         .stdout(predicate::str::contains(
@@ -128,7 +130,11 @@ fn rust_cli_contract_multi_server_json_config() {
 fn rust_cli_rejects_server_name_with_mcp_config() {
     let tempdir = tempfile::tempdir().unwrap();
     let config_path = tempdir.path().join("mcp.json");
-    std::fs::write(&config_path, common::mcp_config_json(&[("alpha", "alpha_server.py")])).unwrap();
+    std::fs::write(
+        &config_path,
+        common::mcp_config_json(&[("alpha", "alpha_server.py")]),
+    )
+    .unwrap();
 
     let mut cmd = core_cmd();
     cmd.args([
@@ -140,7 +146,9 @@ fn rust_cli_rejects_server_name_with_mcp_config() {
     .assert()
     .failure()
     .code(2)
-    .stderr(predicate::str::contains("--server-name cannot be used with --config"));
+    .stderr(predicate::str::contains(
+        "--server-name cannot be used with --config",
+    ));
 }
 
 #[test]
@@ -496,4 +504,60 @@ fn rust_cli_contract_just_bash_transform_mode_multi_server() {
         .stdout(predicate::str::contains("Just Bash ready"))
         .stdout(predicate::str::contains("Bridge URL:"))
         .stdout(predicate::str::contains("Session: bash"));
+}
+
+#[test]
+fn rust_cli_mode_exits_on_ctrl_c() {
+    #[cfg(unix)]
+    {
+        use std::io::{BufRead, BufReader};
+        use std::process::Stdio;
+        use std::time::{Duration, Instant};
+
+        let mut child = StdCommand::new(assert_cmd::cargo::cargo_bin("mcp-compressor"))
+            .arg("--cli-mode")
+            .arg("--server-name")
+            .arg("alpha")
+            .arg("--output-dir")
+            .arg(tempfile::tempdir().expect("tempdir").path())
+            .arg("--")
+            .arg(common::python_command())
+            .arg(common::fixture_path("alpha_server.py"))
+            .stderr(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("spawn mcp-compressor");
+
+        let stdout = child.stdout.take().expect("stdout");
+        let reader = BufReader::new(stdout);
+        let started = Instant::now();
+        let mut saw_ready = false;
+        for line in reader.lines() {
+            let line = line.expect("line");
+            if line.contains("Press Ctrl+C to stop.") {
+                saw_ready = true;
+                break;
+            }
+            if started.elapsed() > Duration::from_secs(20) {
+                break;
+            }
+        }
+        assert!(saw_ready, "CLI mode did not become ready");
+
+        unsafe {
+            libc::kill(child.id() as i32, libc::SIGINT);
+        }
+
+        let started = Instant::now();
+        loop {
+            if child.try_wait().expect("try_wait").is_some() {
+                break;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "process did not exit after SIGINT"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
 }
