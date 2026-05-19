@@ -26,73 +26,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: linux-x86_64-cp311
+          - target: linux-x86_64-abi3
             os: ubuntu-latest
             python-version: "3.11"
             manylinux-python: /opt/python/cp311-cp311/bin/python
             maturin-target: ""
-          - target: linux-x86_64-cp312
-            os: ubuntu-latest
-            python-version: "3.12"
-            manylinux-python: /opt/python/cp312-cp312/bin/python
-            maturin-target: ""
-          - target: linux-x86_64-cp313
-            os: ubuntu-latest
-            python-version: "3.13"
-            manylinux-python: /opt/python/cp313-cp313/bin/python
-            maturin-target: ""
-          - target: linux-x86_64-cp314
-            os: ubuntu-latest
-            python-version: "3.14"
-            manylinux-python: /opt/python/cp314-cp314/bin/python
-            maturin-target: ""
-          - target: macos-arm64-cp311
+          - target: macos-arm64-abi3
             os: macos-latest
             python-version: "3.11"
             maturin-target: ""
-          - target: macos-arm64-cp312
-            os: macos-latest
-            python-version: "3.12"
-            maturin-target: ""
-          - target: macos-arm64-cp313
-            os: macos-latest
-            python-version: "3.13"
-            maturin-target: ""
-          - target: macos-arm64-cp314
-            os: macos-latest
-            python-version: "3.14"
-            maturin-target: ""
-          - target: macos-x86_64-cp311
+          - target: macos-x86_64-abi3
             os: macos-15-intel
             python-version: "3.11"
             maturin-target: ""
-          - target: macos-x86_64-cp312
-            os: macos-15-intel
-            python-version: "3.12"
-            maturin-target: ""
-          - target: macos-x86_64-cp313
-            os: macos-15-intel
-            python-version: "3.13"
-            maturin-target: ""
-          - target: macos-x86_64-cp314
-            os: macos-15-intel
-            python-version: "3.14"
-            maturin-target: ""
-          - target: windows-x86_64-cp311
+          - target: windows-x86_64-abi3
             os: windows-latest
             python-version: "3.11"
-            maturin-target: ""
-          - target: windows-x86_64-cp312
-            os: windows-latest
-            python-version: "3.12"
-            maturin-target: ""
-          - target: windows-x86_64-cp313
-            os: windows-latest
-            python-version: "3.13"
-            maturin-target: ""
-          - target: windows-x86_64-cp314
-            os: windows-latest
-            python-version: "3.14"
             maturin-target: ""
     steps:
       - name: Check out release ref
@@ -276,7 +225,7 @@ jobs:
           TAG="${{ steps.prepare.outputs.tag }}"
           RELEASE_SHA="${{ steps.prepare.outputs.release_sha }}"
           echo "Waiting for publish-typescript-package workflow on release branch for $TAG at $RELEASE_SHA"
-          for attempt in $(seq 1 60); do
+          for attempt in $(seq 1 120); do
             RUN_JSON="$(gh run list \
               --workflow publish-typescript-package.yml \
               --branch release \
@@ -284,7 +233,7 @@ jobs:
               --json databaseId,status,conclusion,headSha \
               --jq '.[0] // empty')"
             if [ -z "$RUN_JSON" ]; then
-              echo "No TypeScript publish run found yet (attempt $attempt/60)"
+              echo "No TypeScript publish run found yet (attempt $attempt/120)"
               sleep 20
               continue
             fi
@@ -308,7 +257,7 @@ jobs:
             fi
             sleep 20
           done
-          echo "Timed out waiting for TypeScript publish workflow" >&2
+          echo "Timed out waiting for TypeScript publish workflow after 40 minutes" >&2
           exit 1
 
   publish-rust-crate:
