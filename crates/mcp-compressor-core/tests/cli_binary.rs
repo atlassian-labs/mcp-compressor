@@ -497,3 +497,61 @@ fn rust_cli_contract_just_bash_transform_mode_multi_server() {
         .stdout(predicate::str::contains("Bridge URL:"))
         .stdout(predicate::str::contains("Session: bash"));
 }
+
+
+#[test]
+fn rust_cli_mode_exits_on_ctrl_c() {
+    #[cfg(unix)]
+    {
+        use std::io::{BufRead, BufReader};
+        use std::process::Stdio;
+        use std::time::{Duration, Instant};
+
+        let mut child = StdCommand::new(assert_cmd::cargo::cargo_bin("mcp-compressor"))
+            .arg("--cli-mode")
+            .arg("--server-name")
+            .arg("alpha")
+            .arg("--output-dir")
+            .arg(tempfile::tempdir().expect("tempdir").path())
+            .arg("--")
+            .arg(common::python_command())
+            .arg(common::fixture_path("alpha_server.py"))
+            .stderr(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("spawn mcp-compressor");
+
+        let stdout = child.stdout.take().expect("stdout");
+        let reader = BufReader::new(stdout);
+        let started = Instant::now();
+        let mut saw_ready = false;
+        for line in reader.lines() {
+            let line = line.expect("line");
+            if line.contains("Press Ctrl+C to stop.") {
+                saw_ready = true;
+                break;
+            }
+            if started.elapsed() > Duration::from_secs(20) {
+                break;
+            }
+        }
+        assert!(saw_ready, "CLI mode did not become ready");
+
+        unsafe {
+            libc::kill(child.id() as i32, libc::SIGINT);
+        }
+
+        let started = Instant::now();
+        loop {
+            if let Some(status) = child.try_wait().expect("try_wait") {
+                assert!(status.success(), "unexpected status: {status}");
+                break;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "process did not exit after SIGINT"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+}

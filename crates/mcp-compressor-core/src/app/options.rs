@@ -94,6 +94,16 @@ pub struct CliOptions {
 }
 
 impl CliOptions {
+    pub fn is_long_lived_mode(&self) -> bool {
+        if std::env::var_os("MCP_COMPRESSOR_EXIT_AFTER_READY").is_some() {
+            return false;
+        }
+        matches!(
+            self.transform_mode(),
+            ProxyTransformMode::Cli | ProxyTransformMode::JustBash
+        )
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if self.config_path.is_some() && self.server_name.is_some() {
             return Err("--server-name cannot be used with --config; MCP config server names come from mcpServers keys".to_string());

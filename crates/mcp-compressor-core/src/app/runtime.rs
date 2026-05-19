@@ -210,5 +210,8 @@ async fn wait_until_stopped() {
         return;
     }
 
-    std::future::pending::<()>().await;
+    match tokio::signal::ctrl_c().await {
+        Ok(()) => {}
+        Err(_) => std::future::pending::<()>().await,
+    }
 }

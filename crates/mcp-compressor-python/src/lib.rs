@@ -11,10 +11,11 @@ use serde_json::Value;
 use mcp_compressor_core::compression::CompressionLevel;
 use mcp_compressor_core::ffi::{
     clear_oauth_credentials, compress_tool_listing, format_tool_schema_response,
-    generate_client_artifact_files, generate_client_artifacts, list_oauth_credentials, normalize_sdk_servers, parse_mcp_config,
-    parse_tool_argv, start_compressed_session, start_compressed_session_from_mcp_config,
-    FfiBackendConfig, FfiClientArtifactKind, FfiCompressedSession, FfiCompressedSessionConfig,
-    FfiGeneratorConfig, FfiSdkServersConfig, FfiTool,
+    generate_client_artifact_files, generate_client_artifacts, list_oauth_credentials,
+    normalize_sdk_servers, parse_mcp_config, parse_tool_argv, start_compressed_session,
+    start_compressed_session_from_mcp_config, FfiBackendConfig, FfiClientArtifactKind,
+    FfiCompressedSession, FfiCompressedSessionConfig, FfiGeneratorConfig, FfiSdkServersConfig,
+    FfiTool,
 };
 
 fn py_value_error(error: impl std::fmt::Display) -> PyErr {
@@ -34,14 +35,16 @@ struct ProviderBackendConfig {
     provider_index: Option<usize>,
 }
 
-fn provider_headers_from_python(provider: &Py<PyAny>) -> Result<BTreeMap<String, String>, mcp_compressor_core::Error> {
+fn provider_headers_from_python(
+    provider: &Py<PyAny>,
+) -> Result<BTreeMap<String, String>, mcp_compressor_core::Error> {
     Python::attach(|py| {
         let value = provider
             .call0(py)
             .map_err(|error| mcp_compressor_core::Error::Config(error.to_string()))?;
-        let dict = value
-            .downcast_bound::<PyDict>(py)
-            .map_err(|_| mcp_compressor_core::Error::Config("auth_provider must return a dict".to_string()))?;
+        let dict = value.downcast_bound::<PyDict>(py).map_err(|_| {
+            mcp_compressor_core::Error::Config("auth_provider must return a dict".to_string())
+        })?;
         let mut headers = BTreeMap::new();
         for (key, value) in dict.iter() {
             headers.insert(
@@ -82,7 +85,9 @@ fn parse_client_artifact_kind(kind: &str) -> PyResult<FfiClientArtifactKind> {
         "cli" => Ok(FfiClientArtifactKind::Cli),
         "python" => Ok(FfiClientArtifactKind::Python),
         "typescript" => Ok(FfiClientArtifactKind::TypeScript),
-        other => Err(py_value_error(format!("unsupported client artifact kind: {other}"))),
+        other => Err(py_value_error(format!(
+            "unsupported client artifact kind: {other}"
+        ))),
     }
 }
 
@@ -91,8 +96,13 @@ fn generate_client_artifacts_json(kind: &str, config_json: &str) -> PyResult<Str
     let kind = parse_client_artifact_kind(kind)?;
     let config = parse_json::<FfiGeneratorConfig>(config_json)?;
     let paths = generate_client_artifacts(kind, config).map_err(py_value_error)?;
-    serde_json::to_string(&paths.iter().map(|path| path.to_string_lossy().to_string()).collect::<Vec<_>>())
-        .map_err(py_value_error)
+    serde_json::to_string(
+        &paths
+            .iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect::<Vec<_>>(),
+    )
+    .map_err(py_value_error)
 }
 
 #[pyfunction]
@@ -105,7 +115,8 @@ fn generate_client_artifact_files_json(kind: &str, config_json: &str) -> PyResul
 
 #[pyfunction]
 fn normalize_servers_json(servers_json: &str) -> PyResult<String> {
-    let servers: FfiSdkServersConfig = serde_json::from_str(servers_json).map_err(py_value_error)?;
+    let servers: FfiSdkServersConfig =
+        serde_json::from_str(servers_json).map_err(py_value_error)?;
     serde_json::to_string(&normalize_sdk_servers(servers).map_err(py_value_error)?)
         .map_err(py_value_error)
 }
@@ -165,12 +176,15 @@ fn start_compressed_session_with_provider_backends_json(
     let backends = parse_json::<Vec<ProviderBackendConfig>>(backends_json)?;
     let mut backend_configs = Vec::new();
     for backend in backends {
-        let mut config = BackendServerConfig::new(backend.name, backend.command_or_url, backend.args);
+        let mut config =
+            BackendServerConfig::new(backend.name, backend.command_or_url, backend.args);
         if let Some(index) = backend.provider_index {
             let provider = Python::attach(|py| {
                 providers
                     .get(index)
-                    .ok_or_else(|| py_value_error(format!("auth provider index out of range: {index}")))
+                    .ok_or_else(|| {
+                        py_value_error(format!("auth provider index out of range: {index}"))
+                    })
                     .map(|provider| provider.clone_ref(py))
             })?;
             config = config
@@ -182,10 +196,12 @@ fn start_compressed_session_with_provider_backends_json(
     let runtime = tokio::runtime::Runtime::new().map_err(py_value_error)?;
     let inner = py
         .detach(|| {
-            runtime.block_on(mcp_compressor_core::ffi::start_compressed_session_with_backend_configs(
-                config,
-                backend_configs,
-            ))
+            runtime.block_on(
+                mcp_compressor_core::ffi::start_compressed_session_with_backend_configs(
+                    config,
+                    backend_configs,
+                ),
+            )
         })
         .map_err(py_value_error)?;
     Ok(PyCompressedSession { inner, runtime })
@@ -199,7 +215,10 @@ fn start_compressed_session_from_mcp_config_json(
     let config = parse_json::<FfiCompressedSessionConfig>(config_json)?;
     let runtime = tokio::runtime::Runtime::new().map_err(py_value_error)?;
     let inner = runtime
-        .block_on(start_compressed_session_from_mcp_config(config, mcp_config_json))
+        .block_on(start_compressed_session_from_mcp_config(
+            config,
+            mcp_config_json,
+        ))
         .map_err(py_value_error)?;
     Ok(PyCompressedSession { inner, runtime })
 }
@@ -212,6 +231,15 @@ fn clear_oauth_credentials_json(target: Option<&str>) -> PyResult<String> {
         .map(|path| Value::String(path.to_string_lossy().into_owned()))
         .collect::<Vec<_>>();
     serde_json::to_string(&values).map_err(py_value_error)
+}
+
+#[pyfunction]
+fn cli_needs_external_process_json(argv_json: &str) -> PyResult<bool> {
+    let argv: Vec<String> = parse_json(argv_json)?;
+    match mcp_compressor_core::app::entrypoint::parse_cli(argv) {
+        Ok(cli) => Ok(cli.is_long_lived_mode()),
+        Err(_) => Ok(false),
+    }
 }
 
 #[pyfunction]
@@ -241,14 +269,24 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(format_tool_schema_response_json, module)?)?;
     module.add_function(wrap_pyfunction!(parse_tool_argv_json, module)?)?;
     module.add_function(wrap_pyfunction!(generate_client_artifacts_json, module)?)?;
-    module.add_function(wrap_pyfunction!(generate_client_artifact_files_json, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        generate_client_artifact_files_json,
+        module
+    )?)?;
     module.add_function(wrap_pyfunction!(normalize_servers_json, module)?)?;
     module.add_function(wrap_pyfunction!(parse_mcp_config_json, module)?)?;
     module.add_function(wrap_pyfunction!(start_compressed_session_json, module)?)?;
-    module.add_function(wrap_pyfunction!(start_compressed_session_with_provider_backends_json, module)?)?;
-    module.add_function(wrap_pyfunction!(start_compressed_session_from_mcp_config_json, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        start_compressed_session_with_provider_backends_json,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        start_compressed_session_from_mcp_config_json,
+        module
+    )?)?;
     module.add_function(wrap_pyfunction!(list_oauth_credentials_json, module)?)?;
     module.add_function(wrap_pyfunction!(clear_oauth_credentials_json, module)?)?;
+    module.add_function(wrap_pyfunction!(cli_needs_external_process_json, module)?)?;
     module.add_function(wrap_pyfunction!(run_cli_json, module)?)?;
     Ok(())
 }

@@ -37,13 +37,28 @@ where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,
 {
-    let cli = CliOptions::try_parse_from(args).map_err(|error| {
-        if matches!(error.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) {
+    let cli = parse_cli(args)?;
+    run_cli(cli)
+}
+
+pub fn parse_cli<I, T>(args: I) -> Result<CliOptions, CliError>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone,
+{
+    CliOptions::try_parse_from(args).map_err(|error| {
+        if matches!(
+            error.kind(),
+            ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+        ) {
             CliError::Display(error.to_string())
         } else {
             CliError::Usage(error.to_string())
         }
-    })?;
+    })
+}
+
+pub fn run_cli(cli: CliOptions) -> Result<(), CliError> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
