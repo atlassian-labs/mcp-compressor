@@ -1,0 +1,160 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`agent-facing alpha snapshots > snapshots CLI and Just Bash help tool descriptions > cli alpha_help description 1`] = `
+"Functionality associated with the alpha toolset is provided via the \`alpha\` CLI. Do not call this tool - use the CLI instead.
+alpha - the alpha toolset
+
+When relevant, outputs from this CLI will prefer using the TOON format for more efficient representation of data.
+
+USAGE:
+  alpha <subcommand> [options]
+
+SUBCOMMANDS:
+  echo               Echo a message.
+  add                Add two integers.
+  summarize-payload  Summarize a structured payload.
+
+Run 'alpha --help' in the shell for usage.
+Run 'alpha <subcommand> --help' for per-command help.
+Run 'alpha <subcommand> [options]' to invoke a tool."
+`;
+
+exports[`agent-facing alpha snapshots > snapshots CLI and Just Bash help tool descriptions > just bash alpha echo output 1`] = `"alpha:snapshot"`;
+
+exports[`agent-facing alpha snapshots > snapshots CLI and Just Bash help tool descriptions > just bash alpha_help description 1`] = `
+"Functionality associated with the alpha toolset is provided via the \`alpha\` CLI. Do not call this tool - use the CLI instead.
+alpha - the alpha toolset
+
+When relevant, outputs from this CLI will prefer using the TOON format for more efficient representation of data.
+
+USAGE:
+  alpha <subcommand> [options]
+
+SUBCOMMANDS:
+  echo               Echo a message.
+  add                Add two integers.
+  summarize-payload  Summarize a structured payload.
+
+Run 'alpha --help' in the shell for usage.
+Run 'alpha <subcommand> --help' for per-command help.
+Run 'alpha <subcommand> [options]' to invoke a tool."
+`;
+
+exports[`agent-facing alpha snapshots > snapshots CLI command help and invocation output for host-owned tools > alpha --help 1`] = `
+"alpha - the alpha toolset
+
+When relevant, outputs from this CLI will prefer using the TOON format for more efficient representation of data.
+
+USAGE:
+  alpha <subcommand> [options]
+
+SUBCOMMANDS:
+  echo                                Echo a message.
+  add                                 Add two integers.
+  summarize-payload                   Summarize a structured payload.
+
+Run 'alpha <subcommand> --help' for subcommand usage."
+`;
+
+exports[`agent-facing alpha snapshots > snapshots CLI command help and invocation output for host-owned tools > alpha echo --help 1`] = `
+"alpha echo
+
+Echo a message.
+
+USAGE:
+  alpha echo --message <value>
+
+OPTIONS:
+  --message                    <string>  required — Message to echo"
+`;
+
+exports[`agent-facing alpha snapshots > snapshots Python and TypeScript code-mode help descriptions > python code alpha_help description 1`] = `
+"Functionality associated with the alpha toolset is provided via a Python module. Do not call this tool - import and use the python functionality instead.
+alpha - the alpha toolset
+
+Python source code is available in <python-dir>/alpha.py
+
+Available functions:
+  echo               Echo a message.
+  add                Add two integers.
+  summarize_payload  Summarize a structured payload.
+
+For details on a specific function, run:
+\`\`\`python
+from alpha import <function>
+print(help(<function>))
+\`\`\`"
+`;
+
+exports[`agent-facing alpha snapshots > snapshots Python and TypeScript code-mode help descriptions > typescript code alpha_help description 1`] = `
+"Functionality associated with the alpha toolset is provided via a TypeScript module. Do not call this tool - import and use the typescript functionality instead.
+alpha - the alpha toolset
+
+TypeScript source code is available in <ts-dir>/alpha.ts
+
+Available functions:
+  echo              Echo a message.
+  add               Add two integers.
+  summarizePayload  Summarize a structured payload.
+
+For details on a specific function, inspect the TypeScript declarations or editor hover documentation.
+Primary declarations: <ts-dir>/alpha.d.ts"
+`;
+
+exports[`agent-facing alpha snapshots > snapshots camelCase tool and property names as kebab-case CLI affordances > atlassian-like subcommand help 1`] = `
+"atlassian search-jira-issues-using-jql
+
+Search issues with JQL
+
+USAGE:
+  atlassian search-jira-issues-using-jql --cloud-id <value> --jql <value> --max-results <value> --next-page-token <value>
+
+OPTIONS:
+  --cloud-id                   <string>  required — Cloud ID
+  --jql                        <string>  required — JQL query
+  --max-results                <number>  optional — Max results
+  --next-page-token            <string>  optional — Page token"
+`;
+
+exports[`agent-facing alpha snapshots > snapshots camelCase tool and property names as kebab-case CLI affordances > atlassian-like top-level help 1`] = `
+"atlassian - the atlassian toolset
+
+When relevant, outputs from this CLI will prefer using the TOON format for more efficient representation of data.
+
+USAGE:
+  atlassian <subcommand> [options]
+
+SUBCOMMANDS:
+  search-jira-issues-using-jql        Search issues with JQL
+
+Run 'atlassian <subcommand> --help' for subcommand usage."
+`;
+
+exports[`agent-facing alpha snapshots > snapshots standard compressed tool descriptions and responses > compressed get schema response 1`] = `
+"<tool>echo(message): Echo a message.</tool>
+
+{
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Message to echo"
+    }
+  },
+  "required": [
+    "message"
+  ]
+}"
+`;
+
+exports[`agent-facing alpha snapshots > snapshots standard compressed tool descriptions and responses > compressed invoke response 1`] = `"alpha:snapshot"`;
+
+exports[`agent-facing alpha snapshots > snapshots standard compressed tool descriptions and responses > compressed tool descriptions 1`] = `
+{
+  "alpha_get_tool_schema": "Get the complete schema and description for one tool. Available tools:
+<tool>echo(message): Echo a message</tool>
+<tool>add(a, b): Add two integers</tool>
+<tool>summarize_payload(items, metadata, include_details): Summarize a structured payload</tool>",
+  "alpha_invoke_tool": "Invoke one tool by name with JSON input.",
+}
+`;
