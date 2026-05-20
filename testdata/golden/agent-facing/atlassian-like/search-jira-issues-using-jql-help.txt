@@ -1,0 +1,12 @@
+atlassian search-jira-issues-using-jql
+
+Search issues with JQL
+
+USAGE:
+  atlassian search-jira-issues-using-jql --cloud-id <value> --jql <value> --max-results <value> --next-page-token <value>
+
+OPTIONS:
+  --cloud-id                   <string>  required — Cloud ID
+  --jql                        <string>  required — JQL query
+  --max-results                <number>  optional — Max results
+  --next-page-token            <string>  optional — Page token

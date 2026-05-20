@@ -351,3 +351,121 @@ async fn generated_typescript_module_invokes_real_proxy_and_backend() {
         "alpha:hello"
     );
 }
+
+fn golden(relative_path: &str) -> String {
+    std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("testdata/golden")
+            .join(relative_path),
+    )
+    .unwrap()
+    .trim_end()
+    .to_string()
+}
+
+fn alpha_golden_tools() -> Vec<mcp_compressor_core::compression::engine::Tool> {
+    vec![
+        mcp_compressor_core::compression::engine::Tool::new(
+            "echo",
+            Some("Echo a message.".to_string()),
+            serde_json::json!({
+                "type": "object",
+                "properties": { "message": { "type": "string", "description": "Message to echo" } },
+                "required": ["message"]
+            }),
+        ),
+        mcp_compressor_core::compression::engine::Tool::new(
+            "add",
+            Some("Add two integers.".to_string()),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "a": { "type": "integer", "description": "Left operand" },
+                    "b": { "type": "integer", "description": "Right operand" }
+                },
+                "required": ["a", "b"]
+            }),
+        ),
+        mcp_compressor_core::compression::engine::Tool::new(
+            "summarize_payload",
+            Some("Summarize a structured payload.".to_string()),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "items": { "type": "array", "items": { "type": "string" }, "description": "Items to summarize" },
+                    "metadata": { "type": "object", "description": "Arbitrary metadata" },
+                    "include_details": { "type": "boolean", "description": "Include detailed rows" }
+                },
+                "required": ["items"]
+            }),
+        ),
+    ]
+}
+
+fn atlassian_like_golden_tools() -> Vec<mcp_compressor_core::compression::engine::Tool> {
+    vec![mcp_compressor_core::compression::engine::Tool::new(
+        "searchJiraIssuesUsingJql",
+        Some("Search issues with JQL".to_string()),
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "cloudId": { "type": "string", "description": "Cloud ID" },
+                "jql": { "type": "string", "description": "JQL query" },
+                "maxResults": { "type": "number", "description": "Max results" },
+                "nextPageToken": { "type": "string", "description": "Page token" }
+            },
+            "required": ["cloudId", "jql"]
+        }),
+    )]
+}
+
+fn generate_cli_script(cli_name: &str, tools: Vec<mcp_compressor_core::compression::engine::Tool>) -> tempfile::TempDir {
+    let tempdir = tempfile::tempdir().unwrap();
+    let config = GeneratorConfig {
+        cli_name: cli_name.to_string(),
+        bridge_url: "http://127.0.0.1:1".to_string(),
+        token: "token".to_string(),
+        tools,
+        session_pid: std::process::id(),
+        output_dir: tempdir.path().to_path_buf(),
+        extra_cli_bridges: Vec::new(),
+    };
+    CliGenerator.generate(&config).unwrap();
+    tempdir
+}
+
+fn run_generated_script(script: &std::path::Path, args: &[&str]) -> String {
+    let output = Command::new(script).args(args).output().unwrap();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap().trim_end().to_string()
+}
+
+#[test]
+fn rust_generated_alpha_cli_matches_shared_golden_help() {
+    let tempdir = generate_cli_script("alpha", alpha_golden_tools());
+    let script = tempdir.path().join("alpha");
+    assert_eq!(run_generated_script(&script, &["--help"]), golden("agent-facing/cli/alpha-help.txt"));
+    assert_eq!(
+        run_generated_script(&script, &["echo", "--help"]),
+        golden("agent-facing/cli/alpha-echo-help.txt")
+    );
+}
+
+#[test]
+fn rust_generated_atlassian_like_cli_matches_shared_golden_help() {
+    let tempdir = generate_cli_script("atlassian", atlassian_like_golden_tools());
+    let script = tempdir.path().join("atlassian");
+    assert_eq!(
+        run_generated_script(&script, &["--help"]),
+        golden("agent-facing/atlassian-like/atlassian-help.txt")
+    );
+    assert_eq!(
+        run_generated_script(&script, &["search-jira-issues-using-jql", "--help"]),
+        golden("agent-facing/atlassian-like/search-jira-issues-using-jql-help.txt")
+    );
+}
