@@ -298,7 +298,7 @@ fn format_subcommands(tools: &[FfiTool], name_for_tool: fn(&str) -> String) -> V
 }
 
 fn cli_subcommand_name(tool_name: &str) -> String {
-    tool_name.replace('_', "-")
+    crate::cli::mapping::tool_name_to_subcommand(tool_name)
 }
 
 fn compact_description(description: Option<&str>) -> String {
@@ -407,6 +407,27 @@ mod tests {
         assert_eq!(plan.help_tool_name, "alpha_help");
         assert!(plan.help_description.contains("Functionality associated with the alpha toolset is provided via the `alpha` CLI."));
         assert!(plan.help_description.contains("  echo-message  Echo a message."));
+    }
+
+    #[test]
+    fn cli_plan_uses_kebab_case_for_camel_case_tool_names() {
+        let plan = build_host_transform_plan(FfiHostTransformConfig {
+            kind: FfiHostTransformKind::Cli,
+            server_name: "atlassian".to_string(),
+            tools: vec![
+                tool("atlassianUserInfo", "Get current user info."),
+                tool("getAccessibleAtlassianResources", "Get accessible resources."),
+            ],
+            output_dir: Some(PathBuf::from("./target/tmp-host-plan-camel-cli")),
+            command_name: Some("atlassian".to_string()),
+            bridge_url: Some("http://127.0.0.1:1".to_string()),
+            token: Some("token".to_string()),
+            session_pid: Some(1),
+        }).unwrap();
+        assert!(plan.help_description.contains("  atlassian-user-info"));
+        assert!(plan.help_description.contains("  get-accessible-atlassian-resources"));
+        assert!(!plan.help_description.contains("atlassianUserInfo"));
+        assert!(!plan.help_description.contains("getAccessibleAtlassianResources"));
     }
 
     #[test]
