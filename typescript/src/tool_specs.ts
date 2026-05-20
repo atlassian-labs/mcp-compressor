@@ -24,9 +24,17 @@ export function normalizeServerName(name: string | undefined): string {
 
 export function stringifyToolResult(value: unknown): string {
   if (typeof value === "string") return value;
-  const mcpText = stringifyMcpTextContent(value);
+  const unwrapped = unwrapSingleResultWrapper(value);
+  if (typeof unwrapped === "string") return unwrapped;
+  const mcpText = stringifyMcpTextContent(unwrapped);
   if (mcpText !== undefined) return mcpText;
-  return JSON.stringify(value);
+  return JSON.stringify(unwrapped);
+}
+
+function unwrapSingleResultWrapper(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const entries = Object.entries(value as Record<string, unknown>);
+  return entries.length === 1 && entries[0]?.[0] === "result" ? entries[0][1] : value;
 }
 
 function stringifyMcpTextContent(value: unknown): string | undefined {
