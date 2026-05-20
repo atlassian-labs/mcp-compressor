@@ -10,11 +10,12 @@ use serde_json::Value;
 use mcp_compressor_core::compression::CompressionLevel;
 use mcp_compressor_core::ffi::{
     clear_oauth_credentials, compress_tool_listing, format_tool_schema_response,
-    generate_client_artifact_files, generate_client_artifacts, list_oauth_credentials,
-    maybe_toonify_output, normalize_sdk_servers, parse_mcp_config, parse_tool_argv,
+    build_host_transform_plan, generate_client_artifact_files, generate_client_artifacts,
+    list_oauth_credentials, maybe_toonify_output, normalize_host_tool_result,
+    normalize_sdk_servers, parse_mcp_config, parse_tool_argv,
     remember_oauth_backend, start_compressed_session, start_compressed_session_from_mcp_config,
     FfiBackendConfig, FfiClientArtifactKind, FfiCompressedSession, FfiCompressedSessionConfig,
-    FfiGeneratorConfig, FfiSdkServersConfig, FfiTool,
+    FfiGeneratorConfig, FfiHostTransformConfig, FfiSdkServersConfig, FfiTool,
 };
 
 fn napi_error(error: impl std::fmt::Display) -> NapiError {
@@ -103,6 +104,20 @@ pub fn generate_client_artifact_files_json(
     let config = parse_json::<FfiGeneratorConfig>(&config_json)?;
     let files = generate_client_artifact_files(kind, config).map_err(napi_error)?;
     serde_json::to_string(&files).map_err(napi_error)
+}
+
+
+#[napi]
+pub fn build_host_transform_plan_json(config_json: String) -> napi::Result<String> {
+    let config = parse_json::<FfiHostTransformConfig>(&config_json)?;
+    let plan = build_host_transform_plan(config).map_err(napi_error)?;
+    serde_json::to_string(&plan).map_err(napi_error)
+}
+
+#[napi]
+pub fn normalize_host_tool_result_json(value_json: String, toonify: bool) -> napi::Result<String> {
+    let value = parse_json::<Value>(&value_json)?;
+    Ok(normalize_host_tool_result(value, toonify))
 }
 
 #[napi]

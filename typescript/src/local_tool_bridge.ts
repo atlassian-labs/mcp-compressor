@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
 
 import type { ExecutableTool } from "./adapters.js";
-import { stringifyToolResult } from "./tool_specs.js";
+import { normalizeHostToolResult } from "./rust_core.js";
 
 export interface LocalToolBridge {
   bridgeUrl: string;
@@ -45,7 +45,7 @@ export async function startLocalToolBridge(
       const result = await tool.execute(body.input ?? body.tool_input ?? {});
       response
         .writeHead(200, { "content-type": "application/json" })
-        .end(JSON.stringify({ result: stringifyToolResult(result) }));
+        .end(JSON.stringify({ result: normalizeHostToolResult(result, false) }));
     } catch (error) {
       response
         .writeHead(500, { "content-type": "application/json" })

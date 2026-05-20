@@ -6,6 +6,7 @@
 
 pub mod client_gen;
 pub mod dto;
+pub mod host_transform;
 pub mod oauth;
 pub mod pure;
 pub mod session;
@@ -15,6 +16,10 @@ mod types;
 pub use client_gen::{
     generate_client_artifact_files, generate_client_artifacts, maybe_toonify_output,
     render_client_artifacts, FfiClientArtifactKind,
+};
+pub use host_transform::{
+    build_host_transform_plan, normalize_host_tool_result, FfiHostJustBashCommandPlan,
+    FfiHostJustBashPlan, FfiHostTransformConfig, FfiHostTransformKind, FfiHostTransformPlan,
 };
 pub use dto::{
     FfiBackendConfig, FfiCompressedSessionConfig, FfiCompressedSessionInfo, FfiGeneratorConfig,

@@ -13,6 +13,8 @@ export interface NativeCore {
   parseToolArgvJson(toolJson: string, argvJson: string): string;
   generateClientArtifactsJson(kind: string, configJson: string): string;
   generateClientArtifactFilesJson(kind: string, configJson: string): string;
+  buildHostTransformPlanJson(configJson: string): string;
+  normalizeHostToolResultJson(valueJson: string, toonify: boolean): string;
   normalizeServersJson(serversJson: string): string;
   parseMcpConfigJson(configJson: string): string;
   rememberOauthBackendJson(backendUri: string, backendName: string, storeDir: string): void;
