@@ -1,0 +1,4 @@
+{
+  "alpha_get_tool_schema": "Get the complete schema and description for one tool. Available tools:\n<tool>echo(message): Echo a message</tool>\n<tool>add(a, b): Add two integers</tool>\n<tool>summarize_payload(items, metadata, include_details): Summarize a structured payload</tool>",
+  "alpha_invoke_tool": "Invoke one tool by name with JSON input."
+}

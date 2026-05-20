@@ -1,0 +1,16 @@
+Functionality associated with the alpha toolset is provided via the `alpha` CLI. Do not call this tool - use the CLI instead.
+alpha - the alpha toolset
+
+When relevant, outputs from this CLI will prefer using the TOON format for more efficient representation of data.
+
+USAGE:
+  alpha <subcommand> [options]
+
+SUBCOMMANDS:
+  echo               Echo a message.
+  add                Add two integers.
+  summarize-payload  Summarize a structured payload.
+
+Run 'alpha --help' in the shell for usage.
+Run 'alpha <subcommand> --help' for per-command help.
+Run 'alpha <subcommand> [options]' to invoke a tool.

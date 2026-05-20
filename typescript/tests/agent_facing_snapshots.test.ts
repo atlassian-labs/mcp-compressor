@@ -76,6 +76,17 @@ function runScript(scriptPath: string, args: readonly string[]): string {
   return execFileSync(scriptPath, [...args], { encoding: "utf8" }).trimEnd();
 }
 
+function golden(relativePath: string): string {
+  return readFileSync(
+    join(process.cwd(), "..", "testdata", "golden", relativePath),
+    "utf8",
+  ).trimEnd();
+}
+
+function toStableJson(value: unknown): string {
+  return JSON.stringify(value, Object.keys(value as Record<string, unknown>).sort(), 2);
+}
+
 describe("agent-facing alpha snapshots", () => {
   it("snapshots CLI command help and invocation output for host-owned tools", async () => {
     const outputDir = mkdtempSync(join(tmpdir(), "mcp-alpha-cli-snapshot-"));
@@ -85,8 +96,10 @@ describe("agent-facing alpha snapshots", () => {
     });
     try {
       const scriptPath = join(outputDir, "alpha");
-      expect(runScript(scriptPath, ["--help"])).toMatchSnapshot("alpha --help");
-      expect(runScript(scriptPath, ["echo", "--help"])).toMatchSnapshot("alpha echo --help");
+      expect(runScript(scriptPath, ["--help"])).toBe(golden("agent-facing/cli/alpha-help.txt"));
+      expect(runScript(scriptPath, ["echo", "--help"])).toBe(
+        golden("agent-facing/cli/alpha-echo-help.txt"),
+      );
     } finally {
       transform.close();
     }
@@ -101,14 +114,14 @@ describe("agent-facing alpha snapshots", () => {
       const cliDescription = normalizePaths(cli.tools.alpha_help?.description ?? "", {
         [outputDir]: "<cli-dir>",
       });
-      expect(cliDescription).toMatchSnapshot("cli alpha_help description");
+      expect(cliDescription).toBe(golden("agent-facing/cli/alpha-help-tool-description.txt"));
       expect(justBash.tools.alpha_help?.description).toBe(cli.tools.alpha_help?.description);
-      expect(justBash.tools.alpha_help?.description).toMatchSnapshot(
-        "just bash alpha_help description",
+      expect(justBash.tools.alpha_help?.description).toBe(
+        golden("agent-facing/cli/alpha-help-tool-description.txt"),
       );
 
       const bashResult = await bash.exec("alpha echo --message snapshot");
-      expect(bashResult.stdout.trimEnd()).toMatchSnapshot("just bash alpha echo output");
+      expect(bashResult.stdout.trimEnd()).toBe(golden("agent-facing/cli/alpha-echo-output.txt"));
     } finally {
       cli.close();
     }
@@ -138,9 +151,11 @@ describe("agent-facing alpha snapshots", () => {
     );
     try {
       const scriptPath = join(outputDir, "atlassian");
-      expect(runScript(scriptPath, ["--help"])).toMatchSnapshot("atlassian-like top-level help");
-      expect(runScript(scriptPath, ["search-jira-issues-using-jql", "--help"])).toMatchSnapshot(
-        "atlassian-like subcommand help",
+      expect(runScript(scriptPath, ["--help"])).toBe(
+        golden("agent-facing/atlassian-like/atlassian-help.txt"),
+      );
+      expect(runScript(scriptPath, ["search-jira-issues-using-jql", "--help"])).toBe(
+        golden("agent-facing/atlassian-like/search-jira-issues-using-jql-help.txt"),
       );
     } finally {
       transform.close();
@@ -163,10 +178,10 @@ describe("agent-facing alpha snapshots", () => {
     try {
       expect(
         normalizePaths(python.tools.alpha_help?.description ?? "", { [pythonDir]: "<python-dir>" }),
-      ).toMatchSnapshot("python code alpha_help description");
+      ).toBe(golden("agent-facing/code/alpha-python-help-tool-description.txt"));
       expect(
         normalizePaths(typescript.tools.alpha_help?.description ?? "", { [tsDir]: "<ts-dir>" }),
-      ).toMatchSnapshot("typescript code alpha_help description");
+      ).toBe(golden("agent-facing/code/alpha-typescript-help-tool-description.txt"));
 
       expect(readFileSync(join(pythonDir, "alpha.py"), "utf8")).toContain('"""Echo a message."""');
       expect(readFileSync(join(tsDir, "alpha.d.ts"), "utf8")).toContain("Echo a message.");
@@ -182,20 +197,22 @@ describe("agent-facing alpha snapshots", () => {
       namePrefix: "alpha",
     });
     expect(
-      Object.fromEntries(
-        Object.entries(compressed).map(([name, tool]) => [name, tool.description]),
+      toStableJson(
+        Object.fromEntries(
+          Object.entries(compressed).map(([name, tool]) => [name, tool.description]),
+        ),
       ),
-    ).toMatchSnapshot("compressed tool descriptions");
+    ).toBe(golden("agent-facing/compressed/alpha-tool-descriptions.json"));
 
-    await expect(
-      compressed.alpha_get_tool_schema?.execute({ tool_name: "echo" }),
-    ).resolves.toMatchSnapshot("compressed get schema response");
+    await expect(compressed.alpha_get_tool_schema?.execute({ tool_name: "echo" })).resolves.toBe(
+      golden("agent-facing/compressed/alpha-get-schema-echo.txt"),
+    );
 
     await expect(
       compressed.alpha_invoke_tool?.execute({
         tool_name: "echo",
         tool_input: { message: "snapshot" },
       }),
-    ).resolves.toMatchSnapshot("compressed invoke response");
+    ).resolves.toBe(golden("agent-facing/compressed/alpha-invoke-echo.txt"));
   });
 });

@@ -1,0 +1,9 @@
+alpha echo
+
+Echo a message.
+
+USAGE:
+  alpha echo --message <value>
+
+OPTIONS:
+  --message                    <string>  required — Message to echo

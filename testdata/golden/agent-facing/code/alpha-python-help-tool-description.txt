@@ -1,0 +1,15 @@
+Functionality associated with the alpha toolset is provided via a Python module. Do not call this tool - import and use the python functionality instead.
+alpha - the alpha toolset
+
+Python source code is available in <python-dir>/alpha.py
+
+Available functions:
+  echo               Echo a message.
+  add                Add two integers.
+  summarize_payload  Summarize a structured payload.
+
+For details on a specific function, run:
+```python
+from alpha import <function>
+print(help(<function>))
+```
