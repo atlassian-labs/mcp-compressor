@@ -594,6 +594,46 @@ describe("local TypeScript tool compression", () => {
     }
   });
 
+  it("stringifies MCP text content results for generated CLI bridges", async () => {
+    const outputDir = join(tmpdir(), "mcp-cli-mcp-text-result");
+    const transform = await transformToolsForCliMode(
+      {
+        user_info: {
+          name: "user_info",
+          description: "Get user info.",
+          inputSchema: { type: "object", properties: {} },
+          execute: async (): Promise<unknown> => ({
+            content: [
+              {
+                type: "text",
+                text: '{"accountId":"abc-123","displayName":"Ada Lovelace"}',
+              },
+            ],
+          }),
+        },
+      },
+      { serverName: "alpha", outputDir },
+    );
+    try {
+      const execResponse = await fetch(`${transform.bridgeUrl}/exec`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${transform.token}`,
+        },
+        body: JSON.stringify({ tool: "user_info", input: {} }),
+      });
+      expect(execResponse.status).toBe(200);
+      const execBody = (await execResponse.json()) as { result: string };
+      expect(execBody.result).not.toContain("[object Object]");
+      expect(execBody.result).not.toContain('"content"');
+      expect(execBody.result).toContain("abc-123");
+      expect(execBody.result).toContain("Ada Lovelace");
+    } finally {
+      transform.close();
+    }
+  });
+
   it("defaults CLI transform output to a user PATH directory", async () => {
     const previousHome = process.env.HOME;
     const home = mkdtempSync(join(tmpdir(), "mcp-cli-home-"));

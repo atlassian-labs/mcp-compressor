@@ -23,7 +23,22 @@ export function normalizeServerName(name: string | undefined): string {
 }
 
 export function stringifyToolResult(value: unknown): string {
-  return typeof value === "string" ? value : JSON.stringify(value);
+  if (typeof value === "string") return value;
+  const mcpText = stringifyMcpTextContent(value);
+  if (mcpText !== undefined) return mcpText;
+  return JSON.stringify(value);
+}
+
+function stringifyMcpTextContent(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const content = (value as { readonly content?: unknown }).content;
+  if (!Array.isArray(content)) return undefined;
+  const textParts = content.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const candidate = item as { readonly type?: unknown; readonly text?: unknown };
+    return candidate.type === "text" && typeof candidate.text === "string" ? [candidate.text] : [];
+  });
+  return textParts.length > 0 ? textParts.join("\n") : undefined;
 }
 
 export function normalizeStructuredArgValues(
