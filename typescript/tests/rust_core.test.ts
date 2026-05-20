@@ -566,6 +566,8 @@ describe("local TypeScript tool compression", () => {
         "Functionality associated with the alpha toolset is provided via the `alpha` CLI.",
       );
       expect(helpTool?.description).toContain("USAGE:");
+      expect(helpTool?.description).toContain("SUBCOMMANDS:");
+      expect(helpTool?.description).toContain("  echo  Echo a message.");
       expect(helpTool?.description).toContain("Run 'alpha --help' in the shell for usage.");
       expect(helpTool?.description).not.toContain("PATH hint");
       expect(helpTool?.description).not.toContain("CLI Mode");

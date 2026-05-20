@@ -133,6 +133,7 @@ async function generatedTransform(
     outputDir: options.outputDir,
     files: Object.keys(generated.files),
     commandName: options.commandName,
+    tools: executableToolsToSpecs(tools),
   });
   return {
     ...generated,
@@ -167,10 +168,11 @@ function generatedHelpDescription(options: {
   outputDir: string;
   files: string[];
   commandName?: string;
+  tools: ReturnType<typeof executableToolsToSpecs>;
 }): string {
   if (options.kind === "cli") {
     const command = options.commandName ?? `${options.outputDir}/${options.serverName}`;
-    return cliHelpDescription(command, options.serverName);
+    return cliHelpDescription(command, options.serverName, options.tools);
   }
 
   const language = options.kind === "python" ? "Python" : "TypeScript";
@@ -190,7 +192,11 @@ function generatedHelpDescription(options: {
   ].join("\n");
 }
 
-function cliHelpDescription(command: string, cliName: string): string {
+function cliHelpDescription(
+  command: string,
+  cliName: string,
+  tools: ReturnType<typeof executableToolsToSpecs>,
+): string {
   return [
     `Functionality associated with the ${cliName} toolset is provided via the \`${command}\` CLI. Do not call this tool - use the CLI instead.`,
     `${cliName} - the ${cliName} toolset`,
@@ -201,12 +207,29 @@ function cliHelpDescription(command: string, cliName: string): string {
     `  ${command} <subcommand> [options]`,
     "",
     "SUBCOMMANDS:",
-    `  Run '${command} --help' in the shell for available subcommands.`,
+    ...formatSubcommands(tools),
     "",
     `Run '${command} --help' in the shell for usage.`,
     `Run '${command} <subcommand> --help' for per-command help.`,
     `Run '${command} <subcommand> [options]' to invoke a tool.`,
   ].join("\n");
+}
+
+function formatSubcommands(tools: ReturnType<typeof executableToolsToSpecs>): string[] {
+  const maxNameLength = Math.max(...tools.map((tool) => cliSubcommandName(tool.name).length), 0);
+  return tools.map((tool) => {
+    const subcommand = cliSubcommandName(tool.name);
+    const description = compactDescription(tool.description ?? undefined);
+    return `  ${subcommand.padEnd(maxNameLength + 2)}${description}`.trimEnd();
+  });
+}
+
+function cliSubcommandName(toolName: string): string {
+  return toolName.replaceAll("_", "-");
+}
+
+function compactDescription(description?: string): string {
+  return (description ?? "").replace(/\s+/g, " ").trim();
 }
 
 function justBashHelpDescription(
