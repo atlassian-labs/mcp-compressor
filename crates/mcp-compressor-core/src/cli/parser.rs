@@ -57,7 +57,9 @@ pub fn parse_argv(argv: &[String], tool: &Tool) -> Result<serde_json::Value, Err
             )));
         }
 
-        let (property_name, forced_bool) = parse_flag_name(arg);
+        let (flag_property_name, forced_bool) = parse_flag_name(arg);
+        let property_name = resolve_property_name(&properties, &flag_property_name)
+            .ok_or_else(|| Error::Parse(format!("unknown flag: {arg}")))?;
         let schema = properties
             .get(&property_name)
             .ok_or_else(|| Error::Parse(format!("unknown flag: {arg}")))?;
@@ -132,6 +134,28 @@ fn parse_flag_name(flag: &str) -> (String, Option<bool>) {
 
 fn flag_to_property_name(flag: &str) -> String {
     flag.replace('-', "_")
+}
+
+fn resolve_property_name(
+    properties: &serde_json::Map<String, Value>,
+    flag_property_name: &str,
+) -> Option<String> {
+    if properties.contains_key(flag_property_name) {
+        return Some(flag_property_name.to_string());
+    }
+    let canonical = canonical_property_name(flag_property_name);
+    properties
+        .keys()
+        .find(|property| canonical_property_name(property) == canonical)
+        .cloned()
+}
+
+fn canonical_property_name(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| *ch != '-' && *ch != '_')
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 fn schema_type(schema: &Value) -> Option<&str> {

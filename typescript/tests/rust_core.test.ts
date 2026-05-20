@@ -594,6 +594,40 @@ describe("local TypeScript tool compression", () => {
     }
   });
 
+  it("renders camelCase schema properties as kebab-case CLI flags", async () => {
+    const outputDir = join(tmpdir(), "mcp-cli-camel-flags");
+    const transform = await transformToolsForCliMode(
+      {
+        searchJiraIssuesUsingJql: {
+          name: "searchJiraIssuesUsingJql",
+          description: "Search issues with JQL",
+          inputSchema: {
+            type: "object",
+            properties: {
+              cloudId: { type: "string", description: "Cloud ID" },
+              jql: { type: "string", description: "JQL query" },
+              maxResults: { type: "number", description: "Max results" },
+              nextPageToken: { type: "string", description: "Page token" },
+            },
+            required: ["cloudId", "jql"],
+          },
+          execute: async (): Promise<unknown> => "ok",
+        },
+      },
+      { serverName: "atlassian", outputDir },
+    );
+    try {
+      const script = transform.files.atlassian ?? "";
+      expect(script).toContain("--cloud-id <value>");
+      expect(script).toContain("--max-results <value>");
+      expect(script).toContain("--next-page-token <value>");
+      expect(script).not.toContain("--cloudId");
+      expect(script).not.toContain("--maxResults");
+    } finally {
+      transform.close();
+    }
+  });
+
   it("renders camelCase tool names as kebab-case CLI subcommands", async () => {
     const outputDir = join(tmpdir(), "mcp-cli-camel-subcommands");
     const transform = await transformToolsForCliMode(
