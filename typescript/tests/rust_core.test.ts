@@ -491,17 +491,17 @@ describe("local TypeScript tool compression", () => {
     );
 
     expect(Object.keys(result.tools)).toEqual(["alpha_help"]);
-    expect(result.registrations.map((registration) => registration.commandName)).toEqual([
-      "alpha_echo",
-    ]);
-    const commandResult = await bash.exec("alpha_echo --message bash");
-    expect(commandResult.exitCode).toBe(0);
+    expect(result.registrations.map((registration) => registration.commandName)).toEqual(["alpha"]);
+    const commandResult = await bash.exec("alpha echo --message bash");
+    if (commandResult.exitCode !== 0) {
+      throw new Error(`Just Bash failed: ${commandResult.stderr}`);
+    }
     expect(commandResult.stdout).toContain("rows[1]{message,ok}:");
     expect(commandResult.stdout).toContain("bash,true");
     expect(result.tools.alpha_help?.description).toContain(
       "Functionality associated with the alpha toolset is provided via the `alpha` CLI.",
     );
-    expect(result.tools.alpha_help?.description).toContain("alpha_echo");
+    expect(result.tools.alpha_help?.description).toContain("echo  Echo a message.");
     await expect(result.tools.alpha_help?.execute()).resolves.toBe(
       result.tools.alpha_help?.description,
     );
@@ -1022,9 +1022,9 @@ describe("Rust native core wrapper", () => {
       const bash = new Bash({ customCommands: [] });
       const registrations = installJustBashCommands(bash, bashProxy);
       expect(registrations.map((registration) => registration.commandName)).toEqual(
-        expect.arrayContaining(["alpha_echo", "beta_echo"]),
+        expect.arrayContaining(["alpha", "beta"]),
       );
-      const result = await bash.exec("alpha_echo --message via-bash");
+      const result = await bash.exec("alpha echo --message via-bash");
       expect(result.exitCode).toBe(0);
       expect(result.stdout.trim()).toBe("alpha:via-bash");
     } finally {

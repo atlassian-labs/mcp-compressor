@@ -60,7 +60,7 @@ export function transformToolsForJustBash(
     command: serverName,
     cliName: serverName,
     tools: executableToolsToSpecs(tools),
-    commandNameForTool: (toolName) => `${serverName}_${toolName}`,
+    commandNameForTool: cliSubcommandName,
   });
   return {
     registrations,

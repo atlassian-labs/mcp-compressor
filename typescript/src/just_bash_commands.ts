@@ -24,21 +24,44 @@ export interface JustBashCommandSource {
 export function createJustBashCommandRegistrations(
   sources: JustBashCommandSource[],
 ): JustBashCommandRegistration[] {
-  return sources.map((source) => ({
-    providerName: source.providerName,
-    commandName: source.commandName,
-    backendToolName: source.backendToolName,
-    helpToolName: source.helpToolName,
-    command: defineCommand(source.commandName, async (args) => {
-      try {
-        const parsedInput = parseToolArgv(source.tool, args);
-        const toolInput = normalizeStructuredArgValues(source.tool.inputSchema, parsedInput);
-        return output(await source.invoke(toolInput));
-      } catch (error) {
-        return failure(error);
-      }
-    }),
-  }));
+  const grouped = new Map<string, JustBashCommandSource[]>();
+  for (const source of sources) {
+    grouped.set(source.providerName, [...(grouped.get(source.providerName) ?? []), source]);
+  }
+
+  return [...grouped.entries()].map(([providerName, providerSources]) => {
+    const bySubcommand = new Map(
+      providerSources.flatMap((source) => [
+        [source.commandName, source] as const,
+        [source.backendToolName.replaceAll("_", "-"), source] as const,
+        [source.backendToolName, source] as const,
+      ]),
+    );
+    const first = providerSources[0];
+    return {
+      providerName,
+      commandName: providerName,
+      backendToolName: providerName,
+      helpToolName: first?.helpToolName ?? `${providerName}_help`,
+      command: defineCommand(providerName, async (args) => {
+        try {
+          const [subcommand, ...toolArgs] = args;
+          if (subcommand === undefined || subcommand === "--help" || subcommand === "-h") {
+            return output(dispatcherHelp(providerName, providerSources));
+          }
+          const source = bySubcommand.get(subcommand);
+          if (source === undefined) {
+            throw new Error(`Unknown ${providerName} subcommand: ${subcommand}`);
+          }
+          const parsedInput = parseToolArgv(source.tool, toolArgs);
+          const toolInput = normalizeStructuredArgValues(source.tool.inputSchema, parsedInput);
+          return output(await source.invoke(toolInput));
+        } catch (error) {
+          return failure(error);
+        }
+      }),
+    };
+  });
 }
 
 export function installJustBashRegistrations(
@@ -57,6 +80,26 @@ export function installJustBashRegistrations(
       ...registrations.map((registration) => registration.command),
     ];
   }
+}
+
+function dispatcherHelp(providerName: string, sources: JustBashCommandSource[]): string {
+  const maxNameLength = Math.max(
+    ...sources.map((source) => source.backendToolName.replaceAll("_", "-").length),
+    0,
+  );
+  return [
+    `${providerName} - the ${providerName} toolset`,
+    "",
+    "USAGE:",
+    `  ${providerName} <subcommand> [options]`,
+    "",
+    "SUBCOMMANDS:",
+    ...sources.map((source) => {
+      const description = (source.tool.description ?? "").replace(/\s+/g, " ").trim();
+      const subcommand = source.backendToolName.replaceAll("_", "-");
+      return `  ${subcommand.padEnd(maxNameLength + 2)}${description}`.trimEnd();
+    }),
+  ].join("\n");
 }
 
 function output(stdout: string): ExecResult {
