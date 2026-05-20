@@ -140,14 +140,23 @@ properties = properties.get("properties", {{}}) if isinstance(properties, dict) 
 def schema_type(schema):
     return schema.get("type") if isinstance(schema, dict) else None
 
+def canonical_name(value):
+    return value.replace("-", "_").replace("_", "").lower()
+
 def flag_to_property(flag):
     raw = flag[2:]
     if raw.startswith("no-"):
         raw = raw[3:]
+    if raw in properties:
+        return raw
     snake = raw.replace("-", "_")
     if snake in properties:
         return snake
-    return raw.replace("_", "-")
+    canonical = canonical_name(raw)
+    for prop in properties:
+        if canonical_name(prop) == canonical:
+            return prop
+    return raw
 
 def coerce_value(schema, raw_value, forced_bool=None):
     if forced_bool is not None:

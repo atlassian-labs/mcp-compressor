@@ -48,6 +48,52 @@ async fn running_proxy_config(output_dir: &std::path::Path) -> (GeneratorConfig,
     (config, proxy)
 }
 
+
+#[test]
+fn generated_cli_help_renders_camel_case_properties_as_kebab_case_flags() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let config = GeneratorConfig {
+        cli_name: "atlassian".to_string(),
+        bridge_url: "http://127.0.0.1:1".to_string(),
+        token: "token".to_string(),
+        tools: vec![mcp_compressor_core::compression::engine::Tool::new(
+            "searchJiraIssuesUsingJql",
+            Some("Search issues with JQL".to_string()),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "cloudId": { "type": "string", "description": "Cloud ID" },
+                    "jql": { "type": "string", "description": "JQL query" },
+                    "maxResults": { "type": "number", "description": "Max results" },
+                    "nextPageToken": { "type": "string", "description": "Page token" }
+                },
+                "required": ["cloudId", "jql"]
+            }),
+        )],
+        session_pid: std::process::id(),
+        output_dir: tempdir.path().to_path_buf(),
+        extra_cli_bridges: Vec::new(),
+    };
+    CliGenerator.generate(&config).unwrap();
+    let script = tempdir.path().join("atlassian");
+    let output = Command::new(&script)
+        .args(["search-jira-issues-using-jql", "--help"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("--cloud-id <value>"), "stdout: {stdout}");
+    assert!(stdout.contains("--jql <value>"), "stdout: {stdout}");
+    assert!(stdout.contains("--max-results <value>"), "stdout: {stdout}");
+    assert!(stdout.contains("--next-page-token <value>"), "stdout: {stdout}");
+    assert!(!stdout.contains("--cloudId"), "stdout: {stdout}");
+    assert!(!stdout.contains("--maxResults"), "stdout: {stdout}");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn generated_typescript_module_reports_stopped_proxy_without_fetch_noise() {
     let tempdir = tempfile::tempdir().unwrap();
