@@ -56,7 +56,12 @@ export function transformToolsForJustBash(
     Object.entries(tools).map(([name, tool]) => justBashSource(serverName, name, tool)),
   );
   installJustBashRegistrations(options.bash, registrations);
-  const helpDescription = justBashHelpDescription(serverName, registrations);
+  const helpDescription = shellToolHelpDescription({
+    command: serverName,
+    cliName: serverName,
+    tools: executableToolsToSpecs(tools),
+    commandNameForTool: (toolName) => `${serverName}_${toolName}`,
+  });
   return {
     registrations,
     tools: helpTools({
@@ -175,21 +180,7 @@ function generatedHelpDescription(options: {
     return cliHelpDescription(command, options.serverName, options.tools);
   }
 
-  const language = options.kind === "python" ? "Python" : "TypeScript";
-  const moduleName =
-    options.kind === "python" ? `${options.serverName}.py` : `${options.serverName}.ts`;
-  return [
-    `Functionality associated with the ${options.serverName} toolset is provided via generated ${language} code. Do not call this tool - import and use the generated code instead.`,
-    `${options.serverName} - the ${options.serverName} toolset`,
-    "",
-    `Generated files are available in ${options.outputDir}.`,
-    `Primary module: ${options.outputDir}/${moduleName}`,
-    "",
-    "When relevant, outputs from generated clients will prefer using the TOON format for more efficient representation of data.",
-    "",
-    "Available generated files:",
-    ...options.files.map((file) => `  - ${options.outputDir}/${file}`),
-  ].join("\n");
+  return codeHelpDescription(options);
 }
 
 function cliHelpDescription(
@@ -197,28 +188,45 @@ function cliHelpDescription(
   cliName: string,
   tools: ReturnType<typeof executableToolsToSpecs>,
 ): string {
+  return shellToolHelpDescription({
+    command,
+    cliName,
+    tools,
+    commandNameForTool: cliSubcommandName,
+  });
+}
+
+function shellToolHelpDescription(options: {
+  command: string;
+  cliName: string;
+  tools: ReturnType<typeof executableToolsToSpecs>;
+  commandNameForTool(toolName: string): string;
+}): string {
   return [
-    `Functionality associated with the ${cliName} toolset is provided via the \`${command}\` CLI. Do not call this tool - use the CLI instead.`,
-    `${cliName} - the ${cliName} toolset`,
+    `Functionality associated with the ${options.cliName} toolset is provided via the \`${options.command}\` CLI. Do not call this tool - use the CLI instead.`,
+    `${options.cliName} - the ${options.cliName} toolset`,
     "",
     "When relevant, outputs from this CLI will prefer using the TOON format for more efficient representation of data.",
     "",
     "USAGE:",
-    `  ${command} <subcommand> [options]`,
+    `  ${options.command} <subcommand> [options]`,
     "",
     "SUBCOMMANDS:",
-    ...formatSubcommands(tools),
+    ...formatSubcommands(options.tools, options.commandNameForTool),
     "",
-    `Run '${command} --help' in the shell for usage.`,
-    `Run '${command} <subcommand> --help' for per-command help.`,
-    `Run '${command} <subcommand> [options]' to invoke a tool.`,
+    `Run '${options.command} --help' in the shell for usage.`,
+    `Run '${options.command} <subcommand> --help' for per-command help.`,
+    `Run '${options.command} <subcommand> [options]' to invoke a tool.`,
   ].join("\n");
 }
 
-function formatSubcommands(tools: ReturnType<typeof executableToolsToSpecs>): string[] {
-  const maxNameLength = Math.max(...tools.map((tool) => cliSubcommandName(tool.name).length), 0);
+function formatSubcommands(
+  tools: ReturnType<typeof executableToolsToSpecs>,
+  commandNameForTool: (toolName: string) => string,
+): string[] {
+  const maxNameLength = Math.max(...tools.map((tool) => commandNameForTool(tool.name).length), 0);
   return tools.map((tool) => {
-    const subcommand = cliSubcommandName(tool.name);
+    const subcommand = commandNameForTool(tool.name);
     const description = compactDescription(tool.description ?? undefined);
     return `  ${subcommand.padEnd(maxNameLength + 2)}${description}`.trimEnd();
   });
@@ -232,21 +240,58 @@ function compactDescription(description?: string): string {
   return (description ?? "").replace(/\s+/g, " ").trim();
 }
 
-function justBashHelpDescription(
-  serverName: string,
-  registrations: JustBashCommandRegistration[],
-): string {
+function codeHelpDescription(options: {
+  kind: ClientArtifactKind;
+  serverName: string;
+  outputDir: string;
+  files: string[];
+  tools: ReturnType<typeof executableToolsToSpecs>;
+}): string {
+  const language = options.kind === "python" ? "Python" : "TypeScript";
+  const languageLower = options.kind === "python" ? "python" : "typescript";
+  const moduleName =
+    options.kind === "python" ? `${options.serverName}.py` : `${options.serverName}.ts`;
+  const functions = formatCodeFunctions(options.kind, options.tools);
+  const details =
+    options.kind === "python"
+      ? [
+          "For details on a specific function, run:",
+          "```python",
+          `from ${options.serverName} import <function>`,
+          "print(help(<function>))",
+          "```",
+        ]
+      : [
+          "For details on a specific function, inspect the generated TypeScript declarations or editor hover documentation.",
+          `Primary declarations: ${options.outputDir}/${options.serverName}.d.ts`,
+        ];
   return [
-    `Functionality associated with the ${serverName} toolset is provided via bash commands. Do not call this tool - use the bash commands instead.`,
-    `${serverName} - the ${serverName} toolset`,
+    `Functionality associated with the ${options.serverName} toolset is provided via a ${language} module. Do not call this tool - import and use the ${languageLower} functionality instead.`,
+    `${options.serverName} - the ${options.serverName} toolset`,
     "",
-    "When relevant, outputs from these commands will prefer using the TOON format for more efficient representation of data.",
+    `${language} source code is available in ${options.outputDir}/${moduleName}`,
     "",
-    "COMMANDS:",
-    ...registrations.map((registration) => `  ${registration.commandName}`),
+    "Available functions:",
+    ...functions,
     "",
-    "Run these commands with the bash tool.",
+    ...details,
   ].join("\n");
+}
+
+function formatCodeFunctions(
+  kind: ClientArtifactKind,
+  tools: ReturnType<typeof executableToolsToSpecs>,
+): string[] {
+  const names = tools.map((tool) => (kind === "python" ? tool.name : snakeToCamel(tool.name)));
+  const maxNameLength = Math.max(...names.map((name) => name.length), 0);
+  return tools.map((tool, index) => {
+    const name = names[index] ?? tool.name;
+    return `  ${name.padEnd(maxNameLength + 2)}${compactDescription(tool.description ?? undefined)}`.trimEnd();
+  });
+}
+
+function snakeToCamel(name: string): string {
+  return name.replace(/[_-]([a-zA-Z0-9])/g, (_match, char: string) => char.toUpperCase());
 }
 
 function defaultCliOutputDir(): { outputDir: string } {

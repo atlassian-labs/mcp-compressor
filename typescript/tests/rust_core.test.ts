@@ -499,7 +499,7 @@ describe("local TypeScript tool compression", () => {
     expect(commandResult.stdout).toContain("rows[1]{message,ok}:");
     expect(commandResult.stdout).toContain("bash,true");
     expect(result.tools.alpha_help?.description).toContain(
-      "Functionality associated with the alpha toolset is provided via bash commands.",
+      "Functionality associated with the alpha toolset is provided via the `alpha` CLI.",
     );
     expect(result.tools.alpha_help?.description).toContain("alpha_echo");
     await expect(result.tools.alpha_help?.execute()).resolves.toBe(
@@ -528,10 +528,13 @@ describe("local TypeScript tool compression", () => {
       expect(Object.keys(transform.files)).toContain("alpha.py");
       const helpTool = transform.tools.alpha_help;
       expect(helpTool?.description).toContain(
-        "Functionality associated with the alpha toolset is provided via generated Python code.",
+        "Functionality associated with the alpha toolset is provided via a Python module.",
       );
-      expect(helpTool?.description).toContain("Primary module:");
+      expect(helpTool?.description).toContain("Python source code is available in");
+      expect(helpTool?.description).toContain("Available functions:");
+      expect(helpTool?.description).toContain("  echo  Echo a message.");
       expect(helpTool?.description).not.toContain("Code Mode");
+      expect(helpTool?.description).not.toContain("generated Python code");
       await expect(helpTool?.execute()).resolves.toBe(helpTool?.description);
       expect(transform.environment.PYTHONPATH).toContain("mcp-code-mode");
     } finally {
