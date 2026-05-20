@@ -573,6 +573,19 @@ describe("local TypeScript tool compression", () => {
       expect(helpTool?.description).not.toContain("CLI Mode");
       await expect(helpTool?.execute()).resolves.toBe(helpTool?.description);
       expect(transform.environment.PATH).toContain("mcp-cli-mode");
+      const response = await fetch(`${transform.bridgeUrl}/health`);
+      expect(response.status).toBe(200);
+      const execResponse = await fetch(`${transform.bridgeUrl}/exec`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${transform.token}`,
+        },
+        body: JSON.stringify({ tool: "echo", input: { message: "bridge" } }),
+      });
+      expect(execResponse.status).toBe(200);
+      const execBody = (await execResponse.json()) as { result: string };
+      expect(execBody.result).toContain('"message":"bridge"');
     } finally {
       transform.close();
     }

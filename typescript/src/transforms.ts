@@ -1,7 +1,7 @@
 import type { ExecutableTool } from "./adapters.js";
 import {
   generateClientFromBridge,
-  type GeneratedClientArtifactsResult,
+  type GeneratedBridgeClientArtifactsResult,
 } from "./generated_clients.js";
 import {
   createJustBashCommandRegistrations,
@@ -42,7 +42,7 @@ export interface TransformToolsForCliModeOptions extends TransformToolOptions {
   outputDir?: string;
 }
 
-export interface GeneratedToolTransformResult extends GeneratedClientArtifactsResult {
+export interface GeneratedToolTransformResult extends GeneratedBridgeClientArtifactsResult {
   tools: Record<string, ExecutableTool>;
   close(): void;
 }
