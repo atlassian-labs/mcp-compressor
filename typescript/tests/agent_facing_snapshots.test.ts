@@ -191,6 +191,45 @@ describe("agent-facing alpha snapshots", () => {
     }
   });
 
+  it("snapshots Atlassian-like Python code signatures", async () => {
+    const pythonDir = mkdtempSync(join(tmpdir(), "mcp-atlassian-python-snapshot-"));
+    const transform = await transformToolsForCodeMode(
+      {
+        atlassianUserInfo: {
+          name: "atlassianUserInfo",
+          description: "Get current user info",
+          inputSchema: { type: "object", properties: {} },
+          execute: async (): Promise<unknown> => "ok",
+        },
+        searchJiraIssuesUsingJql: {
+          name: "searchJiraIssuesUsingJql",
+          description: "Search issues with JQL",
+          inputSchema: {
+            type: "object",
+            properties: {
+              cloudId: { type: "string", description: "Cloud ID" },
+              jql: { type: "string", description: "JQL query" },
+              maxResults: { type: "number", description: "Max results" },
+              fields: { type: "array", items: { type: "string" }, description: "Fields" },
+            },
+            required: ["cloudId", "jql"],
+          },
+          execute: async (): Promise<unknown> => "ok",
+        },
+      },
+      { serverName: "atlassian", language: "python", outputDir: pythonDir },
+    );
+    try {
+      expect(
+        normalizePaths(transform.tools.atlassian_help?.description ?? "", {
+          [pythonDir]: "<python-dir>",
+        }),
+      ).toBe(golden("agent-facing/code/atlassian-python-help-tool-description.txt"));
+    } finally {
+      transform.close();
+    }
+  });
+
   it("snapshots standard compressed tool descriptions and responses", async () => {
     const compressed = compressTools(alphaTools, {
       compressionLevel: "medium",

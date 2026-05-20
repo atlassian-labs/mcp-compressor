@@ -1,0 +1,14 @@
+Functionality associated with the atlassian toolset is provided via a Python module. Do not call this tool - import and use the python functionality instead.
+atlassian - the atlassian toolset
+
+Python source code is available in <python-dir>/atlassian.py
+
+Available functions:
+  atlassianUserInfo()                                                   Get current user info
+  searchJiraIssuesUsingJql(cloudId, jql, maxResults=None, fields=None)  Search issues with JQL
+
+For details on a specific function, run:
+```python
+from atlassian import <function>
+print(help(<function>))
+```

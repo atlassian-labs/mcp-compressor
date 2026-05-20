@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::client_gen::cli::CliGenerator;
-use crate::client_gen::generator::{artifact_map, write_artifacts, ClientGenerator, GeneratorConfig};
+use crate::client_gen::generator::{
+    artifact_map, write_artifacts, ClientGenerator, GeneratorConfig,
+};
 use crate::client_gen::python::PythonGenerator;
 use crate::client_gen::typescript::TypeScriptGenerator;
 use crate::ffi::client_gen::FfiClientArtifactKind;
@@ -72,7 +74,8 @@ pub fn build_host_transform_plan(
     let help_tool_name = format!("{server_name}_help");
     match config.kind {
         FfiHostTransformKind::JustBash => {
-            let help_description = shell_tool_help_description(&server_name, &server_name, &config.tools);
+            let help_description =
+                shell_tool_help_description(&server_name, &server_name, &config.tools);
             let commands = config
                 .tools
                 .iter()
@@ -112,7 +115,8 @@ pub fn build_host_transform_plan(
             let artifacts = CliGenerator.render(&generator_config)?;
             let files = artifact_map(&artifacts);
             let paths = write_artifacts(&artifacts, &output_dir)?;
-            let help_description = shell_tool_help_description(&command_name, &server_name, &config.tools);
+            let help_description =
+                shell_tool_help_description(&command_name, &server_name, &config.tools);
             Ok(FfiHostTransformPlan {
                 help_tool_name,
                 help_description,
@@ -140,12 +144,15 @@ pub fn build_host_transform_plan(
             );
             let artifacts = match artifact_kind {
                 FfiClientArtifactKind::Python => PythonGenerator.render(&generator_config)?,
-                FfiClientArtifactKind::TypeScript => TypeScriptGenerator.render(&generator_config)?,
+                FfiClientArtifactKind::TypeScript => {
+                    TypeScriptGenerator.render(&generator_config)?
+                }
                 FfiClientArtifactKind::Cli => unreachable!(),
             };
             let files = artifact_map(&artifacts);
             let paths = write_artifacts(&artifacts, &output_dir)?;
-            let help_description = code_help_description(artifact_kind, &server_name, &output_dir, &config.tools);
+            let help_description =
+                code_help_description(artifact_kind, &server_name, &output_dir, &config.tools);
             let environment = match config.kind {
                 FfiHostTransformKind::Python => {
                     let mut env = BTreeMap::new();
@@ -230,7 +237,9 @@ fn code_help_description(
 ) -> String {
     let (language, language_lower, module_name) = match kind {
         FfiClientArtifactKind::Python => ("Python", "python", format!("{server_name}.py")),
-        FfiClientArtifactKind::TypeScript => ("TypeScript", "typescript", format!("{server_name}.ts")),
+        FfiClientArtifactKind::TypeScript => {
+            ("TypeScript", "typescript", format!("{server_name}.ts"))
+        }
         FfiClientArtifactKind::Cli => unreachable!(),
     };
     let source_path = output_dir.join(&module_name).to_string_lossy().into_owned();
@@ -244,22 +253,21 @@ fn code_help_description(
         String::new(),
         "Available functions:".to_string(),
     ];
-    let function_names = tools
+    let signatures = tools
         .iter()
-        .map(|tool| match kind {
-            FfiClientArtifactKind::Python => tool.name.clone(),
-            FfiClientArtifactKind::TypeScript => snake_to_camel(&tool.name),
-            FfiClientArtifactKind::Cli => unreachable!(),
-        })
+        .map(|tool| code_function_signature(kind, tool))
         .collect::<Vec<_>>();
-    let max_name_len = function_names.iter().map(String::len).max().unwrap_or(0);
-    for (tool, function_name) in tools.iter().zip(function_names) {
+    let max_signature_len = signatures.iter().map(String::len).max().unwrap_or(0);
+    for (tool, signature) in tools.iter().zip(signatures) {
         let description = compact_description(tool.description.as_deref());
-        lines.push(format!(
-            "  {name:<width$}{description}",
-            name = function_name,
-            width = max_name_len + 2
-        ).trim_end().to_string());
+        lines.push(
+            format!(
+                "  {signature:<width$}{description}",
+                width = max_signature_len + 2
+            )
+            .trim_end()
+            .to_string(),
+        );
     }
     lines.push(String::new());
     match kind {
@@ -282,8 +290,53 @@ fn code_help_description(
     lines.join("\n")
 }
 
+fn code_function_signature(kind: FfiClientArtifactKind, tool: &FfiTool) -> String {
+    let name = match kind {
+        FfiClientArtifactKind::Python => tool.name.clone(),
+        FfiClientArtifactKind::TypeScript => snake_to_camel(&tool.name),
+        FfiClientArtifactKind::Cli => unreachable!(),
+    };
+    let properties = tool
+        .input_schema
+        .get("properties")
+        .and_then(Value::as_object);
+    let Some(properties) = properties else {
+        return format!("{name}()");
+    };
+    let required = tool
+        .input_schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<std::collections::BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    let mut args = Vec::new();
+    for key in properties.keys() {
+        let function_arg = match kind {
+            FfiClientArtifactKind::Python => key.to_string(),
+            FfiClientArtifactKind::TypeScript => key.to_string(),
+            FfiClientArtifactKind::Cli => unreachable!(),
+        };
+        if required.contains(key.as_str()) {
+            args.push(function_arg);
+        } else if kind == FfiClientArtifactKind::Python {
+            args.push(format!("{function_arg}=None"));
+        } else {
+            args.push(format!("{function_arg}?"));
+        }
+    }
+    format!("{name}({})", args.join(", "))
+}
+
 fn format_subcommands(tools: &[FfiTool], name_for_tool: fn(&str) -> String) -> Vec<String> {
-    let names = tools.iter().map(|tool| name_for_tool(&tool.name)).collect::<Vec<_>>();
+    let names = tools
+        .iter()
+        .map(|tool| name_for_tool(&tool.name))
+        .collect::<Vec<_>>();
     let max_name_len = names.iter().map(String::len).max().unwrap_or(0);
     tools
         .iter()
@@ -302,7 +355,11 @@ fn cli_subcommand_name(tool_name: &str) -> String {
 }
 
 fn compact_description(description: Option<&str>) -> String {
-    description.unwrap_or("").split_whitespace().collect::<Vec<_>>().join(" ")
+    description
+        .unwrap_or("")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn snake_to_camel(name: &str) -> String {
@@ -403,10 +460,15 @@ mod tests {
             bridge_url: Some("http://127.0.0.1:1".to_string()),
             token: Some("token".to_string()),
             session_pid: Some(1),
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(plan.help_tool_name, "alpha_help");
-        assert!(plan.help_description.contains("Functionality associated with the alpha toolset is provided via the `alpha` CLI."));
-        assert!(plan.help_description.contains("  echo-message  Echo a message."));
+        assert!(plan.help_description.contains(
+            "Functionality associated with the alpha toolset is provided via the `alpha` CLI."
+        ));
+        assert!(plan
+            .help_description
+            .contains("  echo-message  Echo a message."));
     }
 
     #[test]
@@ -416,18 +478,26 @@ mod tests {
             server_name: "atlassian".to_string(),
             tools: vec![
                 tool("atlassianUserInfo", "Get current user info."),
-                tool("getAccessibleAtlassianResources", "Get accessible resources."),
+                tool(
+                    "getAccessibleAtlassianResources",
+                    "Get accessible resources.",
+                ),
             ],
             output_dir: Some(PathBuf::from("./target/tmp-host-plan-camel-cli")),
             command_name: Some("atlassian".to_string()),
             bridge_url: Some("http://127.0.0.1:1".to_string()),
             token: Some("token".to_string()),
             session_pid: Some(1),
-        }).unwrap();
+        })
+        .unwrap();
         assert!(plan.help_description.contains("  atlassian-user-info"));
-        assert!(plan.help_description.contains("  get-accessible-atlassian-resources"));
+        assert!(plan
+            .help_description
+            .contains("  get-accessible-atlassian-resources"));
         assert!(!plan.help_description.contains("atlassianUserInfo"));
-        assert!(!plan.help_description.contains("getAccessibleAtlassianResources"));
+        assert!(!plan
+            .help_description
+            .contains("getAccessibleAtlassianResources"));
     }
 
     #[test]
