@@ -262,3 +262,55 @@ export function listOAuthCredentials(): OAuthStoreEntry[] {
 export function clearOAuthCredentials(target?: string | null): string[] {
   return JSON.parse(loadNativeCore().clearOauthCredentialsJson(target ?? null)) as string[];
 }
+
+export interface HostTransformPlanConfig {
+  kind: ClientArtifactKind | "just-bash";
+  serverName: string;
+  tools: ToolSpec[];
+  outputDir?: string;
+  commandName?: string;
+  bridgeUrl?: string;
+  token?: string;
+  sessionPid?: number;
+}
+
+export interface HostTransformPlan {
+  helpToolName: string;
+  helpDescription: string;
+  outputDir?: string;
+  files: Record<string, string>;
+  paths: string[];
+  environment: Record<string, string>;
+  justBash?: {
+    providerName: string;
+    commandName: string;
+    helpToolName: string;
+    commands: Array<{
+      commandName: string;
+      backendToolName: string;
+      description?: string;
+      inputSchema: unknown;
+    }>;
+  };
+}
+
+export function buildHostTransformPlan(config: HostTransformPlanConfig): HostTransformPlan {
+  return JSON.parse(
+    loadNativeCore().buildHostTransformPlanJson(
+      stringify({
+        kind: config.kind,
+        serverName: config.serverName,
+        tools: config.tools.map(toNativeTool),
+        outputDir: config.outputDir,
+        commandName: config.commandName,
+        bridgeUrl: config.bridgeUrl,
+        token: config.token,
+        sessionPid: config.sessionPid,
+      }),
+    ),
+  ) as HostTransformPlan;
+}
+
+export function normalizeHostToolResult(value: unknown, toonify: boolean): string {
+  return loadNativeCore().normalizeHostToolResultJson(stringify(value), toonify);
+}
