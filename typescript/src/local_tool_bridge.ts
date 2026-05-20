@@ -16,6 +16,10 @@ export async function startLocalToolBridge(
   const token = crypto.randomUUID();
   const server = http.createServer(async (request, response) => {
     try {
+      if (request.method === "GET" && request.url === "/health") {
+        response.writeHead(200, { "content-type": "text/plain" }).end("ok");
+        return;
+      }
       if (request.method !== "POST" || request.url !== "/exec") {
         response.writeHead(404).end("not found");
         return;
@@ -25,10 +29,12 @@ export async function startLocalToolBridge(
         return;
       }
       const body = JSON.parse(await readRequestBody(request)) as {
+        tool?: string;
+        input?: Record<string, unknown>;
         tool_name?: string;
         tool_input?: Record<string, unknown>;
       };
-      const toolName = String(body.tool_name ?? "");
+      const toolName = String(body.tool ?? body.tool_name ?? "");
       const tool = tools[toolName];
       if (!tool) {
         response
@@ -36,7 +42,7 @@ export async function startLocalToolBridge(
           .end(JSON.stringify({ error: `Tool not found: ${toolName}` }));
         return;
       }
-      const result = await tool.execute(body.tool_input ?? {});
+      const result = await tool.execute(body.input ?? body.tool_input ?? {});
       response
         .writeHead(200, { "content-type": "application/json" })
         .end(JSON.stringify({ result: stringifyToolResult(result) }));

@@ -12,6 +12,11 @@ export interface GeneratedClientArtifactsResult {
   environment: Record<string, string>;
 }
 
+export interface GeneratedBridgeClientArtifactsResult extends GeneratedClientArtifactsResult {
+  bridgeUrl: string;
+  token: string;
+}
+
 export interface GenerateClientFromBridgeOptions {
   kind: ClientArtifactKind;
   name: string;
@@ -24,7 +29,7 @@ export interface GenerateClientFromBridgeOptions {
 
 export function generateClientFromBridge(
   options: GenerateClientFromBridgeOptions,
-): GeneratedClientArtifactsResult {
+): GeneratedBridgeClientArtifactsResult {
   const config: ClientGeneratorConfig = {
     cliName: options.name,
     bridgeUrl: options.bridgeUrl,
@@ -37,6 +42,8 @@ export function generateClientFromBridge(
     paths: generateClientArtifacts(options.kind, config),
     files: generateClientArtifactFiles(options.kind, config),
     environment: generatedClientEnvironment(options.kind, options.outputDir),
+    bridgeUrl: options.bridgeUrl,
+    token: options.token,
   };
 }
 
