@@ -37,7 +37,9 @@ pub fn parse_argv(argv: &[String], tool: &Tool) -> Result<serde_json::Value, Err
             .get(1)
             .ok_or_else(|| Error::Parse("--json requires a value".to_string()))?;
         if argv.len() > 2 {
-            return Err(Error::Parse("--json cannot be combined with other arguments".to_string()));
+            return Err(Error::Parse(
+                "--json cannot be combined with other arguments".to_string(),
+            ));
         }
         return Ok(serde_json::from_str(json)?);
     }
@@ -50,7 +52,9 @@ pub fn parse_argv(argv: &[String], tool: &Tool) -> Result<serde_json::Value, Err
     while index < argv.len() {
         let arg = &argv[index];
         if !arg.starts_with("--") || arg == "--" {
-            return Err(Error::Parse(format!("unexpected positional argument: {arg}")));
+            return Err(Error::Parse(format!(
+                "unexpected positional argument: {arg}"
+            )));
         }
 
         let (property_name, forced_bool) = parse_flag_name(arg);
@@ -61,7 +65,9 @@ pub fn parse_argv(argv: &[String], tool: &Tool) -> Result<serde_json::Value, Err
 
         let (raw_value, consumed) = if forced_bool == Some(false) {
             if schema_type != Some("boolean") {
-                return Err(Error::Parse(format!("{arg} can only be used with boolean properties")));
+                return Err(Error::Parse(format!(
+                    "{arg} can only be used with boolean properties"
+                )));
             }
             (None, 1)
         } else if schema_type == Some("boolean") {
@@ -84,7 +90,9 @@ pub fn parse_argv(argv: &[String], tool: &Tool) -> Result<serde_json::Value, Err
 
     for property in required {
         if !output.contains_key(&property) {
-            return Err(Error::Validation(format!("missing required argument: {property}")));
+            return Err(Error::Validation(format!(
+                "missing required argument: {property}"
+            )));
         }
     }
 
@@ -149,11 +157,21 @@ fn coerce_value(
         Some("integer") => coerce_integer(property_name, raw_value),
         Some("number") => coerce_number(property_name, raw_value),
         Some("array") => {
+            let raw = raw_value.unwrap_or_default();
+            if let Ok(Value::Array(values)) = serde_json::from_str::<Value>(raw) {
+                return Ok(Value::Array(values));
+            }
             let item_schema = array_item_schema(schema).unwrap_or(&Value::Null);
             coerce_value(property_name, item_schema, raw_value, None)
         }
-        _ => Ok(Value::String(raw_value.unwrap_or_default().to_string())),
+        Some("object") => coerce_json_or_string(raw_value),
+        _ => coerce_json_or_string(raw_value),
     }
+}
+
+fn coerce_json_or_string(raw_value: Option<&str>) -> Result<Value, Error> {
+    let raw = raw_value.unwrap_or_default();
+    Ok(serde_json::from_str::<Value>(raw).unwrap_or_else(|_| Value::String(raw.to_string())))
 }
 
 fn coerce_bool(property_name: &str, raw_value: Option<&str>) -> Result<Value, Error> {
@@ -168,31 +186,44 @@ fn coerce_bool(property_name: &str, raw_value: Option<&str>) -> Result<Value, Er
 }
 
 fn coerce_integer(property_name: &str, raw_value: Option<&str>) -> Result<Value, Error> {
-    let value = raw_value.ok_or_else(|| Error::Parse(format!("{property_name} requires a value")))?;
-    let parsed = value
-        .parse::<i64>()
-        .map_err(|_| Error::Parse(format!("invalid integer value for {property_name}: {value}")))?;
+    let value =
+        raw_value.ok_or_else(|| Error::Parse(format!("{property_name} requires a value")))?;
+    let parsed = value.parse::<i64>().map_err(|_| {
+        Error::Parse(format!(
+            "invalid integer value for {property_name}: {value}"
+        ))
+    })?;
     Ok(Value::Number(Number::from(parsed)))
 }
 
 fn coerce_number(property_name: &str, raw_value: Option<&str>) -> Result<Value, Error> {
-    let value = raw_value.ok_or_else(|| Error::Parse(format!("{property_name} requires a value")))?;
+    let value =
+        raw_value.ok_or_else(|| Error::Parse(format!("{property_name} requires a value")))?;
     let parsed = value
         .parse::<f64>()
         .map_err(|_| Error::Parse(format!("invalid number value for {property_name}: {value}")))?;
-    let number = Number::from_f64(parsed)
-        .ok_or_else(|| Error::Parse(format!("invalid number value for {property_name}: {value}")))?;
+    let number = Number::from_f64(parsed).ok_or_else(|| {
+        Error::Parse(format!("invalid number value for {property_name}: {value}"))
+    })?;
     Ok(Value::Number(number))
 }
 
-fn insert_value(output: &mut Map<String, Value>, property_name: &str, schema: &Value, value: Value) {
+fn insert_value(
+    output: &mut Map<String, Value>,
+    property_name: &str,
+    schema: &Value,
+    value: Value,
+) {
     if schema_type(schema) == Some("array") {
-        output
+        let array = output
             .entry(property_name.to_string())
             .or_insert_with(|| Value::Array(Vec::new()))
             .as_array_mut()
-            .expect("array property should be stored as array")
-            .push(value);
+            .expect("array property should be stored as array");
+        match value {
+            Value::Array(values) => array.extend(values),
+            value => array.push(value),
+        }
     } else {
         output.insert(property_name.to_string(), value);
     }
@@ -243,9 +274,15 @@ mod tests {
                 "method": { "type": "string" }
             }
         }));
-        let result =
-            parse_argv(&args(&["--url", "https://example.com", "--method", "GET"]), &tool).unwrap();
-        assert_eq!(result, json!({ "url": "https://example.com", "method": "GET" }));
+        let result = parse_argv(
+            &args(&["--url", "https://example.com", "--method", "GET"]),
+            &tool,
+        )
+        .unwrap();
+        assert_eq!(
+            result,
+            json!({ "url": "https://example.com", "method": "GET" })
+        );
     }
 
     // ------------------------------------------------------------------
@@ -347,6 +384,41 @@ mod tests {
         }));
         let result = parse_argv(&args(&["--tags", "a", "--tags", "b"]), &tool).unwrap();
         assert_eq!(result, json!({ "tags": ["a", "b"] }));
+    }
+
+    /// A JSON array value is expanded for array properties.
+    #[test]
+    fn array_arg_json_array_value() {
+        let tool = tool_with_schema(json!({
+            "type": "object",
+            "properties": {
+                "tags": { "type": "array", "items": { "type": "string" } }
+            }
+        }));
+        let result = parse_argv(&args(&["--tags", "[\"a\",\"b\"]"]), &tool).unwrap();
+        assert_eq!(result, json!({ "tags": ["a", "b"] }));
+    }
+
+    /// Object properties parse JSON values, matching legacy Python CLI mode.
+    #[test]
+    fn object_arg_json_value() {
+        let tool = tool_with_schema(json!({
+            "type": "object",
+            "properties": { "metadata": { "type": "object" } }
+        }));
+        let result = parse_argv(&args(&["--metadata", "{\"ok\":true}"]), &tool).unwrap();
+        assert_eq!(result, json!({ "metadata": { "ok": true } }));
+    }
+
+    /// Complex values fall back to strings when JSON parsing fails.
+    #[test]
+    fn object_arg_invalid_json_falls_back_to_string() {
+        let tool = tool_with_schema(json!({
+            "type": "object",
+            "properties": { "metadata": { "type": "object" } }
+        }));
+        let result = parse_argv(&args(&["--metadata", "not-json"]), &tool).unwrap();
+        assert_eq!(result, json!({ "metadata": "not-json" }));
     }
 
     /// A single-element array works correctly.
@@ -462,8 +534,7 @@ mod tests {
     #[test]
     fn json_escape_hatch() {
         let tool = tool_with_schema(json!({ "type": "object", "properties": {} }));
-        let result =
-            parse_argv(&args(&["--json", r#"{"key": "val"}"#]), &tool).unwrap();
+        let result = parse_argv(&args(&["--json", r#"{"key": "val"}"#]), &tool).unwrap();
         assert_eq!(result, json!({ "key": "val" }));
     }
 

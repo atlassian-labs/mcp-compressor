@@ -126,27 +126,112 @@ HELP
     }}
     python3 - "$BRIDGE_ENTRY" "{tool_name}" "$@" <<'PY'
 import json, sys, urllib.error, urllib.request
+
+TOOL_SCHEMAS = json.loads({tool_schemas:?})
+
 bridge_entry, tool_name, *argv = sys.argv[1:]
 entry = json.loads(bridge_entry)
 bridge = entry["bridge"]
 token = entry["token"]
-tool_input = {{}}
-index = 0
-while index < len(argv):
-    flag = argv[index]
-    if not flag.startswith("--"):
-        raise SystemExit(f"unexpected positional argument: {{flag}}")
-    key = flag[2:].replace("-", "_")
-    if index + 1 >= len(argv) or argv[index + 1].startswith("--"):
-        tool_input[key] = True
-        index += 1
-    else:
-        raw_value = argv[index + 1]
+tool_schema = TOOL_SCHEMAS[tool_name]
+properties = tool_schema.get("inputSchema") or tool_schema.get("input_schema") or {{}}
+properties = properties.get("properties", {{}}) if isinstance(properties, dict) else {{}}
+
+def schema_type(schema):
+    return schema.get("type") if isinstance(schema, dict) else None
+
+def flag_to_property(flag):
+    raw = flag[2:]
+    if raw.startswith("no-"):
+        raw = raw[3:]
+    snake = raw.replace("-", "_")
+    if snake in properties:
+        return snake
+    return raw.replace("_", "-")
+
+def coerce_value(schema, raw_value, forced_bool=None):
+    if forced_bool is not None:
+        return forced_bool
+    typ = schema_type(schema)
+    if typ == "boolean":
+        if raw_value is None:
+            return True
+        if raw_value == "true":
+            return True
+        if raw_value == "false":
+            return False
+        raise SystemExit(f"invalid boolean value: {{raw_value}}")
+    if typ == "integer":
         try:
-            tool_input[key] = json.loads(raw_value)
-        except json.JSONDecodeError:
-            tool_input[key] = raw_value
-        index += 2
+            return int(raw_value)
+        except Exception:
+            raise SystemExit(f"invalid integer value: {{raw_value}}")
+    if typ == "number":
+        try:
+            return float(raw_value)
+        except Exception:
+            raise SystemExit(f"invalid number value: {{raw_value}}")
+    if typ == "array":
+        try:
+            parsed = json.loads(raw_value)
+            if isinstance(parsed, list):
+                return parsed
+        except Exception:
+            pass
+        return coerce_value(schema.get("items", {{}}), raw_value)
+    try:
+        return json.loads(raw_value or "")
+    except Exception:
+        return raw_value or ""
+
+def insert_value(output, key, schema, value):
+    if schema_type(schema) == "array":
+        values = value if isinstance(value, list) else [value]
+        output.setdefault(key, []).extend(values)
+    else:
+        output[key] = value
+
+def parse_args(argv):
+    if argv and argv[0] == "--json":
+        if len(argv) < 2:
+            raise SystemExit("--json requires a value")
+        if len(argv) > 2:
+            raise SystemExit("--json cannot be combined with other arguments")
+        return json.loads(argv[1])
+    output = {{}}
+    index = 0
+    while index < len(argv):
+        flag = argv[index]
+        if not flag.startswith("--") or flag == "--":
+            raise SystemExit(f"unexpected positional argument: {{flag}}")
+        prop = flag_to_property(flag)
+        if prop not in properties:
+            raise SystemExit(f"unknown flag: {{flag}}")
+        schema = properties[prop]
+        typ = schema_type(schema)
+        forced_bool = False if flag.startswith("--no-") else None
+        if forced_bool is False:
+            if typ != "boolean":
+                raise SystemExit(f"{{flag}} can only be used with boolean properties")
+            raw_value = None
+            consumed = 1
+        elif typ == "boolean":
+            if index + 1 < len(argv) and not argv[index + 1].startswith("--"):
+                raw_value = argv[index + 1]
+                consumed = 2
+            else:
+                raw_value = None
+                consumed = 1
+        else:
+            if index + 1 >= len(argv) or argv[index + 1].startswith("--"):
+                raise SystemExit(f"{{flag}} requires a value")
+            raw_value = argv[index + 1]
+            consumed = 2
+        insert_value(output, prop, schema, coerce_value(schema, raw_value, forced_bool))
+        index += consumed
+    return output
+
+tool_input = parse_args(argv)
 payload = json.dumps({{"tool": tool_name, "input": tool_input}}).encode()
 req = urllib.request.Request(
     bridge + "/exec",
@@ -174,6 +259,7 @@ PY
             subcommand = subcommand,
             tool_help = tool_help,
             tool_name = shell_quote(&tool.name),
+            tool_schemas = tool_schema_map_literal(config),
         ));
     }
 
@@ -230,6 +316,17 @@ pub fn read_live_bridge_entries(script: &str) -> Vec<CliBridgeEntry> {
         })
         .filter(|entry| bridge_is_live(&entry.bridge_url))
         .collect()
+}
+
+fn tool_schema_map_literal(config: &GeneratorConfig) -> String {
+    let mut map = serde_json::Map::new();
+    for tool in &config.tools {
+        map.insert(
+            tool.name.clone(),
+            serde_json::to_value(tool).unwrap_or_else(|_| serde_json::json!({})),
+        );
+    }
+    serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or_else(|_| "{}".to_string())
 }
 
 fn bridge_map_literal(config: &GeneratorConfig) -> String {

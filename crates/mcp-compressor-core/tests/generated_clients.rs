@@ -111,6 +111,63 @@ async fn generated_cli_script_handles_structured_json_arguments() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn generated_cli_script_matches_legacy_argument_parser_features() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let (config, _proxy) = running_proxy_config(tempdir.path()).await;
+    let mut config = config;
+    config.tools = real_backend_tools().await;
+
+    CliGenerator.generate(&config).unwrap();
+    let script = tempdir.path().join("alpha");
+
+    let repeated = std::process::Command::new(&script)
+        .args([
+            "summarize-payload",
+            "--items",
+            "one",
+            "--items",
+            "two",
+            "--metadata",
+            "{\"source\":\"repeat\"}",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        repeated.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&repeated.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&repeated.stdout);
+    assert!(stdout.contains("repeat"));
+    assert!(stdout.contains("one"));
+    assert!(stdout.contains("two"));
+
+    let json_escape = std::process::Command::new(&script)
+        .args([
+            "summarize-payload",
+            "--json",
+            "{\"items\":[\"json\"],\"metadata\":{\"source\":\"escape\"}}",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        json_escape.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&json_escape.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&json_escape.stdout);
+    assert!(stdout.contains("escape"));
+    assert!(stdout.contains("json"));
+
+    let unknown = std::process::Command::new(&script)
+        .args(["echo", "--unknown", "value"])
+        .output()
+        .unwrap();
+    assert!(!unknown.status.success());
+    assert!(String::from_utf8_lossy(&unknown.stderr).contains("unknown flag"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn generated_cli_script_invokes_real_proxy_and_backend() {
     let tempdir = tempfile::tempdir().unwrap();
     let (config, _proxy) = running_proxy_config(tempdir.path()).await;
