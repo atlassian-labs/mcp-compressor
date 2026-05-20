@@ -594,6 +594,36 @@ describe("local TypeScript tool compression", () => {
     }
   });
 
+  it("renders camelCase tool names as kebab-case CLI subcommands", async () => {
+    const outputDir = join(tmpdir(), "mcp-cli-camel-subcommands");
+    const transform = await transformToolsForCliMode(
+      {
+        atlassianUserInfo: {
+          name: "atlassianUserInfo",
+          description: "Get current user info.",
+          inputSchema: { type: "object", properties: {} },
+          execute: async (): Promise<unknown> => "ok",
+        },
+        getAccessibleAtlassianResources: {
+          name: "getAccessibleAtlassianResources",
+          description: "Get accessible resources.",
+          inputSchema: { type: "object", properties: {} },
+          execute: async (): Promise<unknown> => "ok",
+        },
+      },
+      { serverName: "atlassian", outputDir },
+    );
+    try {
+      const description = transform.tools.atlassian_help?.description ?? "";
+      expect(description).toContain("  atlassian-user-info");
+      expect(description).toContain("  get-accessible-atlassian-resources");
+      expect(description).not.toContain("atlassianUserInfo");
+      expect(description).not.toContain("getAccessibleAtlassianResources");
+    } finally {
+      transform.close();
+    }
+  });
+
   it("stringifies MCP text content results for generated CLI bridges", async () => {
     const outputDir = join(tmpdir(), "mcp-cli-mcp-text-result");
     const transform = await transformToolsForCliMode(
