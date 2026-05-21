@@ -7,6 +7,7 @@ export * from "./local_tools.js";
 export * from "./generated_clients.js";
 export * from "./just_bash_commands.js";
 export * from "./local_tool_bridge.js";
+export * from "./executable_tool_bridge.js";
 export * from "./tool_specs.js";
 export * from "./transforms.js";
 export {
