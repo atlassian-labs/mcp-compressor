@@ -63,6 +63,7 @@ def _exec(tool: str, tool_input: dict) -> str:
         let params = python_params(tool);
         let input = python_input_dict(tool);
         let docstring = tool.description.as_deref().unwrap_or("");
+        let function_name = to_snake_case(&tool.name);
         module.push_str(&format!(
             r#"
 
@@ -70,7 +71,7 @@ def {name}({params}) -> str:
     """{docstring}"""
     return _exec({tool_name:?}, {input})
 "#,
-            name = tool.name,
+            name = function_name,
             params = params,
             docstring = docstring.replace("\"\"\"", "\\\"\\\"\\\""),
             tool_name = tool.name,
@@ -85,10 +86,11 @@ fn python_params(tool: &crate::compression::engine::Tool) -> String {
     ordered_param_names(tool)
         .into_iter()
         .map(|(name, required)| {
+            let param_name = to_snake_case(&name);
             if required {
-                name
+                param_name
             } else {
-                format!("{name}=None")
+                format!("{param_name}=None")
             }
         })
         .collect::<Vec<_>>()
@@ -99,10 +101,33 @@ fn python_input_dict(tool: &crate::compression::engine::Tool) -> String {
     let pairs = tool
         .param_names()
         .into_iter()
-        .map(|name| format!("{name:?}: {name}"))
+        .map(|name| format!("{name:?}: {}", to_snake_case(&name)))
         .collect::<Vec<_>>()
         .join(", ");
     format!("{{{pairs}}}")
+}
+
+fn to_snake_case(name: &str) -> String {
+    let mut output = String::new();
+    let mut previous_was_separator = false;
+    for (index, ch) in name.chars().enumerate() {
+        if ch == '-' || ch == ' ' {
+            if !output.is_empty() && !previous_was_separator {
+                output.push('_');
+            }
+            previous_was_separator = true;
+        } else if ch.is_ascii_uppercase() {
+            if index > 0 && !previous_was_separator {
+                output.push('_');
+            }
+            output.push(ch.to_ascii_lowercase());
+            previous_was_separator = false;
+        } else {
+            output.push(ch);
+            previous_was_separator = ch == '_';
+        }
+    }
+    output
 }
 
 fn ordered_param_names(tool: &crate::compression::engine::Tool) -> Vec<(String, bool)> {
@@ -316,6 +341,46 @@ mod tests {
         let content = fs::read_to_string(&paths[0]).unwrap();
         assert!(content.contains("def real_tool(required_second, optional_first=None, optional_third=None) -> str:"));
         assert!(content.contains("{\"optional_first\": optional_first, \"required_second\": required_second, \"optional_third\": optional_third}"));
+        std::process::Command::new("python3")
+            .arg("-m")
+            .arg("py_compile")
+            .arg(&paths[0])
+            .status()
+            .expect("python3 should run")
+            .success()
+            .then_some(())
+            .expect("generated Python should compile");
+    }
+
+
+    #[test]
+    fn camel_case_tool_and_params_are_pythonic_snake_case_but_payload_keeps_original_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = GeneratorConfig {
+            cli_name: "atlassian".to_string(),
+            bridge_url: "http://127.0.0.1:1".to_string(),
+            token: "token".to_string(),
+            tools: vec![Tool::new(
+                "searchJiraIssuesUsingJql",
+                Some("Search issues with JQL".to_string()),
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "cloudId": {"type": "string"},
+                        "maxResults": {"type": "number"},
+                        "nextPageToken": {"type": "string"}
+                    },
+                    "required": ["cloudId"]
+                }),
+            )],
+            session_pid: 1,
+            output_dir: dir.path().to_path_buf(),
+            extra_cli_bridges: Vec::new(),
+        };
+        let paths = PythonGenerator.generate(&config).unwrap();
+        let content = fs::read_to_string(&paths[0]).unwrap();
+        assert!(content.contains("def search_jira_issues_using_jql(cloud_id, max_results=None, next_page_token=None) -> str:"));
+        assert!(content.contains(r#"{"cloudId": cloud_id, "maxResults": max_results, "nextPageToken": next_page_token}"#));
         std::process::Command::new("python3")
             .arg("-m")
             .arg("py_compile")

@@ -227,7 +227,7 @@ def test_atlassian_code_modes_generate_clients(language: str, expected: str) -> 
                 [
                     sys.executable,
                     "-c",
-                    f"import sys; sys.path.insert(0, {output_dir!r}); import atlassian; print(atlassian.getAccessibleAtlassianResources())",
+                    f"import sys; sys.path.insert(0, {output_dir!r}); import atlassian; print(atlassian.get_accessible_atlassian_resources())",
                 ],
                 text=True,
                 capture_output=True,
@@ -377,7 +377,7 @@ def test_atlassian_python_high_level_generated_clients(tmp_path) -> None:
             [
                 sys.executable,
                 "-c",
-                f"import sys; sys.path.insert(0, {str(python_module.parent)!r}); import atlassian; print(atlassian.getAccessibleAtlassianResources())",
+                f"import sys; sys.path.insert(0, {str(python_module.parent)!r}); import atlassian; print(atlassian.get_accessible_atlassian_resources())",
             ],
             text=True,
             capture_output=True,

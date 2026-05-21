@@ -532,7 +532,7 @@ describe("local TypeScript tool compression", () => {
       );
       expect(helpTool?.description).toContain("Python source code is available in");
       expect(helpTool?.description).toContain("Available functions:");
-      expect(helpTool?.description).toContain("  echo  Echo a message.");
+      expect(helpTool?.description).toContain("  echo(message)  Echo a message.");
       expect(helpTool?.description).not.toContain("Code Mode");
       expect(helpTool?.description).not.toContain("generated Python code");
       await expect(helpTool?.execute()).resolves.toBe(helpTool?.description);

@@ -4,9 +4,9 @@ alpha - the alpha toolset
 TypeScript source code is available in <ts-dir>/alpha.ts
 
 Available functions:
-  echo              Echo a message.
-  add               Add two integers.
-  summarizePayload  Summarize a structured payload.
+  echo(message)                                         Echo a message.
+  add(a, b)                                             Add two integers.
+  summarizePayload(items, metadata?, include_details?)  Summarize a structured payload.
 
 For details on a specific function, inspect the TypeScript declarations or editor hover documentation.
 Primary declarations: <ts-dir>/alpha.d.ts

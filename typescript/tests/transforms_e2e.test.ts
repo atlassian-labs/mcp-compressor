@@ -110,7 +110,9 @@ describe("host-owned transform e2e", () => {
       expect(pythonHelp).toContain("provided via a Python module");
       expect(pythonHelp).toContain(`Python source code is available in ${pythonDir}/alpha.py`);
       expect(pythonHelp).toContain("Available functions:");
-      expect(pythonHelp).toContain("summarize_payload  Summarize a structured payload.");
+      expect(pythonHelp).toContain(
+        "summarize_payload(items, metadata=None, include_details=None)  Summarize a structured payload.",
+      );
       expect(pythonHelp).not.toContain("Code Mode");
       expect(readFileSync(join(pythonDir, "alpha.py"), "utf8")).toContain(
         '"""Summarize a structured payload."""',
@@ -119,7 +121,9 @@ describe("host-owned transform e2e", () => {
       const tsHelp = typescript.tools.alpha_help?.description ?? "";
       expect(tsHelp).toContain("provided via a TypeScript module");
       expect(tsHelp).toContain(`TypeScript source code is available in ${tsDir}/alpha.ts`);
-      expect(tsHelp).toContain("summarizePayload  Summarize a structured payload.");
+      expect(tsHelp).toContain(
+        "summarizePayload(items, metadata?, include_details?)  Summarize a structured payload.",
+      );
       expect(tsHelp).not.toContain("Code Mode");
       expect(readFileSync(join(tsDir, "alpha.d.ts"), "utf8")).toContain(
         "Summarize a structured payload.",
