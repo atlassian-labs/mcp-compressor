@@ -225,6 +225,13 @@ describe("agent-facing alpha snapshots", () => {
           [pythonDir]: "<python-dir>",
         }),
       ).toBe(golden("agent-facing/code/atlassian-python-help-tool-description.txt"));
+      const source = readFileSync(join(pythonDir, "atlassian.py"), "utf8");
+      expect(source).toContain("def atlassian_user_info() -> str:");
+      expect(source).toContain(
+        "def search_jira_issues_using_jql(cloud_id, jql, max_results=None, fields=None) -> str:",
+      );
+      expect(source).toContain(JSON.stringify("cloudId") + ": cloud_id");
+      expect(source).not.toContain("def atlassianUserInfo(");
     } finally {
       transform.close();
     }

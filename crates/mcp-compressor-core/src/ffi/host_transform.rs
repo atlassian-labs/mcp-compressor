@@ -292,7 +292,7 @@ fn code_help_description(
 
 fn code_function_signature(kind: FfiClientArtifactKind, tool: &FfiTool) -> String {
     let name = match kind {
-        FfiClientArtifactKind::Python => tool.name.clone(),
+        FfiClientArtifactKind::Python => to_snake_case(&tool.name),
         FfiClientArtifactKind::TypeScript => snake_to_camel(&tool.name),
         FfiClientArtifactKind::Cli => unreachable!(),
     };
@@ -317,7 +317,7 @@ fn code_function_signature(kind: FfiClientArtifactKind, tool: &FfiTool) -> Strin
     let mut args = Vec::new();
     for key in properties.keys() {
         let function_arg = match kind {
-            FfiClientArtifactKind::Python => key.to_string(),
+            FfiClientArtifactKind::Python => to_snake_case(key),
             FfiClientArtifactKind::TypeScript => key.to_string(),
             FfiClientArtifactKind::Cli => unreachable!(),
         };
@@ -360,6 +360,30 @@ fn compact_description(description: Option<&str>) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+
+fn to_snake_case(name: &str) -> String {
+    let mut output = String::new();
+    let mut previous_was_separator = false;
+    for (index, ch) in name.chars().enumerate() {
+        if ch == '-' || ch == ' ' {
+            if !output.is_empty() && !previous_was_separator {
+                output.push('_');
+            }
+            previous_was_separator = true;
+        } else if ch.is_ascii_uppercase() {
+            if index > 0 && !previous_was_separator {
+                output.push('_');
+            }
+            output.push(ch.to_ascii_lowercase());
+            previous_was_separator = false;
+        } else {
+            output.push(ch);
+            previous_was_separator = ch == '_';
+        }
+    }
+    output
 }
 
 fn snake_to_camel(name: &str) -> String {
