@@ -187,16 +187,16 @@ impl CompressedServer {
         let mut tools = Vec::new();
         for backend in &self.backends {
             let prefix = self.wrapper_prefix(backend);
-            tools.push(wrapper_tool(
+            tools.push(get_tool_schema_wrapper_tool(
                 format!("{prefix}get_tool_schema"),
                 &self.get_tool_schema_description(backend),
             ));
-            tools.push(wrapper_tool(
+            tools.push(invoke_wrapper_tool(
                 format!("{prefix}invoke_tool"),
                 &self.invoke_tool_description(backend),
             ));
             if self.config.level == CompressionLevel::Max {
-                tools.push(wrapper_tool(
+                tools.push(list_wrapper_tool(
                     format!("{prefix}list_tools"),
                     "List compressed backend tools.",
                 ));
@@ -544,7 +544,41 @@ fn format_backend_help(backend: &ConnectedBackend) -> String {
     lines.join("\n")
 }
 
-fn wrapper_tool(name: String, description: &str) -> Tool {
+fn get_tool_schema_wrapper_tool(name: String, description: &str) -> Tool {
+    Tool::new(
+        name,
+        Some(description.to_string()),
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "tool_name": { "type": "string", "description": "Name of the backend tool" }
+            },
+            "required": ["tool_name"]
+        }),
+    )
+}
+
+fn invoke_wrapper_tool(name: String, description: &str) -> Tool {
+    Tool::new(
+        name,
+        Some(description.to_string()),
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "tool_name": { "type": "string", "description": "Name of the backend tool" },
+                "tool_input": {
+                    "type": "object",
+                    "description": "JSON input for the backend tool",
+                    "properties": {},
+                    "additionalProperties": true
+                }
+            },
+            "required": ["tool_name", "tool_input"]
+        }),
+    )
+}
+
+fn list_wrapper_tool(name: String, description: &str) -> Tool {
     Tool::new(
         name,
         Some(description.to_string()),

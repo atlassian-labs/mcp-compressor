@@ -92,7 +92,12 @@ export function compressTools(
       type: "object",
       properties: {
         tool_name: { type: "string", description: "Name of the tool" },
-        tool_input: { type: "object", description: "JSON input for the tool" },
+        tool_input: {
+          type: "object",
+          description: "JSON input for the tool",
+          properties: {},
+          additionalProperties: true,
+        },
       },
       required: ["tool_name", "tool_input"],
     },
