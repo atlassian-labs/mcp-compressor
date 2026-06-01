@@ -68,7 +68,12 @@ fn compressed_frontend_size(tools: &[Tool], level: &CompressionLevel) -> usize {
         "type": "object",
         "properties": {
             "tool_name": {"type": "string", "description": "Name of the backend tool"},
-            "tool_input": {"type": "object", "description": "JSON input for the backend tool"}
+            "tool_input": {
+                "type": "object",
+                "description": "JSON input for the backend tool",
+                "properties": {},
+                "additionalProperties": true
+            }
         },
         "required": ["tool_name", "tool_input"]
     });
