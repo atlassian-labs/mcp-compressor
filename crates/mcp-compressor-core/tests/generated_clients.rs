@@ -1,6 +1,6 @@
 mod common;
 
-use std::process::Command;
+use std::{io, process::Command, thread, time::Duration};
 
 use mcp_compressor_core::client_gen::cli::CliGenerator;
 use mcp_compressor_core::client_gen::python::PythonGenerator;
@@ -48,6 +48,25 @@ async fn running_proxy_config(output_dir: &std::path::Path) -> (GeneratorConfig,
     (config, proxy)
 }
 
+fn generated_script_output(script: &std::path::Path, args: &[&str]) -> std::process::Output {
+    let mut last_error = None;
+    for attempt in 0..5 {
+        match Command::new(script).args(args).output() {
+            Ok(output) => return output,
+            Err(error) if error.raw_os_error() == Some(26) && attempt < 4 => {
+                last_error = Some(error);
+                thread::sleep(Duration::from_millis(25 * (attempt + 1) as u64));
+            }
+            Err(error) => panic!("failed to execute {}: {error}", script.display()),
+        }
+    }
+    let error =
+        last_error.unwrap_or_else(|| io::Error::other("unknown generated script execution error"));
+    panic!(
+        "failed to execute {} after retrying ETXTBSY: {error}",
+        script.display()
+    );
+}
 
 #[test]
 fn generated_cli_help_renders_camel_case_properties_as_kebab_case_flags() {
@@ -76,10 +95,7 @@ fn generated_cli_help_renders_camel_case_properties_as_kebab_case_flags() {
     };
     CliGenerator.generate(&config).unwrap();
     let script = tempdir.path().join("atlassian");
-    let output = Command::new(&script)
-        .args(["search-jira-issues-using-jql", "--help"])
-        .output()
-        .unwrap();
+    let output = generated_script_output(&script, &["search-jira-issues-using-jql", "--help"]);
     assert!(
         output.status.success(),
         "stderr: {}",
@@ -89,7 +105,10 @@ fn generated_cli_help_renders_camel_case_properties_as_kebab_case_flags() {
     assert!(stdout.contains("--cloud-id <value>"), "stdout: {stdout}");
     assert!(stdout.contains("--jql <value>"), "stdout: {stdout}");
     assert!(stdout.contains("--max-results <value>"), "stdout: {stdout}");
-    assert!(stdout.contains("--next-page-token <value>"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("--next-page-token <value>"),
+        "stdout: {stdout}"
+    );
     assert!(!stdout.contains("--cloudId"), "stdout: {stdout}");
     assert!(!stdout.contains("--maxResults"), "stdout: {stdout}");
 }
@@ -205,10 +224,7 @@ async fn generated_cli_script_matches_legacy_argument_parser_features() {
     assert!(stdout.contains("escape"));
     assert!(stdout.contains("json"));
 
-    let unknown = std::process::Command::new(&script)
-        .args(["echo", "--unknown", "value"])
-        .output()
-        .unwrap();
+    let unknown = generated_script_output(&script, &["echo", "--unknown", "value"]);
     assert!(!unknown.status.success());
     assert!(String::from_utf8_lossy(&unknown.stderr).contains("unknown flag"));
 }
@@ -225,10 +241,7 @@ async fn generated_cli_script_invokes_real_proxy_and_backend() {
         .find(|path| path.file_name().unwrap() == "alpha")
         .unwrap();
 
-    let output = Command::new(script)
-        .args(["echo", "--message", "hello"])
-        .output()
-        .unwrap();
+    let output = generated_script_output(script, &["echo", "--message", "hello"]);
 
     assert!(
         output.status.success(),
@@ -255,10 +268,7 @@ async fn generated_cli_script_reports_stopped_proxy_without_traceback() {
 
     drop(proxy);
 
-    let output = Command::new(script)
-        .args(["echo", "--message", "hello"])
-        .output()
-        .unwrap();
+    let output = generated_script_output(script, &["echo", "--message", "hello"]);
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -420,7 +430,10 @@ fn atlassian_like_golden_tools() -> Vec<mcp_compressor_core::compression::engine
     )]
 }
 
-fn generate_cli_script(cli_name: &str, tools: Vec<mcp_compressor_core::compression::engine::Tool>) -> tempfile::TempDir {
+fn generate_cli_script(
+    cli_name: &str,
+    tools: Vec<mcp_compressor_core::compression::engine::Tool>,
+) -> tempfile::TempDir {
     let tempdir = tempfile::tempdir().unwrap();
     let config = GeneratorConfig {
         cli_name: cli_name.to_string(),
@@ -436,20 +449,26 @@ fn generate_cli_script(cli_name: &str, tools: Vec<mcp_compressor_core::compressi
 }
 
 fn run_generated_script(script: &std::path::Path, args: &[&str]) -> String {
-    let output = Command::new(script).args(args).output().unwrap();
+    let output = generated_script_output(script, args);
     assert!(
         output.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    String::from_utf8(output.stdout).unwrap().trim_end().to_string()
+    String::from_utf8(output.stdout)
+        .unwrap()
+        .trim_end()
+        .to_string()
 }
 
 #[test]
 fn rust_generated_alpha_cli_matches_shared_golden_help() {
     let tempdir = generate_cli_script("alpha", alpha_golden_tools());
     let script = tempdir.path().join("alpha");
-    assert_eq!(run_generated_script(&script, &["--help"]), golden("agent-facing/cli/alpha-help.txt"));
+    assert_eq!(
+        run_generated_script(&script, &["--help"]),
+        golden("agent-facing/cli/alpha-help.txt")
+    );
     assert_eq!(
         run_generated_script(&script, &["echo", "--help"]),
         golden("agent-facing/cli/alpha-echo-help.txt")
