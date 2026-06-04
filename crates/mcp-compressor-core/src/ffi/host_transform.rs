@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::client_gen::cli::CliGenerator;
 use crate::client_gen::generator::{
-    artifact_map, write_artifacts, ClientGenerator, GeneratorConfig,
+    artifact_map, ClientGenerator, GeneratedArtifact, GeneratorConfig,
 };
 use crate::client_gen::python::PythonGenerator;
 use crate::client_gen::typescript::TypeScriptGenerator;
@@ -114,7 +114,7 @@ pub fn build_host_transform_plan(
             );
             let artifacts = CliGenerator.render(&generator_config)?;
             let files = artifact_map(&artifacts);
-            let paths = write_artifacts(&artifacts, &output_dir)?;
+            let paths = artifact_paths(&artifacts, &output_dir);
             let help_description =
                 shell_tool_help_description(&command_name, &server_name, &config.tools);
             Ok(FfiHostTransformPlan {
@@ -150,7 +150,7 @@ pub fn build_host_transform_plan(
                 FfiClientArtifactKind::Cli => unreachable!(),
             };
             let files = artifact_map(&artifacts);
-            let paths = write_artifacts(&artifacts, &output_dir)?;
+            let paths = artifact_paths(&artifacts, &output_dir);
             let help_description =
                 code_help_description(artifact_kind, &server_name, &output_dir, &config.tools);
             let environment = match config.kind {
@@ -203,6 +203,13 @@ fn generator_config(
         output_dir: output_dir.to_path_buf(),
     }
     .into()
+}
+
+fn artifact_paths(artifacts: &[GeneratedArtifact], output_dir: &std::path::Path) -> Vec<PathBuf> {
+    artifacts
+        .iter()
+        .map(|artifact| output_dir.join(&artifact.file_name))
+        .collect()
 }
 
 fn shell_tool_help_description(command: &str, cli_name: &str, tools: &[FfiTool]) -> String {
@@ -362,7 +369,6 @@ fn compact_description(description: Option<&str>) -> String {
         .join(" ")
 }
 
-
 fn to_snake_case(name: &str) -> String {
     let mut output = String::new();
     let mut previous_was_separator = false;
@@ -407,16 +413,6 @@ fn normalize_server_name(name: Option<String>) -> String {
 }
 
 fn default_cli_output_dir() -> PathBuf {
-    if let Ok(value) = std::env::var("MCP_COMPRESSOR_CLI_OUTPUT_DIR") {
-        if !value.is_empty() {
-            return PathBuf::from(value);
-        }
-    }
-    if let Ok(home) = std::env::var("HOME") {
-        if !home.is_empty() {
-            return PathBuf::from(home).join(".local/bin");
-        }
-    }
     PathBuf::from("./dist")
 }
 
@@ -522,6 +518,54 @@ mod tests {
         assert!(!plan
             .help_description
             .contains("getAccessibleAtlassianResources"));
+    }
+
+    #[test]
+    fn host_cli_plan_defaults_to_dist_and_does_not_write_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let previous_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(temp.path()).unwrap();
+        let plan = build_host_transform_plan(FfiHostTransformConfig {
+            kind: FfiHostTransformKind::Cli,
+            server_name: "alpha".to_string(),
+            tools: vec![tool("echo", "Echo a message.")],
+            output_dir: None,
+            command_name: Some("alpha".to_string()),
+            bridge_url: Some("http://127.0.0.1:1".to_string()),
+            token: Some("token".to_string()),
+            session_pid: Some(1),
+        })
+        .unwrap();
+        std::env::set_current_dir(previous_cwd).unwrap();
+
+        assert_eq!(plan.output_dir, Some(PathBuf::from("./dist")));
+        assert_eq!(plan.paths, vec![PathBuf::from("./dist/alpha")]);
+        assert_eq!(
+            plan.environment.get("PATH"),
+            Some(&"./dist:$PATH".to_string())
+        );
+        assert!(plan.files.contains_key("alpha"));
+        assert!(!temp.path().join("dist/alpha").exists());
+    }
+
+    #[test]
+    fn host_python_plan_returns_artifacts_without_writing_files() {
+        let output_dir = tempfile::tempdir().unwrap().path().join("python-out");
+        let plan = build_host_transform_plan(FfiHostTransformConfig {
+            kind: FfiHostTransformKind::Python,
+            server_name: "alpha".to_string(),
+            tools: vec![tool("echo", "Echo a message.")],
+            output_dir: Some(output_dir.clone()),
+            command_name: None,
+            bridge_url: Some("http://127.0.0.1:1".to_string()),
+            token: Some("token".to_string()),
+            session_pid: Some(1),
+        })
+        .unwrap();
+
+        assert!(plan.files.contains_key("alpha.py"));
+        assert!(plan.paths.contains(&output_dir.join("alpha.py")));
+        assert!(!output_dir.join("alpha.py").exists());
     }
 
     #[test]

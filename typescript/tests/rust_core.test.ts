@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { request } from "node:http";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -742,10 +742,13 @@ describe("local TypeScript tool compression", () => {
     }
   });
 
-  it("defaults CLI transform output to a user PATH directory", async () => {
+  it("defaults host CLI transform output to ./dist without writing files", async () => {
     const previousHome = process.env.HOME;
+    const previousCwd = process.cwd();
     const home = mkdtempSync(join(tmpdir(), "mcp-cli-home-"));
+    const cwd = mkdtempSync(join(tmpdir(), "mcp-cli-cwd-"));
     process.env.HOME = home;
+    process.chdir(cwd);
     const transform = await transformToolsForCliMode(
       {
         echo: {
@@ -758,13 +761,16 @@ describe("local TypeScript tool compression", () => {
       { serverName: "alpha" },
     );
     try {
-      const expectedDir = join(home, ".local", "bin");
-      expect(transform.paths).toEqual([join(expectedDir, "alpha")]);
-      expect(transform.environment.PATH).toBe(`${expectedDir}:$PATH`);
+      expect(transform.paths).toEqual(["./dist/alpha"]);
+      expect(transform.files.alpha).toContain("alpha - the alpha toolset");
+      expect(transform.environment.PATH).toBe("./dist:$PATH");
       expect(transform.tools.alpha_help?.description).toContain("`alpha` CLI");
       expect(transform.tools.alpha_help?.description).not.toContain("PATH hint");
+      expect(existsSync(join(home, ".local", "bin", "alpha"))).toBe(false);
+      expect(existsSync(join(cwd, "dist", "alpha"))).toBe(false);
     } finally {
       transform.close();
+      process.chdir(previousCwd);
       if (previousHome === undefined) {
         delete process.env.HOME;
       } else {

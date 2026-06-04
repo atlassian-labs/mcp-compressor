@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -46,7 +46,7 @@ const alphaTools: Record<string, ExecutableTool<unknown>> = {
 };
 
 describe("host-owned transform e2e", () => {
-  it("CLI transform writes a self-contained command with legacy-style structured parsing", async () => {
+  it("CLI transform returns a self-contained command with legacy-style structured parsing", async () => {
     const outputDir = mkdtempSync(join(tmpdir(), "mcp-cli-transform-"));
     const transform = await transformToolsForCliMode(alphaTools, {
       serverName: "alpha",
@@ -63,8 +63,11 @@ describe("host-owned transform e2e", () => {
       expect(helpDescription).not.toContain("CLI Mode");
       expect(helpDescription).not.toContain("PATH hint");
 
-      expect(transform.paths).toHaveLength(1);
+      expect(transform.paths).toEqual([join(outputDir, "alpha")]);
       expect(transform.files).toHaveProperty("alpha");
+      expect(transform.files.alpha).toContain("alpha - the alpha toolset");
+      expect(transform.environment.PATH).toBe(`${outputDir}:$PATH`);
+      expect(existsSync(join(outputDir, "alpha"))).toBe(false);
     } finally {
       transform.close();
     }
@@ -114,9 +117,8 @@ describe("host-owned transform e2e", () => {
         "summarize_payload(items, metadata=None, include_details=None)  Summarize a structured payload.",
       );
       expect(pythonHelp).not.toContain("Code Mode");
-      expect(readFileSync(join(pythonDir, "alpha.py"), "utf8")).toContain(
-        '"""Summarize a structured payload."""',
-      );
+      expect(python.files["alpha.py"]).toContain('"""Summarize a structured payload."""');
+      expect(existsSync(join(pythonDir, "alpha.py"))).toBe(false);
 
       const tsHelp = typescript.tools.alpha_help?.description ?? "";
       expect(tsHelp).toContain("provided via a TypeScript module");
@@ -125,9 +127,8 @@ describe("host-owned transform e2e", () => {
         "summarizePayload(items, metadata?, include_details?)  Summarize a structured payload.",
       );
       expect(tsHelp).not.toContain("Code Mode");
-      expect(readFileSync(join(tsDir, "alpha.d.ts"), "utf8")).toContain(
-        "Summarize a structured payload.",
-      );
+      expect(typescript.files["alpha.d.ts"]).toContain("Summarize a structured payload.");
+      expect(existsSync(join(tsDir, "alpha.d.ts"))).toBe(false);
     } finally {
       python.close();
       typescript.close();
