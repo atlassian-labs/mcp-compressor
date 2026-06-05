@@ -21,6 +21,8 @@ export interface TransformToolsForJustBashOptions extends TransformToolOptions {
   bash: unknown;
 }
 
+export interface PlanToolsForJustBashOptions extends TransformToolOptions {}
+
 export interface JustBashTransformResult {
   tools: Record<string, ExecutableTool>;
   registrations: JustBashCommandRegistration[];
@@ -47,9 +49,9 @@ export interface GeneratedToolTransformResult {
   close(): void;
 }
 
-export function transformToolsForJustBash(
+export function planToolsForJustBash(
   tools: Record<string, ExecutableTool<unknown>>,
-  options: TransformToolsForJustBashOptions,
+  options: PlanToolsForJustBashOptions = {},
 ): JustBashTransformResult {
   const serverName = normalizeServerName(options.serverName);
   const toolSpecs = executableToolsToSpecs(tools);
@@ -59,7 +61,6 @@ export function transformToolsForJustBash(
       justBashSource(serverName, command.commandName, command.backendToolName, tools),
     ),
   );
-  installJustBashRegistrations(options.bash, registrations);
   return {
     registrations,
     tools: helpTools({
@@ -68,6 +69,15 @@ export function transformToolsForJustBash(
       output: plan.helpDescription,
     }),
   };
+}
+
+export function transformToolsForJustBash(
+  tools: Record<string, ExecutableTool<unknown>>,
+  options: TransformToolsForJustBashOptions,
+): JustBashTransformResult {
+  const result = planToolsForJustBash(tools, options);
+  installJustBashRegistrations(options.bash, result.registrations);
+  return result;
 }
 
 export async function transformToolsForCodeMode(
