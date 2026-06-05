@@ -38,7 +38,7 @@ const HEADERS = {{ Authorization: `Bearer ${{TOKEN}}`, "Content-Type": "applicat
 async function execTool(tool: string, input: Record<string, unknown>): Promise<string> {{
   let res: Response;
   try {{
-    res = await fetch(`${{BRIDGE}}/exec`, {{
+    res = await globalThis.fetch(`${{BRIDGE}}/exec`, {{
       method: "POST",
       headers: HEADERS,
       body: JSON.stringify({{ tool, input }}),
@@ -341,6 +341,25 @@ mod tests {
         );
     }
 
+    /// A backend tool named `fetch` must not shadow the HTTP fetch used by execTool.
+    #[test]
+    fn ts_exec_tool_uses_global_fetch_to_avoid_export_shadowing() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = make_config(dir.path());
+        let paths = TypeScriptGenerator.generate(&config).unwrap();
+        let ts = find_ts(&paths);
+        let content = fs::read_to_string(ts).unwrap();
+
+        assert!(
+            content.contains("res = await globalThis.fetch(`${BRIDGE}/exec`, {"),
+            "execTool must use globalThis.fetch so exported tools named fetch do not shadow HTTP fetch"
+        );
+        assert!(
+            content.contains("export async function fetch("),
+            "fixture should keep exercising a tool exported as fetch"
+        );
+    }
+
     /// Functions return `Promise<string>`.
     #[test]
     fn ts_functions_return_promise_string() {
@@ -411,14 +430,14 @@ mod tests {
     /// Generated TypeScript intentionally uses Web-standard APIs only so the
     /// public client remains portable to future V8-isolate/WASM packaging.
     #[test]
-    fn ts_uses_fetch_and_avoids_node_native_imports() {
+    fn ts_uses_global_fetch_and_avoids_node_native_imports() {
         let dir = tempfile::tempdir().unwrap();
         let config = make_config(dir.path());
         let paths = TypeScriptGenerator.generate(&config).unwrap();
         let ts = find_ts(&paths);
         let content = fs::read_to_string(ts).unwrap();
 
-        assert!(content.contains("fetch("));
+        assert!(content.contains("globalThis.fetch("));
         for forbidden in [
             "from 'node:",
             "from \"node:",
