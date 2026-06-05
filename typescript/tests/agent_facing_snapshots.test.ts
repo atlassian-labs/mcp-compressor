@@ -280,5 +280,12 @@ describe("agent-facing alpha snapshots", () => {
         tool_input: { message: "snapshot" },
       }),
     ).resolves.toBe(golden("agent-facing/compressed/alpha-invoke-echo.txt"));
+
+    await expect(
+      compressed.alpha_invoke_tool?.execute({
+        tool_name: "echo",
+        tool_input_json: '{"message":"snapshot"}',
+      }),
+    ).resolves.toBe(golden("agent-facing/compressed/alpha-invoke-echo.txt"));
   });
 });

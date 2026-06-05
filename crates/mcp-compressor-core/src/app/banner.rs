@@ -54,7 +54,7 @@ fn compressed_frontend_size(tools: &[Tool], level: &CompressionLevel) -> usize {
     let get_tool_schema_description = format!(
         "Get the complete schema and description for one backend tool. Available tools:\n{listing}"
     );
-    let invoke_tool_description = "Invoke one backend tool by name with JSON input.";
+    let invoke_tool_description = "Invoke one backend tool by name with JSON input. Provide backend arguments as tool_input, or as JSON in tool_input_json if nested object properties are dropped.";
     let list_tools_description = "List backend tools available through this compressed MCP server.";
 
     let schema_wrapper = serde_json::json!({
@@ -73,9 +73,13 @@ fn compressed_frontend_size(tools: &[Tool], level: &CompressionLevel) -> usize {
                 "description": "JSON input for the backend tool",
                 "properties": {},
                 "additionalProperties": true
+            },
+            "tool_input_json": {
+                "type": "string",
+                "description": "JSON-serialized input object for the backend tool"
             }
         },
-        "required": ["tool_name", "tool_input"]
+        "required": ["tool_name"]
     });
     let list_wrapper = serde_json::json!({
         "type": "object",

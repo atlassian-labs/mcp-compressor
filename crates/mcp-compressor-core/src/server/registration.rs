@@ -6,9 +6,8 @@ use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
     Annotated, CallToolRequestParams, CallToolResult, Content, ErrorCode, GetPromptRequestParams,
     GetPromptResult, InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
-    PaginatedRequestParams, Prompt,
-    RawResource, ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents,
-    ServerCapabilities, Tool,
+    PaginatedRequestParams, Prompt, RawResource, ReadResourceRequestParams, ReadResourceResult,
+    Resource, ResourceContents, ServerCapabilities, Tool,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer};
@@ -77,10 +76,7 @@ impl ServerHandler for FrontendServer {
                 .await
         } else if wrapper_name.ends_with("invoke_tool") {
             let tool_name = required_string(&arguments, "tool_name")?;
-            let tool_input = arguments
-                .get("tool_input")
-                .cloned()
-                .unwrap_or_else(|| Value::Object(Map::new()));
+            let tool_input = parse_tool_input(arguments)?;
             self.compressed
                 .invoke_tool(&wrapper_name, &tool_name, tool_input)
                 .await
@@ -120,9 +116,10 @@ impl ServerHandler for FrontendServer {
             .read_resource(&request.uri)
             .await
             .map_err(mcp_error)?;
-        Ok(ReadResourceResult::new(vec![
-            ResourceContents::text(text, request.uri),
-        ]))
+        Ok(ReadResourceResult::new(vec![ResourceContents::text(
+            text,
+            request.uri,
+        )]))
     }
 
     async fn list_prompts(
@@ -170,16 +167,51 @@ fn convert_tool(tool: crate::compression::engine::Tool) -> Tool {
 }
 
 fn convert_resource(uri: String) -> Resource {
-    Annotated::new(RawResource {
-        name: uri.clone(),
-        uri,
-        title: None,
-        description: None,
-        mime_type: None,
-        icons: None,
-        size: None,
-        meta: None,
-    }, None)
+    Annotated::new(
+        RawResource {
+            name: uri.clone(),
+            uri,
+            title: None,
+            description: None,
+            mime_type: None,
+            icons: None,
+            size: None,
+            meta: None,
+        },
+        None,
+    )
+}
+
+fn parse_tool_input(arguments: Map<String, Value>) -> Result<Value, McpError> {
+    if let Some(value) = arguments.get("tool_input_json") {
+        let json = value.as_str().ok_or_else(|| {
+            McpError::new(
+                ErrorCode::INVALID_PARAMS,
+                "tool_input_json must be a JSON string",
+                None,
+            )
+        })?;
+        let parsed = serde_json::from_str::<Value>(json).map_err(|error| {
+            McpError::new(
+                ErrorCode::INVALID_PARAMS,
+                format!("invalid tool_input_json: {error}"),
+                None,
+            )
+        })?;
+        if !parsed.is_object() {
+            return Err(McpError::new(
+                ErrorCode::INVALID_PARAMS,
+                "tool_input_json must decode to a JSON object",
+                None,
+            ));
+        }
+        return Ok(parsed);
+    }
+
+    Ok(arguments
+        .get("tool_input")
+        .cloned()
+        .unwrap_or_else(|| Value::Object(Map::new())))
 }
 
 fn required_string(arguments: &Map<String, Value>, name: &str) -> Result<String, McpError> {
@@ -192,4 +224,49 @@ fn required_string(arguments: &Map<String, Value>, name: &str) -> Result<String,
 
 fn mcp_error(error: crate::Error) -> McpError {
     McpError::new(ErrorCode::INTERNAL_ERROR, error.to_string(), None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parse_tool_input_accepts_object_input() {
+        let mut args = Map::new();
+        args.insert("tool_input".to_string(), json!({ "message": "object" }));
+        assert_eq!(
+            parse_tool_input(args).unwrap(),
+            json!({ "message": "object" })
+        );
+    }
+
+    #[test]
+    fn parse_tool_input_accepts_json_string_input() {
+        let mut args = Map::new();
+        args.insert(
+            "tool_input_json".to_string(),
+            Value::String("{\"message\":\"json\"}".to_string()),
+        );
+        assert_eq!(
+            parse_tool_input(args).unwrap(),
+            json!({ "message": "json" })
+        );
+    }
+
+    #[test]
+    fn parse_tool_input_rejects_invalid_json_string() {
+        let mut args = Map::new();
+        args.insert(
+            "tool_input_json".to_string(),
+            Value::String("{".to_string()),
+        );
+        let error = parse_tool_input(args).unwrap_err();
+        assert!(error.to_string().contains("invalid tool_input_json"));
+    }
+
+    #[test]
+    fn parse_tool_input_defaults_missing_input_to_empty_object() {
+        assert_eq!(parse_tool_input(Map::new()).unwrap(), json!({}));
+    }
 }

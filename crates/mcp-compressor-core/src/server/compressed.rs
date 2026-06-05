@@ -215,7 +215,7 @@ impl CompressedServer {
 
     fn invoke_tool_description(&self, backend: &ConnectedBackend) -> String {
         format!(
-            "Invoke a tool from the {} toolset. Use get_tool_schema first when you need the full input schema.",
+            "Invoke a tool from the {} toolset. Use get_tool_schema first when you need the full input schema. Provide backend arguments as tool_input. If your tool-calling API drops nested object properties, provide the same backend arguments as a JSON string in tool_input_json instead.",
             backend.public_name
         )
     }
@@ -568,12 +568,16 @@ fn invoke_wrapper_tool(name: String, description: &str) -> Tool {
                 "tool_name": { "type": "string", "description": "Name of the backend tool" },
                 "tool_input": {
                     "type": "object",
-                    "description": "JSON input for the backend tool",
+                    "description": "JSON input for the backend tool. Use this when your tool-calling API preserves nested object properties.",
                     "properties": {},
                     "additionalProperties": true
+                },
+                "tool_input_json": {
+                    "type": "string",
+                    "description": "JSON-serialized input object for the backend tool. Use this instead of tool_input if your tool-calling API drops nested object properties."
                 }
             },
-            "required": ["tool_name", "tool_input"]
+            "required": ["tool_name"]
         }),
     )
 }

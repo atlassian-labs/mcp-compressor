@@ -107,3 +107,29 @@ async fn proxy_exec_dispatches_to_real_backend_with_session_token() {
     assert!((200..300).contains(&response.status));
     assert_eq!(response.body.trim(), "alpha:hello");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn proxy_exec_accepts_tool_input_json_escape_hatch() {
+    let compressed = CompressedServer::connect_stdio(
+        common::max_config(Some("alpha")),
+        common::backend("alpha", "alpha_server.py"),
+    )
+    .await
+    .unwrap();
+    let proxy = ToolProxyServer::start(compressed).await.unwrap();
+
+    let body = json!({
+        "tool": "alpha_invoke_tool",
+        "input": { "tool_name": "echo", "tool_input_json": "{\"message\":\"json\"}" }
+    })
+    .to_string();
+    let response = send_raw_http(
+        "POST",
+        &proxy.exec_url(),
+        Some(proxy.token_value()),
+        Some(&body),
+    );
+
+    assert!((200..300).contains(&response.status), "{}", response.body);
+    assert_eq!(response.body.trim(), "alpha:json");
+}

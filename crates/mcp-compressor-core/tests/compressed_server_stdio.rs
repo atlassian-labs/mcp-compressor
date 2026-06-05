@@ -52,11 +52,50 @@ async fn single_stdio_backend_invoke_wrapper_tool_input_schema_is_explicit_open_
             .unwrap(),
         &json!({
             "type": "object",
-            "description": "JSON input for the backend tool",
+            "description": "JSON input for the backend tool. Use this when your tool-calling API preserves nested object properties.",
             "properties": {},
             "additionalProperties": true
         })
     );
+    assert_eq!(
+        invoke_tool
+            .input_schema
+            .pointer("/properties/tool_input_json")
+            .unwrap(),
+        &json!({
+            "type": "string",
+            "description": "JSON-serialized input object for the backend tool. Use this instead of tool_input if your tool-calling API drops nested object properties."
+        })
+    );
+    assert_eq!(
+        invoke_tool.input_schema.pointer("/required").unwrap(),
+        &json!(["tool_name"])
+    );
+    assert!(invoke_tool
+        .description
+        .as_deref()
+        .unwrap_or_default()
+        .contains("tool_input_json"));
+}
+
+#[tokio::test]
+async fn single_stdio_backend_accepts_tool_input_json_escape_hatch() {
+    let server = CompressedServer::connect_stdio(
+        common::max_config(Some("alpha")),
+        common::backend("alpha", "alpha_server.py"),
+    )
+    .await
+    .unwrap();
+
+    let echo = server
+        .invoke_tool(
+            "alpha_invoke_tool",
+            "echo",
+            json!({ "message": "json-string" }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(echo, "alpha:json-string");
 }
 
 #[tokio::test]

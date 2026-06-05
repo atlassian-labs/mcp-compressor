@@ -43,6 +43,37 @@ function normalizeResult(value: unknown, toonify: boolean): string {
   return json;
 }
 
+function parseToolInput(input: Record<string, unknown>): Record<string, unknown> {
+  if (input.tool_input_json !== undefined) {
+    if (typeof input.tool_input_json !== "string") {
+      throw new Error("tool_input_json must be a JSON string");
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(input.tool_input_json);
+    } catch (error) {
+      throw new Error(
+        `invalid tool_input_json: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("tool_input_json must decode to a JSON object");
+    }
+    return parsed as Record<string, unknown>;
+  }
+  if (input.tool_input === undefined) {
+    return {};
+  }
+  if (
+    input.tool_input === null ||
+    typeof input.tool_input !== "object" ||
+    Array.isArray(input.tool_input)
+  ) {
+    throw new Error("tool_input must be a JSON object");
+  }
+  return input.tool_input as Record<string, unknown>;
+}
+
 export function compressTools(
   tools: Record<string, LocalTool>,
   options: CompressToolsOptions = {},
@@ -87,25 +118,33 @@ export function compressTools(
 
   result[wrapperName(options.namePrefix, "invoke_tool")] = {
     name: wrapperName(options.namePrefix, "invoke_tool"),
-    description: "Invoke one tool by name with JSON input.",
+    description:
+      "Invoke one tool by name with JSON input. Provide backend arguments as tool_input. If your tool-calling API drops nested object properties, provide the same backend arguments as a JSON string in tool_input_json instead.",
     inputSchema: {
       type: "object",
       properties: {
         tool_name: { type: "string", description: "Name of the tool" },
         tool_input: {
           type: "object",
-          description: "JSON input for the tool",
+          description:
+            "JSON input for the tool. Use this when your tool-calling API preserves nested object properties.",
           properties: {},
           additionalProperties: true,
         },
+        tool_input_json: {
+          type: "string",
+          description:
+            "JSON-serialized input object for the tool. Use this instead of tool_input if your tool-calling API drops nested object properties.",
+        },
       },
-      required: ["tool_name", "tool_input"],
+      required: ["tool_name"],
     },
     execute: async (input = {}) => {
       const toolName = String(input.tool_name ?? "");
       const tool = toolByName.get(toolName);
       if (!tool) throw new Error(`Tool not found: ${toolName}`);
-      const output = await tool.execute((input.tool_input ?? {}) as never);
+      const toolInput = parseToolInput(input);
+      const output = await tool.execute(toolInput as never);
       return normalizeResult(output, options.toonify ?? false);
     },
   };

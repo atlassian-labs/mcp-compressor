@@ -45,8 +45,27 @@ struct ExecRequest {
 #[derive(Debug, Deserialize)]
 struct WrapperInvokeInput {
     tool_name: String,
-    #[serde(default)]
-    tool_input: Value,
+    tool_input: Option<Value>,
+    tool_input_json: Option<String>,
+}
+
+impl WrapperInvokeInput {
+    fn parse_tool_input(&self) -> Result<Value, Error> {
+        if let Some(json) = &self.tool_input_json {
+            let value: Value = serde_json::from_str(json)
+                .map_err(|error| Error::Validation(format!("invalid tool_input_json: {error}")))?;
+            if !value.is_object() {
+                return Err(Error::Validation(
+                    "tool_input_json must decode to a JSON object".to_string(),
+                ));
+            }
+            return Ok(value);
+        }
+        Ok(self
+            .tool_input
+            .clone()
+            .unwrap_or_else(|| serde_json::json!({})))
+    }
 }
 
 impl ToolProxyServer {
@@ -99,17 +118,19 @@ async fn exec(
 
 fn close_response(status: StatusCode, body: impl Into<String>) -> Response {
     let mut response = (status, body.into()).into_response();
-    response
-        .headers_mut()
-        .insert(header::CONNECTION, header::HeaderValue::from_static("close"));
+    response.headers_mut().insert(
+        header::CONNECTION,
+        header::HeaderValue::from_static("close"),
+    );
     response
 }
 
 async fn dispatch_exec(server: &CompressedServer, request: ExecRequest) -> Result<String, Error> {
     if request.tool.ends_with("_invoke_tool") || request.tool == "invoke_tool" {
         let wrapper_input: WrapperInvokeInput = serde_json::from_value(request.input)?;
+        let tool_input = wrapper_input.parse_tool_input()?;
         server
-            .invoke_tool(&request.tool, &wrapper_input.tool_name, wrapper_input.tool_input)
+            .invoke_tool(&request.tool, &wrapper_input.tool_name, tool_input)
             .await
     } else {
         server
