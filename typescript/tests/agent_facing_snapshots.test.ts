@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -76,6 +76,21 @@ function runScript(scriptPath: string, args: readonly string[]): string {
   return execFileSync(scriptPath, [...args], { encoding: "utf8" }).trimEnd();
 }
 
+function materializeFiles(
+  outputDir: string,
+  files: Record<string, string>,
+  executableNames: readonly string[] = [],
+): void {
+  mkdirSync(outputDir, { recursive: true });
+  for (const [name, contents] of Object.entries(files)) {
+    const path = join(outputDir, name);
+    writeFileSync(path, contents);
+    if (executableNames.includes(name)) {
+      chmodSync(path, 0o755);
+    }
+  }
+}
+
 function golden(relativePath: string): string {
   return readFileSync(
     join(process.cwd(), "..", "testdata", "golden", relativePath),
@@ -95,6 +110,7 @@ describe("agent-facing alpha snapshots", () => {
       outputDir,
     });
     try {
+      materializeFiles(outputDir, transform.files, ["alpha"]);
       const scriptPath = join(outputDir, "alpha");
       expect(runScript(scriptPath, ["--help"])).toBe(golden("agent-facing/cli/alpha-help.txt"));
       expect(runScript(scriptPath, ["echo", "--help"])).toBe(
@@ -150,6 +166,7 @@ describe("agent-facing alpha snapshots", () => {
       { serverName: "atlassian", outputDir },
     );
     try {
+      materializeFiles(outputDir, transform.files, ["atlassian"]);
       const scriptPath = join(outputDir, "atlassian");
       expect(runScript(scriptPath, ["--help"])).toBe(
         golden("agent-facing/atlassian-like/atlassian-help.txt"),
@@ -176,6 +193,8 @@ describe("agent-facing alpha snapshots", () => {
       outputDir: tsDir,
     });
     try {
+      materializeFiles(pythonDir, python.files);
+      materializeFiles(tsDir, typescript.files);
       expect(
         normalizePaths(python.tools.alpha_help?.description ?? "", { [pythonDir]: "<python-dir>" }),
       ).toBe(golden("agent-facing/code/alpha-python-help-tool-description.txt"));
@@ -220,6 +239,7 @@ describe("agent-facing alpha snapshots", () => {
       { serverName: "atlassian", language: "python", outputDir: pythonDir },
     );
     try {
+      materializeFiles(pythonDir, transform.files);
       expect(
         normalizePaths(transform.tools.atlassian_help?.description ?? "", {
           [pythonDir]: "<python-dir>",
