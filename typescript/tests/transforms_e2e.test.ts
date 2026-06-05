@@ -6,10 +6,12 @@ import { Bash } from "just-bash";
 import { describe, expect, it } from "vitest";
 
 import {
+  planToolsForJustBash,
   transformToolsForCliMode,
   transformToolsForCodeMode,
   transformToolsForJustBash,
 } from "../src/transforms.js";
+import { installJustBashRegistrations } from "../src/just_bash_commands.js";
 import type { ExecutableTool } from "../src/adapters.js";
 
 const alphaTools: Record<string, ExecutableTool<unknown>> = {
@@ -93,6 +95,31 @@ describe("host-owned transform e2e", () => {
     expect(result.stdout).toContain("itemCount: 2");
     expect(result.stdout).toContain("source: bash");
     expect(result.stdout).toContain("includeDetails: false");
+  });
+
+  it("Just Bash transform can be planned before the Bash instance is available", async () => {
+    const transform = planToolsForJustBash(alphaTools, { serverName: "alpha" });
+    expect(transform.registrations.map((registration) => registration.commandName)).toEqual([
+      "alpha",
+    ]);
+    const helpDescription = transform.tools.alpha_help?.description ?? "";
+    expect(helpDescription).toContain(
+      "Functionality associated with the alpha toolset is provided via the `alpha` CLI.",
+    );
+    expect(helpDescription).toContain("summarize-payload  Summarize a structured payload.");
+
+    const bash = new Bash({ customCommands: [] });
+    let beforeInstall = await bash.exec("alpha --help");
+    expect(beforeInstall.exitCode).not.toBe(0);
+
+    installJustBashRegistrations(bash, transform.registrations);
+    const result = await bash.exec("alpha echo --message deferred");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("alpha:deferred");
+
+    beforeInstall = await bash.exec("alpha summarize-payload --items one --items two");
+    expect(beforeInstall.exitCode).toBe(0);
+    expect(beforeInstall.stdout).toContain("itemCount: 2");
   });
 
   it("Python and TypeScript code transforms expose module/function descriptions", async () => {
