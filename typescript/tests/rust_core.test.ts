@@ -688,11 +688,11 @@ describe("local TypeScript tool compression", () => {
         body: JSON.stringify({ tool: "user_info", input: {} }),
       });
       expect(execResponse.status).toBe(200);
-      const execBody = (await execResponse.json()) as { result: string };
-      expect(execBody.result).not.toContain("[object Object]");
-      expect(execBody.result).not.toContain('"content"');
-      expect(execBody.result).toContain("abc-123");
-      expect(execBody.result).toContain("Ada Lovelace");
+      const execBody = await execResponse.text();
+      expect(execBody).not.toContain("[object Object]");
+      expect(execBody).not.toContain('"content"');
+      expect(execBody).toContain("abc-123");
+      expect(execBody).toContain("Ada Lovelace");
     } finally {
       transform.close();
     }

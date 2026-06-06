@@ -46,10 +46,30 @@ async function execTool(tool: string, input: Record<string, unknown>): Promise<s
   }} catch (error) {{
     throw new Error(`mcp-compressor proxy is not running; restart the mcp-compressor process and try again. details: ${{error instanceof Error ? error.message : String(error)}}`);
   }}
+  const body = await res.text();
   if (!res.ok) {{
-    throw new Error(`mcp-compressor proxy returned HTTP ${{res.status}}: ${{await res.text()}}`);
+    throw new Error(`mcp-compressor proxy returned HTTP ${{res.status}}: ${{body}}`);
   }}
-  return res.text();
+  return unwrapProxyResponse(body);
+}}
+
+function unwrapProxyResponse(body: string): string {{
+  try {{
+    const parsed = JSON.parse(body) as unknown;
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      Object.keys(parsed).length === 1 &&
+      Object.prototype.hasOwnProperty.call(parsed, "result")
+    ) {{
+      const result = (parsed as {{ result: unknown }}).result;
+      return typeof result === "string" ? result : JSON.stringify(result);
+    }}
+  }} catch {{
+    // Rust proxy responses are raw strings; preserve them as-is.
+  }}
+  return body;
 }}
 "#,
         bridge = config.bridge_url,
