@@ -9,6 +9,7 @@
 //! - Is marked executable (Unix `chmod 755`).
 
 use std::collections::HashSet;
+
 use std::net::ToSocketAddrs;
 
 use crate::cli::mapping::tool_name_to_subcommand;
@@ -125,9 +126,9 @@ HELP
       exit 1
     }}
     python3 - "$BRIDGE_ENTRY" "{tool_name}" "$@" <<'PY'
-import json, sys, urllib.error, urllib.request
+import base64, json, sys, urllib.error, urllib.request
 
-TOOL_SCHEMAS = json.loads({tool_schemas:?})
+TOOL_SCHEMAS = json.loads(base64.b64decode({tool_schemas:?}).decode("utf-8"))
 
 bridge_entry, tool_name, *argv = sys.argv[1:]
 entry = json.loads(bridge_entry)
@@ -328,14 +329,13 @@ pub fn read_live_bridge_entries(script: &str) -> Vec<CliBridgeEntry> {
 }
 
 fn tool_schema_map_literal(config: &GeneratorConfig) -> String {
-    let mut map = serde_json::Map::new();
-    for tool in &config.tools {
-        map.insert(
-            tool.name.clone(),
-            serde_json::to_value(tool).unwrap_or_else(|_| serde_json::json!({})),
-        );
-    }
-    serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or_else(|_| "{}".to_string())
+    let map = config
+        .tools
+        .iter()
+        .map(|tool| (tool.name.clone(), tool.clone()))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let json = serde_json::to_string(&map).expect("tool schema map should serialize");
+    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, json)
 }
 
 fn bridge_map_literal(config: &GeneratorConfig) -> String {
