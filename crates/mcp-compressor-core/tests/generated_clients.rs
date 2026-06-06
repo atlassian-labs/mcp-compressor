@@ -113,6 +113,49 @@ fn generated_cli_help_renders_camel_case_properties_as_kebab_case_flags() {
     assert!(!stdout.contains("--maxResults"), "stdout: {stdout}");
 }
 
+#[test]
+fn generated_cli_schema_blob_allows_literal_backslash_unicode_fragments() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let config = GeneratorConfig {
+        cli_name: "slack".to_string(),
+        bridge_url: "http://127.0.0.1:1".to_string(),
+        token: "token".to_string(),
+        tools: vec![mcp_compressor_core::compression::engine::Tool::new(
+            "slackmcp_slack_search_public",
+            Some("Searches public channels. Example malformed user text can include literal \\u fragments.".to_string()),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "A query string. Literal text may contain C:\\users\\tesler or incomplete \\u escape fragments from docs."
+                    }
+                },
+                "required": ["query"]
+            }),
+        )],
+        session_pid: std::process::id(),
+        output_dir: tempdir.path().to_path_buf(),
+        extra_cli_bridges: Vec::new(),
+    };
+    CliGenerator.generate(&config).unwrap();
+    let script = tempdir.path().join("slack");
+
+    let output = generated_script_output(
+        &script,
+        &["slackmcp-slack-search-public", "--query", "hello"],
+    );
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("mcp-compressor proxy is not running"),
+        "stderr: {stderr}"
+    );
+    assert!(!stderr.contains("SyntaxError"), "stderr: {stderr}");
+    assert!(!stderr.contains("unicodeescape"), "stderr: {stderr}");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn generated_typescript_module_reports_stopped_proxy_without_fetch_noise() {
     let tempdir = tempfile::tempdir().unwrap();
