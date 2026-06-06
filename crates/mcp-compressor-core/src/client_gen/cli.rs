@@ -382,7 +382,7 @@ fn render_top_level_help(config: &GeneratorConfig) -> String {
         help.push_str(&format!(
             "  {:<35} {}\n",
             tool_name_to_subcommand(&tool.name),
-            first_line(tool.description.as_deref().unwrap_or("")),
+            short_tool_description(tool.description.as_deref()),
         ));
     }
     help.push_str(&format!(
@@ -471,7 +471,7 @@ fn format_tool_option_help(option: &ToolOption) -> String {
     let mut line = format!("  {flag:<28} <{}>  {requirement}", option.ty);
     let mut details = Vec::new();
     if let Some(description) = &option.description {
-        details.push(first_line(description).to_string());
+        details.push(short_tool_description(Some(description)));
     }
     if !option.enum_values.is_empty() {
         details.push(format!("values: {}", option.enum_values.join(", ")));
@@ -518,8 +518,61 @@ fn default_value_label(value: &serde_json::Value) -> String {
     }
 }
 
-fn first_line(value: &str) -> &str {
-    value.lines().next().unwrap_or("")
+fn short_tool_description(description: Option<&str>) -> String {
+    let trimmed = description.unwrap_or_default().trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let first_sentence = first_sentence(trimmed);
+    let candidate = if first_sentence.chars().count() >= 10 {
+        first_sentence
+    } else {
+        first_non_empty_line(trimmed)
+    };
+    truncate_clean(candidate, 200)
+}
+
+fn first_sentence(value: &str) -> &str {
+    for (index, ch) in value.char_indices() {
+        if matches!(ch, '.' | '!' | '?') {
+            return value[..=index].trim();
+        }
+    }
+    first_non_empty_line(value)
+}
+
+fn first_non_empty_line(value: &str) -> &str {
+    value
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or_default()
+}
+
+fn truncate_clean(value: &str, max_chars: usize) -> String {
+    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.chars().count() <= max_chars {
+        return compact;
+    }
+    let limit = max_chars.saturating_sub(3);
+    let mut end = 0;
+    for (count, (index, ch)) in compact.char_indices().enumerate() {
+        if count >= limit {
+            break;
+        }
+        end = index + ch.len_utf8();
+    }
+    let mut prefix = compact[..end]
+        .trim_end_matches(|ch: char| ch.is_whitespace() || ch == ',' || ch == ';' || ch == ':')
+        .to_string();
+    if let Some(space) = prefix.rfind(' ') {
+        if space >= max_chars / 2 {
+            prefix.truncate(space);
+        }
+    }
+    prefix.push_str("...");
+    prefix
 }
 
 fn shell_quote(value: &str) -> String {

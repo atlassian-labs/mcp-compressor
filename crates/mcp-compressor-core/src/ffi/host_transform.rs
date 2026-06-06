@@ -266,7 +266,7 @@ fn code_help_description(
         .collect::<Vec<_>>();
     let max_signature_len = signatures.iter().map(String::len).max().unwrap_or(0);
     for (tool, signature) in tools.iter().zip(signatures) {
-        let description = compact_description(tool.description.as_deref());
+        let description = short_tool_description(tool.description.as_deref());
         lines.push(
             format!(
                 "  {signature:<width$}{description}",
@@ -349,7 +349,7 @@ fn format_subcommands(tools: &[FfiTool], name_for_tool: fn(&str) -> String) -> V
         .iter()
         .zip(names)
         .map(|(tool, name)| {
-            let description = compact_description(tool.description.as_deref());
+            let description = short_tool_description(tool.description.as_deref());
             format!("  {name:<width$}{description}", width = max_name_len + 2)
                 .trim_end()
                 .to_string()
@@ -361,12 +361,61 @@ fn cli_subcommand_name(tool_name: &str) -> String {
     crate::cli::mapping::tool_name_to_subcommand(tool_name)
 }
 
-fn compact_description(description: Option<&str>) -> String {
-    description
-        .unwrap_or("")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+fn short_tool_description(description: Option<&str>) -> String {
+    let trimmed = description.unwrap_or_default().trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let first_sentence = first_sentence(trimmed);
+    let candidate = if first_sentence.chars().count() >= 10 {
+        first_sentence
+    } else {
+        first_non_empty_line(trimmed)
+    };
+    truncate_clean(candidate, 200)
+}
+
+fn first_sentence(value: &str) -> &str {
+    for (index, ch) in value.char_indices() {
+        if matches!(ch, '.' | '!' | '?') {
+            return value[..=index].trim();
+        }
+    }
+    first_non_empty_line(value)
+}
+
+fn first_non_empty_line(value: &str) -> &str {
+    value
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or_default()
+}
+
+fn truncate_clean(value: &str, max_chars: usize) -> String {
+    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.chars().count() <= max_chars {
+        return compact;
+    }
+    let limit = max_chars.saturating_sub(3);
+    let mut end = 0;
+    for (count, (index, ch)) in compact.char_indices().enumerate() {
+        if count >= limit {
+            break;
+        }
+        end = index + ch.len_utf8();
+    }
+    let mut prefix = compact[..end]
+        .trim_end_matches(|ch: char| ch.is_whitespace() || ch == ',' || ch == ';' || ch == ':')
+        .to_string();
+    if let Some(space) = prefix.rfind(' ') {
+        if space >= max_chars / 2 {
+            prefix.truncate(space);
+        }
+    }
+    prefix.push_str("...");
+    prefix
 }
 
 fn to_snake_case(name: &str) -> String {
@@ -489,6 +538,55 @@ mod tests {
         assert!(plan
             .help_description
             .contains("  echo-message  Echo a message."));
+    }
+
+    #[test]
+    fn help_summaries_use_first_sentence_and_trim_whitespace() {
+        let plan = build_host_transform_plan(FfiHostTransformConfig {
+            kind: FfiHostTransformKind::Cli,
+            server_name: "alpha".to_string(),
+            tools: vec![tool(
+                "verbose",
+                "  Get details for an item. This second sentence contains implementation guidance that should not appear.
+
+More details follow.",
+            )],
+            output_dir: Some(PathBuf::from("./target/tmp-host-plan-summary-cli")),
+            command_name: Some("alpha".to_string()),
+            bridge_url: Some("http://127.0.0.1:1".to_string()),
+            token: Some("token".to_string()),
+            session_pid: Some(1),
+        })
+        .unwrap();
+
+        assert!(plan
+            .help_description
+            .contains("  verbose  Get details for an item."));
+        assert!(!plan.help_description.contains("implementation guidance"));
+    }
+
+    #[test]
+    fn help_summaries_fall_back_to_first_line_for_tiny_first_sentence() {
+        assert_eq!(
+            short_tool_description(Some("OK. Use this tool to inspect status.")),
+            "OK. Use this tool to inspect status."
+        );
+        assert_eq!(
+            short_tool_description(Some(
+                "A.
+List accessible resources for the user."
+            )),
+            "A."
+        );
+    }
+
+    #[test]
+    fn help_summaries_truncate_cleanly() {
+        let description = format!("{}.", "word ".repeat(80));
+        let summary = short_tool_description(Some(&description));
+        assert!(summary.len() <= 200);
+        assert!(summary.ends_with("..."));
+        assert!(!summary.ends_with(" ..."));
     }
 
     #[test]

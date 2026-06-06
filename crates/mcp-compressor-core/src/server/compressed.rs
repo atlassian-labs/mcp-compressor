@@ -538,10 +538,66 @@ fn format_backend_help(backend: &ConnectedBackend) -> String {
     lines.push("SUBCOMMANDS:".to_string());
     for tool in &backend.tools {
         let subcommand = crate::cli::mapping::tool_name_to_subcommand(&tool.name);
-        let description = tool.description.as_deref().unwrap_or_default();
+        let description = short_tool_description(tool.description.as_deref());
         lines.push(format!("  {subcommand:<35} {description}"));
     }
     lines.join("\n")
+}
+
+fn short_tool_description(description: Option<&str>) -> String {
+    let trimmed = description.unwrap_or_default().trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let first_sentence = first_sentence(trimmed);
+    let candidate = if first_sentence.chars().count() >= 10 {
+        first_sentence
+    } else {
+        first_non_empty_line(trimmed)
+    };
+    truncate_clean(candidate, 200)
+}
+
+fn first_sentence(value: &str) -> &str {
+    for (index, ch) in value.char_indices() {
+        if matches!(ch, '.' | '!' | '?') {
+            return value[..=index].trim();
+        }
+    }
+    first_non_empty_line(value)
+}
+
+fn first_non_empty_line(value: &str) -> &str {
+    value
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or_default()
+}
+
+fn truncate_clean(value: &str, max_chars: usize) -> String {
+    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.chars().count() <= max_chars {
+        return compact;
+    }
+    let limit = max_chars.saturating_sub(3);
+    let mut end = 0;
+    for (count, (index, ch)) in compact.char_indices().enumerate() {
+        if count >= limit {
+            break;
+        }
+        end = index + ch.len_utf8();
+    }
+    let mut prefix = compact[..end]
+        .trim_end_matches(|ch: char| ch.is_whitespace() || ch == ',' || ch == ';' || ch == ':')
+        .to_string();
+    if let Some(space) = prefix.rfind(' ') {
+        if space >= max_chars / 2 {
+            prefix.truncate(space);
+        }
+    }
+    prefix.push_str("...");
+    prefix
 }
 
 fn get_tool_schema_wrapper_tool(name: String, description: &str) -> Tool {
