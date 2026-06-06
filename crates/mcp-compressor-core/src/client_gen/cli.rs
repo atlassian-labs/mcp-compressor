@@ -126,7 +126,7 @@ HELP
       exit 1
     }}
     python3 - "$BRIDGE_ENTRY" "{tool_name}" "$@" <<'PY'
-import base64, json, sys, urllib.error, urllib.request
+import base64, json, re, sys, urllib.error, urllib.request
 
 TOOL_SCHEMAS = json.loads(base64.b64decode({tool_schemas:?}).decode("utf-8"))
 
@@ -140,6 +140,21 @@ properties = properties.get("properties", {{}}) if isinstance(properties, dict) 
 
 def schema_type(schema):
     return schema.get("type") if isinstance(schema, dict) else None
+
+def enum_values(schema):
+    if not isinstance(schema, dict):
+        return []
+    explicit = schema.get("enum")
+    if isinstance(explicit, list):
+        return [str(value) for value in explicit]
+    description = schema.get("description")
+    if not isinstance(description, str):
+        return []
+    match = re.search(r"(?:Options|Allowed values?)\s*:\s*([^\n.]+)", description, re.IGNORECASE)
+    if not match:
+        return []
+    values = re.findall(r"'([^']+)'|`([^`]+)`|\b([A-Za-z0-9_.-]+)\b", match.group(1))
+    return [next(part for part in value if part) for value in values]
 
 def canonical_name(value):
     return value.replace("-", "_").replace("_", "").lower()
@@ -159,7 +174,7 @@ def flag_to_property(flag):
             return prop
     return raw
 
-def coerce_value(schema, raw_value, forced_bool=None):
+def coerce_value(flag, schema, raw_value, forced_bool=None):
     if forced_bool is not None:
         return forced_bool
     typ = schema_type(schema)
@@ -170,17 +185,17 @@ def coerce_value(schema, raw_value, forced_bool=None):
             return True
         if raw_value == "false":
             return False
-        raise SystemExit(f"invalid boolean value: {{raw_value}}")
+        raise SystemExit(f"invalid boolean value for {{flag}}: {{raw_value}} (expected true or false)")
     if typ == "integer":
         try:
             return int(raw_value)
         except Exception:
-            raise SystemExit(f"invalid integer value: {{raw_value}}")
+            raise SystemExit(f"invalid integer value for {{flag}}: {{raw_value}}")
     if typ == "number":
         try:
             return float(raw_value)
         except Exception:
-            raise SystemExit(f"invalid number value: {{raw_value}}")
+            raise SystemExit(f"invalid number value for {{flag}}: {{raw_value}}")
     if typ == "array":
         try:
             parsed = json.loads(raw_value)
@@ -188,11 +203,22 @@ def coerce_value(schema, raw_value, forced_bool=None):
                 return parsed
         except Exception:
             pass
-        return coerce_value(schema.get("items", {{}}), raw_value)
+        return coerce_value(flag, schema.get("items", {{}}), raw_value)
     try:
         return json.loads(raw_value or "")
     except Exception:
         return raw_value or ""
+
+def validate_value(flag, schema, value):
+    allowed = enum_values(schema)
+    if not allowed:
+        return
+    values = value if isinstance(value, list) else [value]
+    for candidate in values:
+        if str(candidate) not in allowed:
+            raise SystemExit(
+                f"invalid value for {{flag}}: {{candidate}} (expected one of: {{', '.join(allowed)}})"
+            )
 
 def insert_value(output, key, schema, value):
     if schema_type(schema) == "array":
@@ -237,7 +263,9 @@ def parse_args(argv):
                 raise SystemExit(f"{{flag}} requires a value")
             raw_value = argv[index + 1]
             consumed = 2
-        insert_value(output, prop, schema, coerce_value(schema, raw_value, forced_bool))
+        value = coerce_value(flag, schema, raw_value, forced_bool)
+        validate_value(flag, schema, value)
+        insert_value(output, prop, schema, value)
         index += consumed
     return output
 
@@ -249,9 +277,19 @@ req = urllib.request.Request(
     headers={{"Content-Type": "application/json", "Authorization": "Bearer " + token}},
     method="POST",
 )
+def unwrap_proxy_response(body):
+    try:
+        parsed = json.loads(body)
+    except Exception:
+        return body
+    if isinstance(parsed, dict) and set(parsed.keys()) == {{"result"}}:
+        result = parsed["result"]
+        return result if isinstance(result, str) else json.dumps(result, separators=(",", ":"))
+    return body
+
 try:
     with urllib.request.urlopen(req, timeout=30) as resp:
-        sys.stdout.write(resp.read().decode())
+        sys.stdout.write(unwrap_proxy_response(resp.read().decode()))
 except urllib.error.HTTPError as exc:
     message = exc.read().decode(errors="replace") or exc.reason
     print(f"mcp-compressor proxy returned HTTP {{exc.code}}: {{message}}", file=sys.stderr)
@@ -450,11 +488,7 @@ fn tool_options(tool: &crate::compression::engine::Tool) -> Vec<ToolOption> {
                         .and_then(|value| value.as_str())
                         .map(str::to_string),
                     default: schema.get("default").map(default_value_label),
-                    enum_values: schema
-                        .get("enum")
-                        .and_then(|value| value.as_array())
-                        .map(|values| values.iter().map(default_value_label).collect())
-                        .unwrap_or_default(),
+                    enum_values: schema_enum_values(schema),
                 })
                 .collect()
         })
@@ -487,15 +521,48 @@ fn format_tool_option_help(option: &ToolOption) -> String {
     line
 }
 
-fn schema_type_label(schema: &serde_json::Value) -> String {
+fn schema_enum_values(schema: &serde_json::Value) -> Vec<String> {
     if let Some(values) = schema.get("enum").and_then(|value| value.as_array()) {
-        let labels = values
-            .iter()
-            .filter_map(|value| value.as_str().map(str::to_string))
-            .collect::<Vec<_>>();
+        let labels = values.iter().map(default_value_label).collect::<Vec<_>>();
         if !labels.is_empty() {
-            return labels.join("|");
+            return labels;
         }
+    }
+    schema
+        .get("description")
+        .and_then(|value| value.as_str())
+        .and_then(infer_enum_values_from_description)
+        .unwrap_or_default()
+}
+
+fn infer_enum_values_from_description(description: &str) -> Option<Vec<String>> {
+    let lower = description.to_lowercase();
+    let marker = lower
+        .find("options:")
+        .or_else(|| lower.find("allowed values:"))?;
+    let tail = &description[marker..];
+    let values = tail
+        .split_once(':')?
+        .1
+        .split(['\n', '.'])
+        .next()
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|part| {
+            let value = part
+                .trim()
+                .trim_matches(|ch: char| ch == '\'' || ch == '`' || ch == '"')
+                .trim();
+            (!value.is_empty()).then(|| value.to_string())
+        })
+        .collect::<Vec<_>>();
+    (!values.is_empty()).then_some(values)
+}
+
+fn schema_type_label(schema: &serde_json::Value) -> String {
+    let labels = schema_enum_values(schema);
+    if !labels.is_empty() {
+        return labels.join("|");
     }
     match schema.get("type").and_then(|value| value.as_str()) {
         Some("integer") => "integer".to_string(),

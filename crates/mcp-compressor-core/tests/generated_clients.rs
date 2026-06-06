@@ -1,6 +1,6 @@
 mod common;
 
-use std::{io, process::Command, thread, time::Duration};
+use std::{io, net::TcpListener, process::Command, thread, time::Duration};
 
 use mcp_compressor_core::client_gen::cli::CliGenerator;
 use mcp_compressor_core::client_gen::python::PythonGenerator;
@@ -415,6 +415,189 @@ fn golden(relative_path: &str) -> String {
     .unwrap()
     .trim_end()
     .to_string()
+}
+
+#[test]
+fn generated_cli_help_infers_and_validates_description_options() {
+    let bridge = start_json_result_bridge("unused");
+    let tempdir = tempfile::tempdir().unwrap();
+    let config = GeneratorConfig {
+        cli_name: "slack".to_string(),
+        bridge_url: bridge.url.clone(),
+        token: "token".to_string(),
+        tools: vec![mcp_compressor_core::compression::engine::Tool::new(
+            "slackmcp_slack_search_public_and_private",
+            Some("Search Slack.".to_string()),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "Search query" },
+                    "sort": { "type": "string", "description": "Sort by relevance or date (default: 'score'). Options: 'score', 'timestamp'" }
+                },
+                "required": ["query"]
+            }),
+        )],
+        session_pid: std::process::id(),
+        output_dir: tempdir.path().to_path_buf(),
+        extra_cli_bridges: Vec::new(),
+    };
+    CliGenerator.generate(&config).unwrap();
+    let script = tempdir.path().join("slack");
+
+    let help = run_generated_script(
+        &script,
+        &["slackmcp-slack-search-public-and-private", "--help"],
+    );
+    assert!(help.contains("--sort"), "help: {help}");
+    assert!(help.contains("<score|timestamp>"), "help: {help}");
+    assert!(help.contains("values: score, timestamp"), "help: {help}");
+
+    let output = generated_script_output(
+        &script,
+        &[
+            "slackmcp-slack-search-public-and-private",
+            "--query",
+            "hello",
+            "--sort",
+            "date",
+        ],
+    );
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("invalid value for --sort: date (expected one of: score, timestamp)"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
+fn generated_cli_unwraps_host_bridge_result_envelope() {
+    let bridge = start_json_result_bridge("{\"results\":\"ok\"}");
+    let tempdir = tempfile::tempdir().unwrap();
+    let config = GeneratorConfig {
+        cli_name: "alpha".to_string(),
+        bridge_url: bridge.url.clone(),
+        token: "token".to_string(),
+        tools: vec![mcp_compressor_core::compression::engine::Tool::new(
+            "echo",
+            Some("Echo.".to_string()),
+            serde_json::json!({"type":"object","properties":{"message":{"type":"string"}}}),
+        )],
+        session_pid: std::process::id(),
+        output_dir: tempdir.path().to_path_buf(),
+        extra_cli_bridges: Vec::new(),
+    };
+    CliGenerator.generate(&config).unwrap();
+    let script = tempdir.path().join("alpha");
+
+    assert_eq!(
+        run_generated_script(&script, &["echo", "--message", "hello"]),
+        "{\"results\":\"ok\"}"
+    );
+}
+
+#[test]
+fn generated_python_module_unwraps_host_bridge_result_envelope() {
+    let bridge = start_json_result_bridge("python-ok");
+    let tempdir = tempfile::tempdir().unwrap();
+    let config = simple_generator_config("alpha", &bridge.url, tempdir.path());
+    PythonGenerator.generate(&config).unwrap();
+
+    let output = Command::new(common::python_command())
+        .env("PYTHONPATH", tempdir.path())
+        .args(["-c", "import alpha; print(alpha.echo('hello'))"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "python-ok");
+}
+
+#[test]
+fn generated_typescript_module_unwraps_host_bridge_result_envelope() {
+    let bridge = start_json_result_bridge("typescript-ok");
+    let tempdir = tempfile::tempdir().unwrap();
+    let config = simple_generator_config("alpha", &bridge.url, tempdir.path());
+    TypeScriptGenerator.generate(&config).unwrap();
+
+    let code = format!(
+        "import * as alpha from {module:?}; console.log(await alpha.echo('hello'));",
+        module = tempdir.path().join("alpha.ts").display().to_string()
+    );
+    let output = Command::new("bun")
+        .arg("--eval")
+        .arg(&code)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "typescript-ok"
+    );
+}
+
+struct TestBridge {
+    url: String,
+}
+
+fn start_json_result_bridge(result: &str) -> TestBridge {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let result = result.to_string();
+    thread::spawn(move || {
+        for stream in listener.incoming().take(8) {
+            let mut stream = stream.unwrap();
+            let mut buffer = [0_u8; 4096];
+            let read = std::io::Read::read(&mut stream, &mut buffer).unwrap_or(0);
+            let request = String::from_utf8_lossy(&buffer[..read]);
+            let body = if request.starts_with("GET /health") {
+                "ok".to_string()
+            } else {
+                serde_json::json!({ "result": result }).to_string()
+            };
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(), body
+            );
+            let _ = std::io::Write::write_all(&mut stream, response.as_bytes());
+        }
+    });
+    TestBridge {
+        url: format!("http://{addr}"),
+    }
+}
+
+fn simple_generator_config(
+    cli_name: &str,
+    bridge_url: &str,
+    output_dir: &std::path::Path,
+) -> GeneratorConfig {
+    GeneratorConfig {
+        cli_name: cli_name.to_string(),
+        bridge_url: bridge_url.to_string(),
+        token: "token".to_string(),
+        tools: vec![mcp_compressor_core::compression::engine::Tool::new(
+            "echo",
+            Some("Echo.".to_string()),
+            serde_json::json!({
+                "type": "object",
+                "properties": { "message": { "type": "string" } },
+                "required": ["message"]
+            }),
+        )],
+        session_pid: std::process::id(),
+        output_dir: output_dir.to_path_buf(),
+        extra_cli_bridges: Vec::new(),
+    }
 }
 
 fn alpha_golden_tools() -> Vec<mcp_compressor_core::compression::engine::Tool> {
