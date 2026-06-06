@@ -102,11 +102,11 @@ fn generated_cli_help_renders_camel_case_properties_as_kebab_case_flags() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("--cloud-id <value>"), "stdout: {stdout}");
-    assert!(stdout.contains("--jql <value>"), "stdout: {stdout}");
-    assert!(stdout.contains("--max-results <value>"), "stdout: {stdout}");
+    assert!(stdout.contains("--cloud-id <string>"), "stdout: {stdout}");
+    assert!(stdout.contains("--jql <string>"), "stdout: {stdout}");
+    assert!(stdout.contains("--max-results <number>"), "stdout: {stdout}");
     assert!(
-        stdout.contains("--next-page-token <value>"),
+        stdout.contains("--next-page-token <string>"),
         "stdout: {stdout}"
     );
     assert!(!stdout.contains("--cloudId"), "stdout: {stdout}");

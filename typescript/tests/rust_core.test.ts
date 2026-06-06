@@ -618,9 +618,9 @@ describe("local TypeScript tool compression", () => {
     );
     try {
       const script = transform.files.atlassian ?? "";
-      expect(script).toContain("--cloud-id <value>");
-      expect(script).toContain("--max-results <value>");
-      expect(script).toContain("--next-page-token <value>");
+      expect(script).toContain("--cloud-id <string>");
+      expect(script).toContain("--max-results <number>");
+      expect(script).toContain("--next-page-token <string>");
       expect(script).not.toContain("--cloudId");
       expect(script).not.toContain("--maxResults");
     } finally {

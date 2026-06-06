@@ -3,7 +3,19 @@ alpha echo
 Echo a message.
 
 USAGE:
-  alpha echo --message <value>
+  alpha echo [options]
 
-OPTIONS:
-  --message                    <string>  required — Message to echo
+REQUIRED:
+  --message <string>
+      Required.
+      Message to echo
+
+GLOBAL OPTIONS:
+  --json <json object>
+      Provide the entire tool input as JSON. This bypasses flag parsing.
+
+  --help
+      Show this help message.
+
+OUTPUT:
+  Prints the upstream tool result directly.
