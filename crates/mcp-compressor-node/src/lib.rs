@@ -9,13 +9,14 @@ use serde_json::Value;
 
 use mcp_compressor_core::compression::CompressionLevel;
 use mcp_compressor_core::ffi::{
-    clear_oauth_credentials, compress_tool_listing, format_tool_schema_response,
-    build_host_transform_plan, generate_client_artifact_files, generate_client_artifacts,
+    build_host_transform_plan, clear_oauth_credentials, compress_tool_listing,
+    format_tool_schema_response, generate_client_artifact_files, generate_client_artifacts,
     list_oauth_credentials, maybe_toonify_output, normalize_host_tool_result,
-    normalize_sdk_servers, parse_mcp_config, parse_tool_argv,
-    remember_oauth_backend, start_compressed_session, start_compressed_session_from_mcp_config,
-    FfiBackendConfig, FfiClientArtifactKind, FfiCompressedSession, FfiCompressedSessionConfig,
-    FfiGeneratorConfig, FfiHostTransformConfig, FfiSdkServersConfig, FfiTool,
+    normalize_sdk_servers, parse_mcp_config, parse_tool_argv, remember_oauth_backend,
+    render_cli_subcommand_help, render_cli_top_level_help, start_compressed_session,
+    start_compressed_session_from_mcp_config, FfiBackendConfig, FfiClientArtifactKind,
+    FfiCompressedSession, FfiCompressedSessionConfig, FfiGeneratorConfig, FfiHostTransformConfig,
+    FfiSdkServersConfig, FfiTool,
 };
 
 fn napi_error(error: impl std::fmt::Display) -> NapiError {
@@ -74,6 +75,25 @@ pub fn maybe_toonify_output_json(output: String) -> String {
     maybe_toonify_output(&output)
 }
 
+#[napi]
+pub fn render_cli_top_level_help_json(
+    command: String,
+    cli_name: String,
+    tools_json: String,
+) -> napi::Result<String> {
+    let tools = parse_json::<Vec<FfiTool>>(&tools_json)?;
+    Ok(render_cli_top_level_help(command, cli_name, tools))
+}
+
+#[napi]
+pub fn render_cli_subcommand_help_json(
+    cli_name: String,
+    tool_json: String,
+) -> napi::Result<String> {
+    let tool = parse_json::<FfiTool>(&tool_json)?;
+    Ok(render_cli_subcommand_help(cli_name, tool))
+}
+
 fn parse_client_artifact_kind(kind: &str) -> napi::Result<FfiClientArtifactKind> {
     match kind {
         "cli" => Ok(FfiClientArtifactKind::Cli),
@@ -105,7 +125,6 @@ pub fn generate_client_artifact_files_json(
     let files = generate_client_artifact_files(kind, config).map_err(napi_error)?;
     serde_json::to_string(&files).map_err(napi_error)
 }
-
 
 #[napi]
 pub fn build_host_transform_plan_json(config_json: String) -> napi::Result<String> {

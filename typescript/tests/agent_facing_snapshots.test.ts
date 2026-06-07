@@ -143,6 +143,63 @@ describe("agent-facing alpha snapshots", () => {
     }
   });
 
+  it("Just Bash help has parity with generated CLI help (top-level + subcommand)", async () => {
+    // Generate the CLI script so we can compare against the actual `--help`
+    // outputs the shell user would see.
+    const outputDir = mkdtempSync(join(tmpdir(), "mcp-alpha-parity-snapshot-"));
+    const cli = await transformToolsForCliMode(alphaTools, { serverName: "alpha", outputDir });
+    const bash = new Bash({ customCommands: [] });
+    transformToolsForJustBash(alphaTools, { serverName: "alpha", bash });
+    try {
+      materializeFiles(outputDir, cli.files, ["alpha"]);
+      const scriptPath = join(outputDir, "alpha");
+
+      // Top-level dispatcher help must match the generated CLI `--help` body.
+      const cliTopLevel = runScript(scriptPath, ["--help"]);
+      const bashTopLevel = (await bash.exec("alpha --help")).stdout.trimEnd();
+      expect(bashTopLevel).toBe(cliTopLevel);
+
+      // Per-subcommand help must be the rich help, identical to the CLI's.
+      const cliSubHelp = runScript(scriptPath, ["echo", "--help"]);
+      const bashSubHelp = (await bash.exec("alpha echo --help")).stdout.trimEnd();
+      expect(bashSubHelp).toBe(cliSubHelp);
+      // Sanity: rich subcommand help includes the USAGE + typed option, not just a one-liner.
+      expect(bashSubHelp).toContain("USAGE:");
+      expect(bashSubHelp).toContain("--message <string>");
+    } finally {
+      cli.close();
+    }
+  });
+
+  it("Just Bash validates enum arguments like the generated CLI", async () => {
+    const enumTools = {
+      search: {
+        name: "search",
+        description: "Search things.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sort: {
+              type: "string",
+              description: "Sort order.",
+              enum: ["score", "timestamp"],
+            },
+          },
+        },
+        execute: async (): Promise<unknown> => "ok",
+      },
+    };
+    const bash = new Bash({ customCommands: [] });
+    transformToolsForJustBash(enumTools, { serverName: "things", bash });
+    const ok = await bash.exec("things search --sort timestamp");
+    expect(ok.exitCode).toBe(0);
+    const bad = await bash.exec("things search --sort nonsense");
+    expect(bad.exitCode).not.toBe(0);
+    expect(`${bad.stderr}${bad.stdout}`).toContain(
+      "invalid value for --sort: nonsense (expected one of: score, timestamp)",
+    );
+  });
+
   it("snapshots camelCase tool and property names as kebab-case CLI affordances", async () => {
     const outputDir = mkdtempSync(join(tmpdir(), "mcp-atlassian-cli-snapshot-"));
     const transform = await transformToolsForCliMode(

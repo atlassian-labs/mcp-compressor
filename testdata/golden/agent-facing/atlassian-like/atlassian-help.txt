@@ -6,6 +6,6 @@ USAGE:
   atlassian <subcommand> [options]
 
 SUBCOMMANDS:
-  search-jira-issues-using-jql        Search issues with JQL
+  search-jira-issues-using-jql  Search issues with JQL
 
 Run 'atlassian <subcommand> --help' for subcommand usage.

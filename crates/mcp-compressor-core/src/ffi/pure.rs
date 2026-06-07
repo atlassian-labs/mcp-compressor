@@ -21,6 +21,27 @@ pub fn parse_tool_argv(tool: FfiTool, argv: Vec<String>) -> Result<Value, Error>
     parse_argv(&argv, &tool.into())
 }
 
+/// Render the shared top-level CLI help text (`<command> --help`). Used by the
+/// Just Bash command dispatcher so its output matches the generated CLI and the
+/// `*_help` tool description.
+pub fn render_cli_top_level_help(command: String, cli_name: String, tools: Vec<FfiTool>) -> String {
+    let tools = tools.into_iter().map(Into::into).collect::<Vec<Tool>>();
+    crate::cli::help::render_top_level_help(
+        &command,
+        &cli_name,
+        &tools,
+        &crate::cli::help::HelpFraming::shell(&command),
+    )
+}
+
+/// Render the shared rich per-subcommand CLI help text
+/// (`<command> <subcommand> --help`). Used by the Just Bash command dispatcher
+/// so its output matches the generated CLI.
+pub fn render_cli_subcommand_help(cli_name: String, tool: FfiTool) -> String {
+    let tool: Tool = tool.into();
+    crate::cli::help::render_subcommand_help(&cli_name, &tool)
+}
+
 pub fn parse_mcp_config(config_json: &str) -> Result<Vec<FfiMcpServer>, Error> {
     let config = MCPConfig::from_json(config_json)?;
     Ok(config

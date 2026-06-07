@@ -213,27 +213,19 @@ fn artifact_paths(artifacts: &[GeneratedArtifact], output_dir: &std::path::Path)
 }
 
 fn shell_tool_help_description(command: &str, cli_name: &str, tools: &[FfiTool]) -> String {
-    let mut lines = vec![
-        format!(
-            "Functionality associated with the {cli_name} toolset is provided via the `{command}` CLI. Do not call this tool - use the CLI instead."
-        ),
-        format!("{cli_name} - the {cli_name} toolset"),
-        String::new(),
-        "When relevant, outputs from this CLI will prefer using the TOON format for more efficient representation of data.".to_string(),
-        String::new(),
-        "USAGE:".to_string(),
-        format!("  {command} <subcommand> [options]"),
-        String::new(),
-        "SUBCOMMANDS:".to_string(),
-    ];
-    lines.extend(format_subcommands(tools, cli_subcommand_name));
-    lines.extend([
-        String::new(),
-        format!("Run '{command} --help' in the shell for usage."),
-        format!("Run '{command} <subcommand> --help' for per-command help."),
-        format!("Run '{command} <subcommand> [options]' to invoke a tool."),
-    ]);
-    lines.join("\n")
+    let tools = ffi_tools_to_engine(tools);
+    crate::cli::help::render_top_level_help(
+        command,
+        cli_name,
+        &tools,
+        &crate::cli::help::HelpFraming::help_tool(command, cli_name),
+    )
+}
+
+/// Convert FFI tool DTOs into the engine `Tool` type used by the shared help
+/// renderer.
+fn ffi_tools_to_engine(tools: &[FfiTool]) -> Vec<crate::compression::engine::Tool> {
+    tools.iter().cloned().map(Into::into).collect()
 }
 
 fn code_help_description(
@@ -266,7 +258,7 @@ fn code_help_description(
         .collect::<Vec<_>>();
     let max_signature_len = signatures.iter().map(String::len).max().unwrap_or(0);
     for (tool, signature) in tools.iter().zip(signatures) {
-        let description = short_tool_description(tool.description.as_deref());
+        let description = crate::cli::help::short_tool_description(tool.description.as_deref());
         lines.push(
             format!(
                 "  {signature:<width$}{description}",
@@ -339,83 +331,8 @@ fn code_function_signature(kind: FfiClientArtifactKind, tool: &FfiTool) -> Strin
     format!("{name}({})", args.join(", "))
 }
 
-fn format_subcommands(tools: &[FfiTool], name_for_tool: fn(&str) -> String) -> Vec<String> {
-    let names = tools
-        .iter()
-        .map(|tool| name_for_tool(&tool.name))
-        .collect::<Vec<_>>();
-    let max_name_len = names.iter().map(String::len).max().unwrap_or(0);
-    tools
-        .iter()
-        .zip(names)
-        .map(|(tool, name)| {
-            let description = short_tool_description(tool.description.as_deref());
-            format!("  {name:<width$}{description}", width = max_name_len + 2)
-                .trim_end()
-                .to_string()
-        })
-        .collect()
-}
-
 fn cli_subcommand_name(tool_name: &str) -> String {
     crate::cli::mapping::tool_name_to_subcommand(tool_name)
-}
-
-fn short_tool_description(description: Option<&str>) -> String {
-    let trimmed = description.unwrap_or_default().trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-
-    let first_sentence = first_sentence(trimmed);
-    let candidate = if first_sentence.chars().count() >= 10 {
-        first_sentence
-    } else {
-        first_non_empty_line(trimmed)
-    };
-    truncate_clean(candidate, 200)
-}
-
-fn first_sentence(value: &str) -> &str {
-    for (index, ch) in value.char_indices() {
-        if matches!(ch, '.' | '!' | '?') {
-            return value[..=index].trim();
-        }
-    }
-    first_non_empty_line(value)
-}
-
-fn first_non_empty_line(value: &str) -> &str {
-    value
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .unwrap_or_default()
-}
-
-fn truncate_clean(value: &str, max_chars: usize) -> String {
-    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    if compact.chars().count() <= max_chars {
-        return compact;
-    }
-    let limit = max_chars.saturating_sub(3);
-    let mut end = 0;
-    for (count, (index, ch)) in compact.char_indices().enumerate() {
-        if count >= limit {
-            break;
-        }
-        end = index + ch.len_utf8();
-    }
-    let mut prefix = compact[..end]
-        .trim_end_matches(|ch: char| ch.is_whitespace() || ch == ',' || ch == ';' || ch == ':')
-        .to_string();
-    if let Some(space) = prefix.rfind(' ') {
-        if space >= max_chars / 2 {
-            prefix.truncate(space);
-        }
-    }
-    prefix.push_str("...");
-    prefix
 }
 
 fn to_snake_case(name: &str) -> String {
@@ -568,11 +485,11 @@ More details follow.",
     #[test]
     fn help_summaries_fall_back_to_first_line_for_tiny_first_sentence() {
         assert_eq!(
-            short_tool_description(Some("OK. Use this tool to inspect status.")),
+            crate::cli::help::short_tool_description(Some("OK. Use this tool to inspect status.")),
             "OK. Use this tool to inspect status."
         );
         assert_eq!(
-            short_tool_description(Some(
+            crate::cli::help::short_tool_description(Some(
                 "A.
 List accessible resources for the user."
             )),
@@ -583,7 +500,7 @@ List accessible resources for the user."
     #[test]
     fn help_summaries_truncate_cleanly() {
         let description = format!("{}.", "word ".repeat(80));
-        let summary = short_tool_description(Some(&description));
+        let summary = crate::cli::help::short_tool_description(Some(&description));
         assert!(summary.len() <= 200);
         assert!(summary.ends_with("..."));
         assert!(!summary.ends_with(" ..."));
