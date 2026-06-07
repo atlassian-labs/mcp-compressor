@@ -16,6 +16,3 @@ GLOBAL OPTIONS:
 
   --help
       Show this help message.
-
-OUTPUT:
-  Prints the upstream tool result directly.

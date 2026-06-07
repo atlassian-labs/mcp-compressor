@@ -427,7 +427,7 @@ fn render_tool_help(cli_name: &str, tool: &crate::compression::engine::Tool) -> 
     let subcommand = tool_name_to_subcommand(&tool.name);
     let mut help = format!(
         "{cli_name} {subcommand}\n\n{}\n\nUSAGE:\n  {cli_name} {subcommand} [options]\n",
-        full_description(tool.description.as_deref().unwrap_or("Invoke this tool.")),
+        tool_description_block(tool.description.as_deref().unwrap_or("Invoke this tool.")),
     );
 
     let options = tool_options(tool);
@@ -453,9 +453,6 @@ fn render_tool_help(cli_name: &str, tool: &crate::compression::engine::Tool) -> 
     help.push_str("      Provide the entire tool input as JSON. This bypasses flag parsing.\n");
     help.push_str("\n  --help\n");
     help.push_str("      Show this help message.\n");
-
-    help.push_str("\nOUTPUT:\n");
-    help.push_str("  Prints the upstream tool result directly.\n");
 
     help
 }
@@ -652,6 +649,45 @@ fn schema_type_details(schema: &serde_json::Value) -> (String, bool, Option<Stri
 
 fn full_description(description: &str) -> String {
     description.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Render a tool's top-level description while preserving its original line
+/// structure. Each line is trimmed and has internal whitespace runs collapsed,
+/// but newlines (including blank lines between paragraphs) are kept so the
+/// description does not get flattened into a single massive line. Leading and
+/// trailing blank lines are removed, and runs of 3+ blank lines are collapsed
+/// to a single blank line.
+fn tool_description_block(description: &str) -> String {
+    let mut lines: Vec<String> = description
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect();
+
+    // Collapse multiple consecutive blank lines into a single blank line.
+    let mut collapsed: Vec<String> = Vec::with_capacity(lines.len());
+    let mut previous_blank = false;
+    for line in lines.drain(..) {
+        let is_blank = line.is_empty();
+        if is_blank && previous_blank {
+            continue;
+        }
+        previous_blank = is_blank;
+        collapsed.push(line);
+    }
+
+    // Trim leading/trailing blank lines.
+    while collapsed.first().is_some_and(|line| line.is_empty()) {
+        collapsed.remove(0);
+    }
+    while collapsed.last().is_some_and(|line| line.is_empty()) {
+        collapsed.pop();
+    }
+
+    if collapsed.is_empty() {
+        return "Invoke this tool.".to_string();
+    }
+
+    collapsed.join("\n")
 }
 
 fn wrap_indented(value: &str, indent: usize, width: usize) -> String {
@@ -953,6 +989,34 @@ mod tests {
         assert!(content.contains("Default: 30."));
         assert!(content.contains("--method"));
         assert!(content.contains("Allowed values: GET, POST."));
+    }
+
+    /// The top-level tool description preserves its multi-line structure rather
+    /// than being flattened into one long line, and drops the noisy OUTPUT
+    /// section.
+    #[test]
+    fn tool_description_block_preserves_line_structure() {
+        let input = "  First line.  \n\nSecond  paragraph    with   spaces.\nThird line.\n\n\n";
+        let rendered = tool_description_block(input);
+        assert_eq!(
+            rendered,
+            "First line.\n\nSecond paragraph with spaces.\nThird line."
+        );
+        // Multi-line descriptions must keep newlines (not collapse to one line).
+        assert!(rendered.contains('\n'));
+    }
+
+    /// Subcommand help no longer emits the redundant OUTPUT section.
+    #[test]
+    #[cfg(unix)]
+    fn unix_script_subcommand_help_has_no_output_section() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = make_config(dir.path());
+        let paths = CliGenerator.generate(&config).unwrap();
+        let unix_script = paths.iter().find(|p| p.extension().is_none()).unwrap();
+        let content = fs::read_to_string(unix_script).unwrap();
+        assert!(!content.contains("OUTPUT:"));
+        assert!(!content.contains("Prints the upstream tool result directly."));
     }
 
     /// On Unix the generated script is executable.
