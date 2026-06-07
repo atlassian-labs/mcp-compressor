@@ -57,6 +57,11 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-ts-native-${{ matrix.artifact-suffix }}
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -112,6 +117,11 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-ts-publish
+
       - name: Set up Python environment for fixture servers
         uses: ./.github/actions/setup-python-env
 
@@ -130,20 +140,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build native addon and CLI binary for checks
-        run: |
-          bun run build:native
-          cargo build -p mcp-compressor --bin mcp-compressor
-
-      - name: Run package checks
-        env:
-          MCP_COMPRESSOR_CORE_BINARY: ${{ github.workspace }}/target/debug/mcp-compressor
-          PYTHON: ${{ github.workspace }}/.venv/bin/python
-        run: bun run check:ci
-
-      - name: Build TypeScript package
-        run: bun run build
-
+      # Reuse the native addon already produced by build-typescript-native-addons
+      # instead of recompiling it here. This is the same set of addons bundled
+      # into the published package, and the runner-matching addon (linux-x64) is
+      # what `check:ci` loads. Only the CLI core binary still needs building.
       - name: Download cross-platform native addons
         uses: actions/download-artifact@v4
         with:
@@ -154,6 +154,18 @@ jobs:
       - name: List bundled native addons
         working-directory: .
         run: ls -lh typescript/native
+
+      - name: Build CLI binary for checks
+        run: cargo build -p mcp-compressor --bin mcp-compressor
+
+      - name: Run package checks
+        env:
+          MCP_COMPRESSOR_CORE_BINARY: ${{ github.workspace }}/target/debug/mcp-compressor
+          PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: bun run check:ci
+
+      - name: Build TypeScript package
+        run: bun run build
 
       - name: Pack package
         shell: bash
