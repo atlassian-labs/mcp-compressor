@@ -39,12 +39,25 @@ _SESSION_PID = {pid}
 _HEADERS = {{"Content-Type": "application/json", "Authorization": f"Bearer {{_TOKEN}}"}}
 
 
+
+
+def _unwrap_proxy_response(body: str) -> str:
+    try:
+        parsed = json.loads(body)
+    except Exception:
+        return body
+    if isinstance(parsed, dict) and set(parsed.keys()) == {{"result"}}:
+        result = parsed["result"]
+        return result if isinstance(result, str) else json.dumps(result, separators=(",", ":"))
+    return body
+
+
 def _exec(tool: str, tool_input: dict) -> str:
     payload = json.dumps({{"tool": tool, "input": tool_input}}).encode()
     request = urllib.request.Request(_BRIDGE + "/exec", data=payload, headers=_HEADERS, method="POST")
     try:
         with urllib.request.urlopen(request) as response:
-            return response.read().decode()
+            return _unwrap_proxy_response(response.read().decode())
     except urllib.error.HTTPError as exc:
         message = exc.read().decode(errors="replace") or exc.reason
         raise RuntimeError(f"mcp-compressor proxy returned HTTP {{exc.code}}: {{message}}") from None
@@ -148,7 +161,13 @@ fn required_params(tool: &crate::compression::engine::Tool) -> Vec<String> {
     tool.input_schema
         .get("required")
         .and_then(serde_json::Value::as_array)
-        .map(|values| values.iter().filter_map(serde_json::Value::as_str).map(ToString::to_string).collect())
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(ToString::to_string)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -248,7 +267,10 @@ mod tests {
         let config = make_config(dir.path());
         let paths = PythonGenerator.generate(&config).unwrap();
         let content = fs::read_to_string(&paths[0]).unwrap();
-        assert!(content.contains(&config.bridge_url), "bridge URL not found in file");
+        assert!(
+            content.contains(&config.bridge_url),
+            "bridge URL not found in file"
+        );
         assert!(content.contains("_BRIDGE"), "_BRIDGE constant not found");
     }
 
@@ -274,8 +296,14 @@ mod tests {
         let config = make_config(dir.path());
         let paths = PythonGenerator.generate(&config).unwrap();
         let content = fs::read_to_string(&paths[0]).unwrap();
-        assert!(content.contains("Fetch a URL"), "tool description not found in docstring");
-        assert!(content.contains("Search the web"), "tool description not found in docstring");
+        assert!(
+            content.contains("Fetch a URL"),
+            "tool description not found in docstring"
+        );
+        assert!(
+            content.contains("Search the web"),
+            "tool description not found in docstring"
+        );
     }
 
     /// Function parameters match the tool's schema properties.
@@ -297,7 +325,10 @@ mod tests {
         let config = make_config(dir.path());
         let paths = PythonGenerator.generate(&config).unwrap();
         let content = fs::read_to_string(&paths[0]).unwrap();
-        assert!(content.contains("-> str"), "-> str return annotation not found");
+        assert!(
+            content.contains("-> str"),
+            "-> str return annotation not found"
+        );
     }
 
     /// Required params appear without a default value; optional params use `None`.
@@ -310,7 +341,10 @@ mod tests {
         let content = fs::read_to_string(&paths[0]).unwrap();
         // "url" is required → no "= None" for url
         // (this test verifies the function signature handles optionality)
-        assert!(content.contains("url"), "'url' param not found in generated file");
+        assert!(
+            content.contains("url"),
+            "'url' param not found in generated file"
+        );
     }
 
     #[test]
@@ -339,7 +373,9 @@ mod tests {
         };
         let paths = PythonGenerator.generate(&config).unwrap();
         let content = fs::read_to_string(&paths[0]).unwrap();
-        assert!(content.contains("def real_tool(required_second, optional_first=None, optional_third=None) -> str:"));
+        assert!(content.contains(
+            "def real_tool(required_second, optional_first=None, optional_third=None) -> str:"
+        ));
         assert!(content.contains("{\"optional_first\": optional_first, \"required_second\": required_second, \"optional_third\": optional_third}"));
         std::process::Command::new("python3")
             .arg("-m")
@@ -351,7 +387,6 @@ mod tests {
             .then_some(())
             .expect("generated Python should compile");
     }
-
 
     #[test]
     fn camel_case_tool_and_params_are_pythonic_snake_case_but_payload_keeps_original_keys() {
@@ -380,7 +415,9 @@ mod tests {
         let paths = PythonGenerator.generate(&config).unwrap();
         let content = fs::read_to_string(&paths[0]).unwrap();
         assert!(content.contains("def search_jira_issues_using_jql(cloud_id, max_results=None, next_page_token=None) -> str:"));
-        assert!(content.contains(r#"{"cloudId": cloud_id, "maxResults": max_results, "nextPageToken": next_page_token}"#));
+        assert!(content.contains(
+            r#"{"cloudId": cloud_id, "maxResults": max_results, "nextPageToken": next_page_token}"#
+        ));
         std::process::Command::new("python3")
             .arg("-m")
             .arg("py_compile")
