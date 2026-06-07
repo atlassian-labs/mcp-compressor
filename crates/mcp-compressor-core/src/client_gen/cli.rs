@@ -426,20 +426,37 @@ fn render_top_level_help(config: &GeneratorConfig) -> String {
 fn render_tool_help(cli_name: &str, tool: &crate::compression::engine::Tool) -> String {
     let subcommand = tool_name_to_subcommand(&tool.name);
     let mut help = format!(
-        "{cli_name} {subcommand}\n\n{}\n\nUSAGE:\n  {cli_name} {subcommand}",
-        tool.description.as_deref().unwrap_or("Invoke this tool."),
+        "{cli_name} {subcommand}\n\n{}\n\nUSAGE:\n  {cli_name} {subcommand} [options]\n",
+        full_description(tool.description.as_deref().unwrap_or("Invoke this tool.")),
     );
-    for param in tool.param_names() {
-        help.push_str(&format!(" --{} <value>", tool_name_to_subcommand(&param)));
-    }
-    help.push_str("\n");
+
     let options = tool_options(tool);
-    if !options.is_empty() {
-        help.push_str("\nOPTIONS:\n");
-        for option in options {
-            help.push_str(&format_tool_option_help(&option));
-        }
-    }
+    let required = options
+        .iter()
+        .filter(|option| option.required && !option.is_complex)
+        .collect::<Vec<_>>();
+    let optional = options
+        .iter()
+        .filter(|option| !option.required && !option.is_complex)
+        .collect::<Vec<_>>();
+    let complex = options
+        .iter()
+        .filter(|option| option.is_complex)
+        .collect::<Vec<_>>();
+
+    append_option_section(&mut help, "REQUIRED", &required);
+    append_option_section(&mut help, "OPTIONAL", &optional);
+    append_option_section(&mut help, "COMPLEX / JSON OPTIONS", &complex);
+
+    help.push_str("\nGLOBAL OPTIONS:\n");
+    help.push_str("  --json <json object>\n");
+    help.push_str("      Provide the entire tool input as JSON. This bypasses flag parsing.\n");
+    help.push_str("\n  --help\n");
+    help.push_str("      Show this help message.\n");
+
+    help.push_str("\nOUTPUT:\n");
+    help.push_str("  Prints the upstream tool result directly.\n");
+
     help
 }
 
@@ -451,6 +468,14 @@ struct ToolOption {
     description: Option<String>,
     default: Option<String>,
     enum_values: Vec<String>,
+    minimum: Option<String>,
+    maximum: Option<String>,
+    min_length: Option<String>,
+    max_length: Option<String>,
+    min_items: Option<String>,
+    max_items: Option<String>,
+    is_complex: bool,
+    complex_hint: Option<String>,
 }
 
 fn tool_options(tool: &crate::compression::engine::Tool) -> Vec<ToolOption> {
@@ -472,46 +497,185 @@ fn tool_options(tool: &crate::compression::engine::Tool) -> Vec<ToolOption> {
         .map(|properties| {
             properties
                 .iter()
-                .map(|(name, schema)| ToolOption {
-                    name: name.clone(),
-                    ty: schema_type_label(schema),
-                    required: required.contains(name),
-                    description: schema
-                        .get("description")
-                        .and_then(|value| value.as_str())
-                        .map(str::to_string),
-                    default: schema.get("default").map(default_value_label),
-                    enum_values: schema_enum_values(schema),
+                .map(|(name, schema)| {
+                    let (ty, is_complex, complex_hint) = schema_type_details(schema);
+                    ToolOption {
+                        name: name.clone(),
+                        ty,
+                        required: required.contains(name),
+                        description: schema
+                            .get("description")
+                            .and_then(|value| value.as_str())
+                            .map(full_description),
+                        default: schema.get("default").map(default_value_label),
+                        enum_values: schema_enum_values(schema),
+                        minimum: schema_number_constraint(schema, "minimum"),
+                        maximum: schema_number_constraint(schema, "maximum"),
+                        min_length: schema_number_constraint(schema, "minLength"),
+                        max_length: schema_number_constraint(schema, "maxLength"),
+                        min_items: schema_number_constraint(schema, "minItems"),
+                        max_items: schema_number_constraint(schema, "maxItems"),
+                        is_complex,
+                        complex_hint,
+                    }
                 })
                 .collect()
         })
         .unwrap_or_default()
 }
 
+fn append_option_section(help: &mut String, title: &str, options: &[&ToolOption]) {
+    if options.is_empty() {
+        return;
+    }
+    help.push('\n');
+    help.push_str(title);
+    help.push_str(":\n");
+    for option in options {
+        help.push_str(&format_tool_option_help(option));
+    }
+}
+
 fn format_tool_option_help(option: &ToolOption) -> String {
     let flag = format!("--{}", tool_name_to_subcommand(&option.name));
-    let requirement = if option.required {
-        "required"
-    } else {
-        "optional"
-    };
-    let mut line = format!("  {flag:<28} <{}>  {requirement}", option.ty);
+    let mut output = format!("  {flag} <{}>\n", option.ty);
     let mut details = Vec::new();
+    if option.required {
+        details.push("Required.".to_string());
+    }
     if let Some(description) = &option.description {
-        details.push(short_tool_description(Some(description)));
+        details.push(description.clone());
     }
     if !option.enum_values.is_empty() {
-        details.push(format!("values: {}", option.enum_values.join(", ")));
+        details.push(format!(
+            "Allowed values: {}.",
+            option.enum_values.join(", ")
+        ));
     }
     if let Some(default) = &option.default {
-        details.push(format!("default: {default}"));
+        details.push(format!("Default: {default}."));
     }
-    if !details.is_empty() {
-        line.push_str(" — ");
-        line.push_str(&details.join("; "));
+    if let Some(minimum) = &option.minimum {
+        details.push(format!("Minimum: {minimum}."));
     }
-    line.push('\n');
-    line
+    if let Some(maximum) = &option.maximum {
+        details.push(format!("Maximum: {maximum}."));
+    }
+    if let Some(min_length) = &option.min_length {
+        details.push(format!("Minimum length: {min_length}."));
+    }
+    if let Some(max_length) = &option.max_length {
+        details.push(format!("Maximum length: {max_length}."));
+    }
+    if let Some(min_items) = &option.min_items {
+        details.push(format!("Minimum items: {min_items}."));
+    }
+    if let Some(max_items) = &option.max_items {
+        details.push(format!("Maximum items: {max_items}."));
+    }
+    if option.ty == "boolean" {
+        details.push("Accepted values: true, false.".to_string());
+        details.push(format!(
+            "Also supports: {flag} and --no-{}.",
+            tool_name_to_subcommand(&option.name)
+        ));
+    }
+    if let Some(hint) = &option.complex_hint {
+        details.push(hint.clone());
+    }
+    for detail in details {
+        output.push_str(&wrap_indented(&detail, 6, 100));
+    }
+    output
+}
+
+fn schema_number_constraint(schema: &serde_json::Value, key: &str) -> Option<String> {
+    schema.get(key).map(default_value_label)
+}
+
+fn schema_type_details(schema: &serde_json::Value) -> (String, bool, Option<String>) {
+    let labels = schema_enum_values(schema);
+    if !labels.is_empty() {
+        return (labels.join("|"), false, None);
+    }
+    if schema.get("oneOf").is_some()
+        || schema.get("anyOf").is_some()
+        || schema.get("allOf").is_some()
+    {
+        return (
+            "json".to_string(),
+            true,
+            Some("Schema contains oneOf/anyOf/allOf; use --json for complex input.".to_string()),
+        );
+    }
+    match schema.get("type").and_then(|value| value.as_str()) {
+        Some("integer") => ("integer".to_string(), false, None),
+        Some("number") => ("number".to_string(), false, None),
+        Some("boolean") => ("boolean".to_string(), false, None),
+        Some("array") => match schema.get("items") {
+            Some(items) => {
+                let (item_ty, item_complex, _) = schema_type_details(items);
+                if item_complex
+                    || matches!(
+                        items.get("type").and_then(|value| value.as_str()),
+                        Some("object" | "array")
+                    )
+                {
+                    (
+                        "json array".to_string(),
+                        true,
+                        Some("Pass as a JSON array string.".to_string()),
+                    )
+                } else {
+                    (
+                        format!("{item_ty}[]"),
+                        false,
+                        Some("Repeat this flag or pass a JSON array.".to_string()),
+                    )
+                }
+            }
+            None => (
+                "json array".to_string(),
+                true,
+                Some("Pass as a JSON array string.".to_string()),
+            ),
+        },
+        Some("object") => (
+            "json object".to_string(),
+            true,
+            Some("Pass as a JSON object string.".to_string()),
+        ),
+        Some("string") | None => ("string".to_string(), false, None),
+        Some(other) => (other.to_string(), false, None),
+    }
+}
+
+fn full_description(description: &str) -> String {
+    description.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn wrap_indented(value: &str, indent: usize, width: usize) -> String {
+    let prefix = " ".repeat(indent);
+    let mut output = String::new();
+    let mut line = String::new();
+    for word in value.split_whitespace() {
+        if !line.is_empty() && line.len() + 1 + word.len() > width.saturating_sub(indent) {
+            output.push_str(&prefix);
+            output.push_str(line.trim_end());
+            output.push('\n');
+            line.clear();
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line.push_str(word);
+    }
+    if !line.is_empty() {
+        output.push_str(&prefix);
+        output.push_str(line.trim_end());
+        output.push('\n');
+    }
+    output
 }
 
 fn schema_enum_values(schema: &serde_json::Value) -> Vec<String> {
@@ -520,25 +684,6 @@ fn schema_enum_values(schema: &serde_json::Value) -> Vec<String> {
         .and_then(|value| value.as_array())
         .map(|values| values.iter().map(default_value_label).collect())
         .unwrap_or_default()
-}
-
-fn schema_type_label(schema: &serde_json::Value) -> String {
-    let labels = schema_enum_values(schema);
-    if !labels.is_empty() {
-        return labels.join("|");
-    }
-    match schema.get("type").and_then(|value| value.as_str()) {
-        Some("integer") => "integer".to_string(),
-        Some("number") => "number".to_string(),
-        Some("boolean") => "boolean".to_string(),
-        Some("array") => schema
-            .get("items")
-            .map(|items| format!("{}[]", schema_type_label(items)))
-            .unwrap_or_else(|| "array".to_string()),
-        Some("object") => "json".to_string(),
-        Some("string") | None => "string".to_string(),
-        Some(other) => other.to_string(),
-    }
 }
 
 fn default_value_label(value: &serde_json::Value) -> String {
@@ -797,13 +942,17 @@ mod tests {
         let content = fs::read_to_string(unix_script).unwrap();
         assert!(content.contains("my-server fetch"));
         assert!(content.contains("OPTIONS:"));
-        assert!(content.contains("--url <value>"));
+        assert!(content.contains("--url <string>"));
         assert!(content.contains("--url"));
-        assert!(content.contains("<string>  required — URL to fetch."));
+        assert!(content.contains("--url <string>"));
+        assert!(content.contains("Required."));
+        assert!(content.contains("URL to fetch."));
         assert!(content.contains("--timeout"));
-        assert!(content.contains("<integer>  optional — Timeout in seconds.; default: 30"));
+        assert!(content.contains("--timeout <integer>"));
+        assert!(content.contains("Timeout in seconds."));
+        assert!(content.contains("Default: 30."));
         assert!(content.contains("--method"));
-        assert!(content.contains("values: GET, POST"));
+        assert!(content.contains("Allowed values: GET, POST."));
     }
 
     /// On Unix the generated script is executable.

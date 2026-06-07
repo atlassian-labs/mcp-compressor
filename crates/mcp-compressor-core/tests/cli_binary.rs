@@ -449,7 +449,7 @@ fn rust_cli_mode_manual_flow_generates_script_that_invokes_backend() {
     assert!(subcommand_help.status.success());
     let subcommand_help = String::from_utf8_lossy(&subcommand_help.stdout);
     assert!(subcommand_help.contains("alpha echo"));
-    assert!(subcommand_help.contains("--message <value>"));
+    assert!(subcommand_help.contains("--message <string>"));
 
     let output = StdCommand::new(&script_path)
         .args(["echo", "--message", "hello"])
