@@ -6,8 +6,8 @@ USAGE:
   alpha <subcommand> [options]
 
 SUBCOMMANDS:
-  echo                                Echo a message.
-  add                                 Add two integers.
-  summarize-payload                   Summarize a structured payload.
+  echo               Echo a message.
+  add                Add two integers.
+  summarize-payload  Summarize a structured payload.
 
 Run 'alpha <subcommand> --help' for subcommand usage.

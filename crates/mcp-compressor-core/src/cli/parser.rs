@@ -86,6 +86,7 @@ pub fn parse_argv(argv: &[String], tool: &Tool) -> Result<serde_json::Value, Err
         };
 
         let value = coerce_value(&property_name, schema, raw_value, forced_bool)?;
+        validate_enum(arg, schema, &value)?;
         insert_value(&mut output, &property_name, schema, value);
         index += consumed;
     }
@@ -198,6 +199,51 @@ fn coerce_json_or_string(raw_value: Option<&str>) -> Result<Value, Error> {
     Ok(serde_json::from_str::<Value>(raw).unwrap_or_else(|_| Value::String(raw.to_string())))
 }
 
+/// Enforce JSON Schema `enum` constraints. Mirrors the validation performed by
+/// the generated CLI script so that the native parser (used by Just Bash) and
+/// the generated CLI behave identically. `flag` is the raw argument (e.g.
+/// `--sort`) so the error message matches what the user typed.
+fn validate_enum(flag: &str, schema: &Value, value: &Value) -> Result<(), Error> {
+    let allowed = schema_enum_values(schema);
+    if allowed.is_empty() {
+        return Ok(());
+    }
+    let candidates = match value {
+        Value::Array(values) => values.clone(),
+        other => vec![other.clone()],
+    };
+    for candidate in &candidates {
+        let candidate_label = json_scalar_label(candidate);
+        if !allowed.iter().any(|allowed| allowed == &candidate_label) {
+            // Use `Error::Parse` so this surfaces with the same `parse error:`
+            // prefix as the other CLI argument errors (invalid integer, unknown
+            // flag, etc.) for consistent output across all transform modes.
+            return Err(Error::Parse(format!(
+                "invalid value for {flag}: {candidate_label} (expected one of: {})",
+                allowed.join(", ")
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn schema_enum_values(schema: &Value) -> Vec<String> {
+    schema
+        .get("enum")
+        .and_then(Value::as_array)
+        .map(|values| values.iter().map(json_scalar_label).collect())
+        .unwrap_or_default()
+}
+
+/// Render a scalar JSON value the way it appears in CLI enum comparisons:
+/// strings without quotes, everything else via its JSON representation.
+fn json_scalar_label(value: &Value) -> String {
+    match value {
+        Value::String(value) => value.clone(),
+        other => other.to_string(),
+    }
+}
+
 fn coerce_bool(property_name: &str, raw_value: Option<&str>) -> Result<Value, Error> {
     match raw_value {
         None => Ok(Value::Bool(true)),
@@ -275,6 +321,36 @@ mod tests {
     // ------------------------------------------------------------------
     // String arguments
     // ------------------------------------------------------------------
+
+    /// Enum-constrained values are accepted when valid.
+    #[test]
+    fn enum_value_accepted_when_valid() {
+        let tool = tool_with_schema(json!({
+            "type": "object",
+            "properties": {
+                "sort": { "type": "string", "enum": ["score", "timestamp"] }
+            }
+        }));
+        let result = parse_argv(&args(&["--sort", "timestamp"]), &tool).unwrap();
+        assert_eq!(result, json!({ "sort": "timestamp" }));
+    }
+
+    /// Enum-constrained values are rejected with a clear, flag-named error,
+    /// matching the generated CLI script's message.
+    #[test]
+    fn enum_value_rejected_when_invalid() {
+        let tool = tool_with_schema(json!({
+            "type": "object",
+            "properties": {
+                "sort": { "type": "string", "enum": ["score", "timestamp"] }
+            }
+        }));
+        let error = parse_argv(&args(&["--sort", "date"]), &tool).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "parse error: invalid value for --sort: date (expected one of: score, timestamp)"
+        );
+    }
 
     /// A simple `--flag value` pair produces a string in the output dict.
     #[test]

@@ -36,6 +36,27 @@ export function parseToolArgv(tool: ToolSpec, argv: string[]): Record<string, un
   ) as Record<string, unknown>;
 }
 
+/**
+ * Render the shared top-level CLI help text (`<command> --help`). Backed by the
+ * same Rust renderer used for the generated CLI script and the `*_help` tool
+ * description, so all transform modes stay in sync.
+ */
+export function renderCliTopLevelHelp(command: string, cliName: string, tools: ToolSpec[]): string {
+  return loadNativeCore().renderCliTopLevelHelpJson(
+    command,
+    cliName,
+    stringify(tools.map(toNativeTool)),
+  );
+}
+
+/**
+ * Render the shared rich per-subcommand CLI help text
+ * (`<command> <subcommand> --help`).
+ */
+export function renderCliSubcommandHelp(cliName: string, tool: ToolSpec): string {
+  return loadNativeCore().renderCliSubcommandHelpJson(cliName, stringify(toNativeTool(tool)));
+}
+
 export type ClientArtifactKind = "cli" | "python" | "typescript";
 
 export interface ClientGeneratorConfig {

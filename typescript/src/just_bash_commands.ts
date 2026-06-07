@@ -1,7 +1,12 @@
 import { defineCommand } from "just-bash";
 import type { Command, ExecResult } from "just-bash";
 
-import { parseToolArgv, type ToolSpec } from "./rust_core.js";
+import {
+  parseToolArgv,
+  renderCliSubcommandHelp,
+  renderCliTopLevelHelp,
+  type ToolSpec,
+} from "./rust_core.js";
 import { normalizeStructuredArgValues } from "./tool_specs.js";
 
 export interface JustBashCommandRegistration {
@@ -46,12 +51,28 @@ export function createJustBashCommandRegistrations(
       command: defineCommand(providerName, async (args) => {
         try {
           const [subcommand, ...toolArgs] = args;
-          if (subcommand === undefined || subcommand === "--help" || subcommand === "-h") {
-            return output(dispatcherHelp(providerName, providerSources));
+          if (
+            subcommand === undefined ||
+            subcommand === "--help" ||
+            subcommand === "-h" ||
+            subcommand === "help"
+          ) {
+            return output(
+              renderCliTopLevelHelp(
+                providerName,
+                providerName,
+                providerSources.map((source) => source.tool),
+              ),
+            );
           }
           const source = bySubcommand.get(subcommand);
           if (source === undefined) {
             throw new Error(`Unknown ${providerName} subcommand: ${subcommand}`);
+          }
+          // Per-subcommand help must match the generated CLI's rich `--help`
+          // output, so render it from the shared Rust renderer.
+          if (toolArgs.includes("--help") || toolArgs.includes("-h")) {
+            return output(renderCliSubcommandHelp(providerName, source.tool));
           }
           const parsedInput = parseToolArgv(source.tool, toolArgs);
           const toolInput = normalizeStructuredArgValues(source.tool.inputSchema, parsedInput);
@@ -80,26 +101,6 @@ export function installJustBashRegistrations(
       ...registrations.map((registration) => registration.command),
     ];
   }
-}
-
-function dispatcherHelp(providerName: string, sources: JustBashCommandSource[]): string {
-  const maxNameLength = Math.max(
-    ...sources.map((source) => source.backendToolName.replaceAll("_", "-").length),
-    0,
-  );
-  return [
-    `${providerName} - the ${providerName} toolset`,
-    "",
-    "USAGE:",
-    `  ${providerName} <subcommand> [options]`,
-    "",
-    "SUBCOMMANDS:",
-    ...sources.map((source) => {
-      const description = (source.tool.description ?? "").replace(/\s+/g, " ").trim();
-      const subcommand = source.backendToolName.replaceAll("_", "-");
-      return `  ${subcommand.padEnd(maxNameLength + 2)}${description}`.trimEnd();
-    }),
-  ].join("\n");
 }
 
 function output(stdout: string): ExecResult {

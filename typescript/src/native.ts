@@ -11,6 +11,8 @@ export interface NativeCore {
   formatToolSchemaResponseJson(toolJson: string): string;
   maybeToonifyOutputJson(output: string): string;
   parseToolArgvJson(toolJson: string, argvJson: string): string;
+  renderCliTopLevelHelpJson(command: string, cliName: string, toolsJson: string): string;
+  renderCliSubcommandHelpJson(cliName: string, toolJson: string): string;
   generateClientArtifactsJson(kind: string, configJson: string): string;
   generateClientArtifactFilesJson(kind: string, configJson: string): string;
   buildHostTransformPlanJson(configJson: string): string;
