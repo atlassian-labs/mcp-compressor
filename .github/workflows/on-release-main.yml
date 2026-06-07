@@ -57,6 +57,14 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # Cache the cargo registry + target dir so each matrix wheel build does not
+      # recompile the Rust core from scratch. Keyed per-target to avoid cross-OS
+      # cache clobbering.
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-python-wheel-${{ matrix.target }}
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -230,7 +238,7 @@ jobs:
           TAG="${{ steps.prepare.outputs.tag }}"
           RELEASE_SHA="${{ steps.prepare.outputs.release_sha }}"
           echo "Waiting for publish-typescript-package workflow on release branch for $TAG at $RELEASE_SHA"
-          for attempt in $(seq 1 120); do
+          for attempt in $(seq 1 240); do
             RUN_JSON="$(gh run list \
               --workflow publish-typescript-package.yml \
               --branch release \
@@ -238,8 +246,8 @@ jobs:
               --json databaseId,status,conclusion,headSha \
               --jq '.[0] // empty')"
             if [ -z "$RUN_JSON" ]; then
-              echo "No TypeScript publish run found yet (attempt $attempt/120)"
-              sleep 20
+              echo "No TypeScript publish run found yet (attempt $attempt/240)"
+              sleep 10
               continue
             fi
             RUN_ID="$(jq -r '.databaseId' <<<"$RUN_JSON")"
@@ -248,7 +256,7 @@ jobs:
             CONCLUSION="$(jq -r '.conclusion // ""' <<<"$RUN_JSON")"
             if [ "$HEAD_SHA" != "$RELEASE_SHA" ]; then
               echo "Latest TypeScript publish run $RUN_ID is for $HEAD_SHA, waiting for $RELEASE_SHA"
-              sleep 20
+              sleep 10
               continue
             fi
             echo "Run $RUN_ID status=$STATUS conclusion=$CONCLUSION"
@@ -260,7 +268,7 @@ jobs:
               echo "TypeScript publish workflow failed with conclusion=$CONCLUSION" >&2
               exit 1
             fi
-            sleep 20
+            sleep 10
           done
           echo "Timed out waiting for TypeScript publish workflow after 40 minutes" >&2
           exit 1
@@ -276,6 +284,11 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-rust-crate
 
       - name: Derive crate version from tag
         id: version
@@ -315,15 +328,15 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          for attempt in {1..20}; do
+          for attempt in {1..60}; do
             if cargo info "mcp-compressor-core@$VERSION" >/tmp/mcp-compressor-core-info 2>&1; then
               cat /tmp/mcp-compressor-core-info
               echo "mcp-compressor-core $VERSION is visible in crates.io index"
               exit 0
             fi
             cat /tmp/mcp-compressor-core-info || true
-            echo "Waiting for mcp-compressor-core $VERSION in crates.io index (attempt $attempt/20)..."
-            sleep 30
+            echo "Waiting for mcp-compressor-core $VERSION in crates.io index (attempt $attempt/60)..."
+            sleep 10
           done
           echo "Timed out waiting for mcp-compressor-core $VERSION in crates.io index" >&2
           exit 1
