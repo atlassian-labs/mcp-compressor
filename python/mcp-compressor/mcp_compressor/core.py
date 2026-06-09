@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import json
 from dataclasses import dataclass
@@ -41,6 +42,14 @@ class CompressedSessionConfig:
     exclude_tools: list[str] | None = None
     toonify: bool = False
     transform_mode: str | None = None
+    bridge: bool = True
+    """Start the local authenticated HTTP bridge.
+
+    Defaults to ``True`` for out-of-process clients (generated CLI/Python/TS
+    clients, Just Bash). Set to ``False`` for in-process use, where tools are
+    dispatched directly via :meth:`CompressedSession.invoke` without a local
+    HTTP listener, token, or background task.
+    """
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
@@ -50,11 +59,19 @@ class CompressedSessionConfig:
             "exclude_tools": self.exclude_tools or [],
             "toonify": self.toonify,
             "transform_mode": self.transform_mode,
+            "bridge": self.bridge,
         }
 
 
 class CompressedSession:
-    """Python wrapper around a Rust-backed compressed session handle."""
+    """Python wrapper around a Rust-backed compressed session handle.
+
+    In addition to bridge-based access via :class:`CompressorProxy`, a session
+    can be driven entirely in-process: :meth:`list_tools`, :meth:`get_schema`,
+    and :meth:`invoke` reuse the session's live upstream connection and OAuth
+    without an HTTP bridge. Async variants are provided for use from event
+    loops (they run the blocking native call in a worker thread).
+    """
 
     def __init__(self, native_session: Any) -> None:
         self._native_session = native_session
@@ -65,6 +82,46 @@ class CompressedSession:
             msg = "Rust core session info_json returned non-object JSON"
             raise TypeError(msg)
         return value
+
+    def list_tools(self) -> list[dict[str, Any]]:
+        """Return the compressed frontend tools (in-process; no bridge needed)."""
+        value = json.loads(self._native_session.list_frontend_tools_json())
+        if not isinstance(value, list):
+            msg = "Rust core session list_frontend_tools_json returned non-list JSON"
+            raise TypeError(msg)
+        return value
+
+    def get_schema(self, wrapper_tool: str, backend_tool: str) -> str:
+        """Return the full backend schema response for a tool, in-process.
+
+        ``wrapper_tool`` is the compressed ``*get_tool_schema``/``*invoke_tool``
+        wrapper name (used to resolve the backend); ``backend_tool`` is the
+        underlying backend tool name.
+        """
+        return str(self._native_session.get_tool_schema_json(wrapper_tool, backend_tool))
+
+    def invoke(self, tool: str, tool_input: dict[str, Any] | None = None) -> str:
+        """Invoke a tool in-process, reusing the session's connection and OAuth.
+
+        ``tool`` is a frontend wrapper tool name (e.g. ``*invoke_tool``) or, in
+        single-backend setups, a pass-through backend tool name. For wrapper
+        invoke tools, ``tool_input`` should contain ``tool_name`` and
+        ``tool_input``. Returns the same payload the HTTP bridge ``/exec``
+        endpoint would return.
+        """
+        return str(self._native_session.invoke_tool_json(tool, _json_dumps(tool_input or {})))
+
+    async def alist_tools(self) -> list[dict[str, Any]]:
+        """Async variant of :meth:`list_tools`."""
+        return await asyncio.to_thread(self.list_tools)
+
+    async def aget_schema(self, wrapper_tool: str, backend_tool: str) -> str:
+        """Async variant of :meth:`get_schema`."""
+        return await asyncio.to_thread(self.get_schema, wrapper_tool, backend_tool)
+
+    async def ainvoke(self, tool: str, tool_input: dict[str, Any] | None = None) -> str:
+        """Async variant of :meth:`invoke`."""
+        return await asyncio.to_thread(self.invoke, tool, tool_input)
 
     def close(self) -> None:
         self._native_session.close()
@@ -121,7 +178,12 @@ def start_compressed_session(
     config: CompressedSessionConfig,
     backends: list[BackendConfig],
 ) -> CompressedSession:
-    """Start a Rust-backed compressed session and local proxy."""
+    """Start a Rust-backed compressed session.
+
+    By default this also starts a local HTTP bridge for out-of-process clients.
+    Set ``config.bridge=False`` for in-process use (dispatch via the session's
+    :meth:`CompressedSession.invoke` / :meth:`CompressedSession.list_tools`).
+    """
     native_session = _native.start_compressed_session_json(
         _json_dumps(config.to_json_dict()),
         _json_dumps([backend.to_json_dict() for backend in backends]),

@@ -84,6 +84,10 @@ pub enum FfiSdkServerConfig {
 
 pub type FfiSdkServersConfig = BTreeMap<String, FfiSdkServerConfig>;
 
+fn default_bridge() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FfiCompressedSessionConfig {
     pub compression_level: String,
@@ -95,6 +99,14 @@ pub struct FfiCompressedSessionConfig {
     #[serde(default)]
     pub toonify: bool,
     pub transform_mode: Option<String>,
+    /// Whether to start the local authenticated HTTP bridge.
+    ///
+    /// Defaults to `true` for backward compatibility with out-of-process
+    /// clients (generated CLI/Python/TS clients, Just Bash). In-process SDK
+    /// consumers can set this to `false` to dispatch tools directly without a
+    /// local HTTP listener, token, or background task.
+    #[serde(default = "default_bridge")]
+    pub bridge: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -135,6 +135,35 @@ impl PyCompressedSession {
         serde_json::to_string(&self.inner.info()).map_err(py_value_error)
     }
 
+    /// In-process compressed frontend tool list (no HTTP bridge required).
+    fn list_frontend_tools_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.inner.list_frontend_tools()).map_err(py_value_error)
+    }
+
+    /// In-process schema lookup for a backend tool via a compressed wrapper.
+    fn get_tool_schema_json(
+        &self,
+        py: Python<'_>,
+        wrapper_tool_name: &str,
+        backend_tool_name: &str,
+    ) -> PyResult<String> {
+        py.detach(|| {
+            self.runtime
+                .block_on(self.inner.get_tool_schema(wrapper_tool_name, backend_tool_name))
+        })
+        .map_err(py_value_error)
+    }
+
+    /// In-process tool invocation, reusing the session's connection and OAuth.
+    ///
+    /// `input_json` is the JSON-encoded tool input (for wrapper invoke tools,
+    /// an object with `tool_name` and `tool_input`).
+    fn invoke_tool_json(&self, py: Python<'_>, tool: &str, input_json: &str) -> PyResult<String> {
+        let input: Value = parse_json(input_json)?;
+        py.detach(|| self.runtime.block_on(self.inner.invoke(tool, input)))
+            .map_err(py_value_error)
+    }
+
     fn close(&mut self) {
         // The Rust session/proxy shuts down when the Python object is dropped.
     }
