@@ -164,6 +164,7 @@ mod tests {
                 exclude_tools: Vec::new(),
                 toonify: false,
                 transform_mode: None,
+                bridge: true,
             },
             vec![FfiBackendConfig {
                 name: "alpha".to_string(),
@@ -197,6 +198,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ffi_session_dispatches_in_process_without_bridge() {
+        let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("alpha_server.py");
+        let session = start_compressed_session(
+            FfiCompressedSessionConfig {
+                compression_level: "max".to_string(),
+                server_name: Some("alpha".to_string()),
+                include_tools: Vec::new(),
+                exclude_tools: Vec::new(),
+                toonify: false,
+                transform_mode: None,
+                bridge: false,
+            },
+            vec![FfiBackendConfig {
+                name: "alpha".to_string(),
+                command_or_url: std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_string()),
+                args: vec![fixture.to_string_lossy().into_owned()],
+                oauth_app_name: None,
+            }],
+        )
+        .await
+        .unwrap();
+
+        // No HTTP bridge is started in in-process mode.
+        let info = session.info();
+        assert!(info.bridge_url.is_empty());
+        assert!(info.token.is_empty());
+
+        // Frontend tools are still listable in-process.
+        let frontend_tools = session.list_frontend_tools();
+        let invoke_tool_name = frontend_tools
+            .iter()
+            .find(|tool| tool.name.ends_with("invoke_tool"))
+            .map(|tool| tool.name.clone())
+            .expect("invoke wrapper tool");
+        let schema_tool_name = frontend_tools
+            .iter()
+            .find(|tool| tool.name.ends_with("get_tool_schema"))
+            .map(|tool| tool.name.clone())
+            .expect("schema wrapper tool");
+
+        // In-process schema lookup works.
+        let schema = session
+            .get_tool_schema(&schema_tool_name, "echo")
+            .await
+            .unwrap();
+        assert!(schema.contains("echo"));
+
+        // In-process invoke returns the same payload the bridge would.
+        let result = session
+            .invoke(
+                &invoke_tool_name,
+                serde_json::json!({"tool_name": "echo", "tool_input": {"message": "ffi"}}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(result, "alpha:ffi");
+    }
+
+    #[tokio::test]
     async fn ffi_starts_compressed_session_from_mcp_config_and_routes_multiple_servers() {
         let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests")
@@ -223,6 +286,7 @@ mod tests {
                 exclude_tools: Vec::new(),
                 toonify: false,
                 transform_mode: None,
+                bridge: true,
             },
             &config_json,
         )
@@ -273,6 +337,7 @@ mod tests {
                 exclude_tools: Vec::new(),
                 toonify: false,
                 transform_mode: Some("cli".to_string()),
+                bridge: true,
             },
             vec![FfiBackendConfig {
                 name: "alpha".to_string(),
@@ -302,6 +367,7 @@ mod tests {
                 exclude_tools: Vec::new(),
                 toonify: false,
                 transform_mode: Some("just-bash".to_string()),
+                bridge: true,
             },
             vec![
                 FfiBackendConfig {

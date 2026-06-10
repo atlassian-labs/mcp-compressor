@@ -1,4 +1,8 @@
-use crate::proxy::{RunningToolProxy, ToolProxyServer};
+use std::sync::Arc;
+
+use serde_json::Value;
+
+use crate::proxy::{dispatch_exec, RunningToolProxy, ToolProxyServer};
 use crate::server::{CompressedServer, CompressedServerConfig, ProxyTransformMode};
 use crate::Error;
 
@@ -60,7 +64,10 @@ fn normalize_sdk_server(
 
 pub struct FfiCompressedSession {
     info: FfiCompressedSessionInfo,
-    _proxy: RunningToolProxy,
+    server: Arc<CompressedServer>,
+    // Kept alive to keep the HTTP bridge running for out-of-process clients.
+    // `None` for in-process (bridge-less) sessions.
+    _proxy: Option<RunningToolProxy>,
 }
 
 impl FfiCompressedSession {
@@ -74,6 +81,34 @@ impl FfiCompressedSession {
 
     pub fn info(&self) -> FfiCompressedSessionInfo {
         self.info.clone()
+    }
+
+    /// Frontend (compressed) tools exposed to callers, as DTOs.
+    ///
+    /// In-process equivalent of reading `info().frontend_tools`.
+    pub fn list_frontend_tools(&self) -> Vec<FfiTool> {
+        self.info.frontend_tools.clone()
+    }
+
+    /// Get the full backend schema for a tool via the compressed wrapper API,
+    /// dispatched in-process (no HTTP bridge required).
+    pub async fn get_tool_schema(
+        &self,
+        wrapper_tool_name: &str,
+        backend_tool_name: &str,
+    ) -> Result<String, Error> {
+        self.server
+            .get_tool_schema(wrapper_tool_name, backend_tool_name)
+            .await
+    }
+
+    /// Invoke a frontend wrapper tool (or single-backend pass-through tool)
+    /// in-process, reusing the session's live connection and OAuth.
+    ///
+    /// This shares [`dispatch_exec`] with the HTTP `/exec` bridge endpoint, so
+    /// in-process and bridge invocations return identical payloads.
+    pub async fn invoke(&self, tool: &str, input: Value) -> Result<String, Error> {
+        dispatch_exec(&self.server, tool.to_string(), input).await
     }
 
     pub fn close(self) {}
@@ -90,6 +125,7 @@ fn parse_ffi_transform_mode(value: Option<&str>) -> Result<ProxyTransformMode, E
 
 async fn compressed_session_from_server(
     server: CompressedServer,
+    bridge: bool,
 ) -> Result<FfiCompressedSession, Error> {
     let frontend_tools = server
         .list_frontend_tools()
@@ -111,16 +147,27 @@ async fn compressed_session_from_server(
         .into_iter()
         .map(Into::into)
         .collect();
-    let proxy = ToolProxyServer::start(server).await?;
+    let (proxy, shared_server, bridge_url, token) = if bridge {
+        let proxy = ToolProxyServer::start(server).await?;
+        let bridge_url = proxy.bridge_url().to_string();
+        let token = proxy.token_value().to_string();
+        let shared_server = Arc::clone(proxy.server());
+        (Some(proxy), shared_server, bridge_url, token)
+    } else {
+        let shared_server = ToolProxyServer::in_process(server);
+        (None, shared_server, String::new(), String::new())
+    };
+
     Ok(FfiCompressedSession {
         info: FfiCompressedSessionInfo {
-            bridge_url: proxy.bridge_url().to_string(),
-            token: proxy.token_value().to_string(),
+            bridge_url,
+            token,
             frontend_tools,
             backend_tools,
             backend_tools_by_server,
             just_bash_providers,
         },
+        server: shared_server,
         _proxy: proxy,
     })
 }
@@ -140,6 +187,7 @@ pub async fn start_compressed_session_with_backend_configs(
     config: FfiCompressedSessionConfig,
     backends: Vec<crate::server::BackendServerConfig>,
 ) -> Result<FfiCompressedSession, Error> {
+    let bridge = config.bridge;
     let server = CompressedServer::connect_multi_stdio(
         CompressedServerConfig {
             level: config.compression_level.parse()?,
@@ -153,13 +201,14 @@ pub async fn start_compressed_session_with_backend_configs(
         backends,
     )
     .await?;
-    compressed_session_from_server(server).await
+    compressed_session_from_server(server, bridge).await
 }
 
 pub async fn start_compressed_session_from_mcp_config(
     config: FfiCompressedSessionConfig,
     mcp_config_json: &str,
 ) -> Result<FfiCompressedSession, Error> {
+    let bridge = config.bridge;
     let server = CompressedServer::connect_mcp_config_json(
         CompressedServerConfig {
             level: config.compression_level.parse()?,
@@ -173,5 +222,5 @@ pub async fn start_compressed_session_from_mcp_config(
         mcp_config_json,
     )
     .await?;
-    compressed_session_from_server(server).await
+    compressed_session_from_server(server, bridge).await
 }

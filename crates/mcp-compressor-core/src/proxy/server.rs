@@ -27,6 +27,7 @@ pub struct RunningToolProxy {
     bridge_url: String,
     token: SessionToken,
     task: tokio::task::JoinHandle<()>,
+    server: Arc<CompressedServer>,
 }
 
 #[derive(Clone)]
@@ -52,8 +53,9 @@ struct WrapperInvokeInput {
 impl ToolProxyServer {
     pub async fn start(server: CompressedServer) -> Result<RunningToolProxy, Error> {
         let token = SessionToken::generate();
+        let server = Arc::new(server);
         let state = ProxyState {
-            server: Arc::new(server),
+            server: Arc::clone(&server),
             token: token.clone(),
         };
 
@@ -74,7 +76,18 @@ impl ToolProxyServer {
             bridge_url: format!("http://{addr}"),
             token,
             task,
+            server,
         })
+    }
+
+    /// Wrap a connected compressed server for in-process (bridge-less) use.
+    ///
+    /// No HTTP listener, token, or background task is created. Callers dispatch
+    /// tools directly via [`dispatch_exec`] using the returned shared handle.
+    /// This is the preferred path for in-process SDK consumers that do not need
+    /// to expose the session to out-of-process clients.
+    pub fn in_process(server: CompressedServer) -> Arc<CompressedServer> {
+        Arc::new(server)
     }
 }
 
@@ -91,7 +104,7 @@ async fn exec(
         return close_response(StatusCode::UNAUTHORIZED, "unauthorized");
     }
 
-    match dispatch_exec(&state.server, request).await {
+    match dispatch_exec(&state.server, request.tool, request.input).await {
         Ok(result) => close_response(StatusCode::OK, result),
         Err(error) => close_response(StatusCode::BAD_REQUEST, error.to_string()),
     }
@@ -105,16 +118,23 @@ fn close_response(status: StatusCode, body: impl Into<String>) -> Response {
     response
 }
 
-async fn dispatch_exec(server: &CompressedServer, request: ExecRequest) -> Result<String, Error> {
-    if request.tool.ends_with("_invoke_tool") || request.tool == "invoke_tool" {
-        let wrapper_input: WrapperInvokeInput = serde_json::from_value(request.input)?;
+/// Execute a frontend wrapper tool (or single-backend pass-through tool) against
+/// a compressed server.
+///
+/// This is the shared dispatch used by both the HTTP `/exec` bridge endpoint and
+/// the in-process SDK session path, so both transports produce identical results.
+pub async fn dispatch_exec(
+    server: &CompressedServer,
+    tool: String,
+    input: Value,
+) -> Result<String, Error> {
+    if tool.ends_with("_invoke_tool") || tool == "invoke_tool" {
+        let wrapper_input: WrapperInvokeInput = serde_json::from_value(input)?;
         server
-            .invoke_tool(&request.tool, &wrapper_input.tool_name, wrapper_input.tool_input)
+            .invoke_tool(&tool, &wrapper_input.tool_name, wrapper_input.tool_input)
             .await
     } else {
-        server
-            .invoke_single_backend_tool(&request.tool, request.input)
-            .await
+        server.invoke_single_backend_tool(&tool, input).await
     }
 }
 
@@ -132,6 +152,12 @@ impl Drop for RunningToolProxy {
 }
 
 impl RunningToolProxy {
+    /// Shared handle to the underlying compressed server, used for in-process
+    /// (bridge-less) dispatch by SDK sessions.
+    pub fn server(&self) -> &Arc<CompressedServer> {
+        &self.server
+    }
+
     pub fn bridge_url(&self) -> &str {
         &self.bridge_url
     }

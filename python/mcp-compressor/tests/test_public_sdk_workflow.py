@@ -107,6 +107,40 @@ def test_public_python_sdk_quickstart_flow() -> None:
         )
 
 
+def test_public_python_sdk_in_process_session_without_bridge() -> None:
+    from mcp_compressor.core import (
+        BackendConfig,
+        CompressedSessionConfig,
+        start_compressed_session,
+    )
+
+    session = start_compressed_session(
+        CompressedSessionConfig(compression_level="max", server_name="alpha", bridge=False),
+        [BackendConfig(name="alpha", command_or_url=PYTHON, args=[str(FIXTURE)])],
+    )
+    try:
+        info = session.info()
+        # In-process mode starts no HTTP bridge.
+        assert info["bridge_url"] == ""
+        assert info["token"] == ""
+
+        tool_names = {tool["name"] for tool in session.list_tools()}
+        invoke_tool = next(name for name in tool_names if name.endswith("invoke_tool"))
+        schema_tool = next(name for name in tool_names if name.endswith("get_tool_schema"))
+
+        schema = session.get_schema(schema_tool, "echo")
+        assert "echo" in schema
+
+        # In-process invoke returns the same payload the bridge /exec would.
+        result = session.invoke(
+            invoke_tool,
+            {"tool_name": "echo", "tool_input": {"message": "in-process"}},
+        )
+        assert result == "alpha:in-process"
+    finally:
+        session.close()
+
+
 def test_public_python_sdk_preserves_oauth_app_name_in_config() -> None:
     from mcp_compressor.core import normalize_sdk_servers
 
