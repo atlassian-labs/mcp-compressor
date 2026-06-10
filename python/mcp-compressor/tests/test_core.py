@@ -111,7 +111,8 @@ def test_high_level_compressor_client_writes_generated_clients(monkeypatch, tmp_
         cli_paths = proxy.write_client("cli", tmp_path / "bin", name="alpha")
         python_paths = proxy.write_client("python", tmp_path / "py", name="alpha")
         ts_paths = proxy.write_client("typescript", tmp_path / "ts", name="alpha")
-    cli_script = next(path for path in cli_paths if path.name == "alpha")
+    cli_artifact_name = "alpha.cmd" if os.name == "nt" else "alpha"
+    cli_script = next(path for path in cli_paths if path.name == cli_artifact_name)
     cli_result = subprocess.run(  # noqa: S603 - trusted generated test CLI
         [str(cli_script), "echo", "--message", "generated-cli"],
         text=True,

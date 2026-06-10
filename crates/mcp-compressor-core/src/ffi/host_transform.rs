@@ -383,11 +383,16 @@ fn default_cli_output_dir() -> PathBuf {
 }
 
 fn path_environment(output_dir: &std::path::Path) -> BTreeMap<String, String> {
+    let dir = output_dir.to_string_lossy();
+    // Windows uses `;` as the PATH separator and `%PATH%` to reference it; every
+    // other platform uses `:` and `$PATH`.
+    let path_value = if cfg!(windows) {
+        format!("{dir};%PATH%")
+    } else {
+        format!("{dir}:$PATH")
+    };
     let mut env = BTreeMap::new();
-    env.insert(
-        "PATH".to_string(),
-        format!("{}:$PATH", output_dir.to_string_lossy()),
-    );
+    env.insert("PATH".to_string(), path_value);
     env
 }
 
@@ -554,11 +559,30 @@ List accessible resources for the user."
         std::env::set_current_dir(previous_cwd).unwrap();
 
         assert_eq!(plan.output_dir, Some(PathBuf::from("./dist")));
-        assert_eq!(plan.paths, vec![PathBuf::from("./dist/alpha")]);
-        assert_eq!(
-            plan.environment.get("PATH"),
-            Some(&"./dist:$PATH".to_string())
-        );
+        // On Windows there are two artifacts (the shell script plus the `.cmd`)
+        // and PATH uses `;`/`%PATH%`; elsewhere there is one, using `:`/`$PATH`.
+        #[cfg(windows)]
+        {
+            assert_eq!(
+                plan.paths,
+                vec![
+                    PathBuf::from("./dist/alpha"),
+                    PathBuf::from("./dist/alpha.cmd"),
+                ]
+            );
+            assert_eq!(
+                plan.environment.get("PATH"),
+                Some(&"./dist;%PATH%".to_string())
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(plan.paths, vec![PathBuf::from("./dist/alpha")]);
+            assert_eq!(
+                plan.environment.get("PATH"),
+                Some(&"./dist:$PATH".to_string())
+            );
+        }
         assert!(plan.files.contains_key("alpha"));
         assert!(!temp.path().join("dist/alpha").exists());
     }
