@@ -39,7 +39,9 @@ def _streamable_http_upstream() -> Iterator[str]:
         PYTHON,
         str(FIXTURE),
     ]
-    process = subprocess.Popen(command, stderr=subprocess.PIPE, text=True)  # noqa: S603 - trusted test command
+    process = subprocess.Popen(  # noqa: S603 - trusted test command
+        command, stderr=subprocess.PIPE, text=True, encoding="utf-8"
+    )
     try:
         assert process.stderr is not None
         deadline = time.monotonic() + 30
@@ -65,7 +67,7 @@ def _rotating_auth_proxy(target_url: str, *, expected_start: int = 1) -> Iterato
         "MCP_COMPRESSOR_AUTH_PROXY_EXPECTED_START": str(expected_start),
     }
     process = subprocess.Popen(  # noqa: S603 - trusted test command
-        [PYTHON, str(proxy)], stderr=subprocess.PIPE, text=True, env=env
+        [PYTHON, str(proxy)], stderr=subprocess.PIPE, text=True, encoding="utf-8", env=env
     )
     try:
         assert process.stderr is not None

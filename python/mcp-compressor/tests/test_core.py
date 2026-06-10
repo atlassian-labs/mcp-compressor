@@ -111,7 +111,8 @@ def test_high_level_compressor_client_writes_generated_clients(monkeypatch, tmp_
         cli_paths = proxy.write_client("cli", tmp_path / "bin", name="alpha")
         python_paths = proxy.write_client("python", tmp_path / "py", name="alpha")
         ts_paths = proxy.write_client("typescript", tmp_path / "ts", name="alpha")
-    cli_script = next(path for path in cli_paths if path.name == "alpha")
+    cli_artifact_name = "alpha.cmd" if os.name == "nt" else "alpha"
+    cli_script = next(path for path in cli_paths if path.name == cli_artifact_name)
     cli_result = subprocess.run(  # noqa: S603 - trusted generated test CLI
         [str(cli_script), "echo", "--message", "generated-cli"],
         text=True,
@@ -148,6 +149,51 @@ def test_high_level_compressor_client_writes_generated_clients(monkeypatch, tmp_
             timeout=30,
         )
         assert ts_result.stdout.strip() == "alpha:generated-ts"
+
+
+def test_generated_cli_client_dispatches_help_and_unknown_subcommand(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("MCP_COMPRESSOR_BINARY", os.devnull + "-missing")
+    with CompressorClient(
+        servers={"alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]}},
+        compression_level="max",
+    ) as proxy:
+        cli_paths = proxy.write_client("cli", tmp_path / "bin", name="alpha")
+    cli_artifact_name = "alpha.cmd" if os.name == "nt" else "alpha"
+    cli_script = next(path for path in cli_paths if path.name == cli_artifact_name)
+
+    # No args and --help print top-level help and exit 0. These run the dispatch
+    # before any bridge lookup, so they do not need the proxy to be live.
+    for help_argv in ([], ["--help"]):
+        result = subprocess.run(  # noqa: S603 - trusted generated test CLI
+            [str(cli_script), *help_argv],
+            text=True,
+            capture_output=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "USAGE:" in result.stdout
+        assert "echo" in result.stdout
+
+    # A subcommand's --help prints that subcommand's help and exits 0.
+    sub_help = subprocess.run(  # noqa: S603 - trusted generated test CLI
+        [str(cli_script), "echo", "--help"],
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    assert sub_help.returncode == 0, sub_help.stderr
+    assert "OPTIONS:" in sub_help.stdout
+    assert "--message" in sub_help.stdout
+
+    # An unknown subcommand is rejected with exit code 2 and a usage message.
+    unknown = subprocess.run(  # noqa: S603 - trusted generated test CLI
+        [str(cli_script), "definitely-not-a-subcommand"],
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    assert unknown.returncode == 2
+    assert "Usage:" in unknown.stderr
 
 
 def test_high_level_compressor_client_reports_invalid_server_config() -> None:
