@@ -2,6 +2,7 @@
 
 use crate::compression::engine::Tool;
 use crate::compression::{CompressionEngine, CompressionLevel};
+use crate::server::compressed::INVOKE_TOOL_INPUT_SCHEMA_DESCRIPTION;
 
 const TITLE: &str = "\
 \x1b[32m█▀▄▀█ █▀▀ █▀█   █▀▀ █▀█ █▀▄▀█ █▀█ █▀█ █▀▀ █▀▀ █▀▀ █▀█ █▀█\x1b[0m
@@ -70,7 +71,7 @@ fn compressed_frontend_size(tools: &[Tool], level: &CompressionLevel) -> usize {
             "tool_name": {"type": "string", "description": "Name of the backend tool"},
             "tool_input": {
                 "type": "object",
-                "description": "JSON input for the backend tool",
+                "description": INVOKE_TOOL_INPUT_SCHEMA_DESCRIPTION,
                 "properties": {},
                 "additionalProperties": true
             }

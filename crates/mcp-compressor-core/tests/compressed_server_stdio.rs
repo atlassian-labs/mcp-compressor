@@ -1,6 +1,6 @@
 mod common;
 
-use mcp_compressor_core::server::CompressedServer;
+use mcp_compressor_core::{server::CompressedServer, Error};
 use serde_json::json;
 
 #[tokio::test]
@@ -31,7 +31,7 @@ async fn single_stdio_backend_exposes_only_compressed_wrapper_tools() {
 }
 
 #[tokio::test]
-async fn single_stdio_backend_invoke_wrapper_tool_input_schema_is_explicit_open_object() {
+async fn single_stdio_backend_invoke_wrapper_tool_input_schema_explains_selected_tool_schema() {
     let server = CompressedServer::connect_stdio(
         common::max_config(Some("alpha")),
         common::backend("alpha", "alpha_server.py"),
@@ -52,11 +52,34 @@ async fn single_stdio_backend_invoke_wrapper_tool_input_schema_is_explicit_open_
             .unwrap(),
         &json!({
             "type": "object",
-            "description": "JSON input for the backend tool",
+            "description": "JSON object matching the selected backend tool's input schema. Use get_tool_schema for the selected tool_name before invoking if required fields are unknown.",
             "properties": {},
             "additionalProperties": true
         })
     );
+}
+
+#[tokio::test]
+async fn single_stdio_backend_rejects_empty_tool_input_for_required_backend_tool() {
+    let server = CompressedServer::connect_stdio(
+        common::max_config(Some("alpha")),
+        common::backend("alpha", "alpha_server.py"),
+    )
+    .await
+    .unwrap();
+
+    let error = server
+        .invoke_tool("alpha_invoke_tool", "echo", json!({}))
+        .await
+        .unwrap_err();
+    let Error::Validation(message) = &error else {
+        panic!("expected validation error, got {error:?}");
+    };
+
+    assert!(message.contains("echo"), "got: {message}");
+    assert!(message.contains("message"), "got: {message}");
+    assert!(message.contains("tool_input"), "got: {message}");
+    assert!(message.contains("get_tool_schema"), "got: {message}");
 }
 
 #[tokio::test]

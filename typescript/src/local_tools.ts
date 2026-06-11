@@ -35,6 +35,35 @@ function asJsonSchema(
   );
 }
 
+const TOOL_INPUT_SCHEMA_DESCRIPTION =
+  "JSON object matching the selected tool's input schema. Use get_tool_schema for the selected tool_name before invoking if required fields are unknown.";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function requiredFieldNames(schema: Record<string, unknown>): string[] {
+  const required = schema.required;
+  if (!Array.isArray(required)) return [];
+  return required.filter((field): field is string => typeof field === "string");
+}
+
+function validateRequiredToolInput(spec: ToolSpec, toolInput: unknown): void {
+  const required = requiredFieldNames(spec.inputSchema);
+  if (required.length === 0) return;
+
+  const input = isRecord(toolInput) ? toolInput : {};
+  const missing = required.filter((field) => !Object.hasOwn(input, field));
+  if (missing.length === 0) return;
+
+  throw new Error(
+    `Tool \`${spec.name}\` is missing required tool_input fields: ${missing.join(", ")}. ` +
+      "tool_input must be a JSON object matching the selected tool's input schema. " +
+      `Call get_tool_schema with tool_name=\`${spec.name}\` and retry with tool_input matching this schema:\n` +
+      JSON.stringify(spec.inputSchema, null, 2),
+  );
+}
+
 function normalizeResult(value: unknown, toonify: boolean): string {
   const json = stringifyToolResult(value);
   if (!toonify) return json;
@@ -94,7 +123,7 @@ export function compressTools(
         tool_name: { type: "string", description: "Name of the tool" },
         tool_input: {
           type: "object",
-          description: "JSON input for the tool",
+          description: TOOL_INPUT_SCHEMA_DESCRIPTION,
           properties: {},
           additionalProperties: true,
         },
@@ -103,9 +132,12 @@ export function compressTools(
     },
     execute: async (input = {}) => {
       const toolName = String(input.tool_name ?? "");
+      const spec = specByName.get(toolName);
       const tool = toolByName.get(toolName);
-      if (!tool) throw new Error(`Tool not found: ${toolName}`);
-      const output = await tool.execute((input.tool_input ?? {}) as never);
+      if (!spec || !tool) throw new Error(`Tool not found: ${toolName}`);
+      const toolInput = input.tool_input ?? {};
+      validateRequiredToolInput(spec, toolInput);
+      const output = await tool.execute(toolInput as never);
       return normalizeResult(output, options.toonify ?? false);
     },
   };
