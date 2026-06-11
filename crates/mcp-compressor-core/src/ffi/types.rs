@@ -90,6 +90,11 @@ mod tests {
         let paths =
             generate_client_artifacts(FfiClientArtifactKind::Cli, generator_config(dir.path()))
                 .unwrap();
+        // Windows emits both the shell script and the `.cmd`; other platforms
+        // emit only the shell script. The shell script is first in either case.
+        #[cfg(windows)]
+        assert_eq!(paths.len(), 2);
+        #[cfg(not(windows))]
         assert_eq!(paths.len(), 1);
         let content = std::fs::read_to_string(&paths[0]).unwrap();
         assert!(content.contains("ffi-server - the ffi-server toolset"));
