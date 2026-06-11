@@ -11,6 +11,11 @@ use rmcp::model::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub(crate) const INVOKE_TOOL_INPUT_SCHEMA_DESCRIPTION: &str = concat!(
+    "JSON object matching the selected backend tool's input schema. ",
+    "Use get_tool_schema for the selected tool_name before invoking if required fields are unknown."
+);
+
 use crate::compression::engine::{CompressionEngine, Tool};
 use crate::compression::CompressionLevel;
 use crate::config::topology::MCPConfig;
@@ -435,13 +440,12 @@ impl CompressedServer {
         backend_tool_name: &str,
         tool_input: Value,
     ) -> Result<String, Error> {
-        if !backend
+        let tool = backend
             .tools
             .iter()
-            .any(|tool| tool.name == backend_tool_name)
-        {
-            return Err(Error::ToolNotFound(backend_tool_name.to_string()));
-        }
+            .find(|tool| tool.name == backend_tool_name)
+            .ok_or_else(|| Error::ToolNotFound(backend_tool_name.to_string()))?;
+        validate_required_tool_input(tool, &tool_input)?;
         let arguments = match tool_input {
             Value::Object(map) => Some(map),
             _ => None,
@@ -525,6 +529,54 @@ impl CompressedServer {
             .find(|backend| wrapper_tool_name.starts_with(&self.wrapper_prefix(backend)))
             .ok_or_else(|| Error::ToolNotFound(wrapper_tool_name.to_string()))
     }
+}
+
+fn validate_required_tool_input(tool: &Tool, tool_input: &Value) -> Result<(), Error> {
+    let required = required_field_names(&tool.input_schema);
+    if required.is_empty() {
+        return Ok(());
+    }
+
+    let input = match tool_input.as_object() {
+        Some(input) => input,
+        None => return Err(missing_required_tool_input_error(tool, &required)),
+    };
+    let missing = required
+        .iter()
+        .filter(|field| !input.contains_key(field.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(missing_required_tool_input_error(tool, &missing))
+    }
+}
+
+fn required_field_names(input_schema: &Value) -> Vec<String> {
+    input_schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|required| {
+            required
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn missing_required_tool_input_error(tool: &Tool, missing: &[String]) -> Error {
+    let schema = serde_json::to_string_pretty(&tool.input_schema)
+        .unwrap_or_else(|_| tool.input_schema.to_string());
+    Error::Validation(format!(
+        "Tool `{}` is missing required tool_input fields: {}. tool_input must be a JSON object matching the selected backend tool's input schema. Call get_tool_schema with tool_name=`{}` and retry with tool_input matching this schema:\n{}",
+        tool.name,
+        missing.join(", "),
+        tool.name,
+        schema
+    ))
 }
 
 fn format_backend_help(backend: &ConnectedBackend) -> String {
@@ -624,7 +676,7 @@ fn invoke_wrapper_tool(name: String, description: &str) -> Tool {
                 "tool_name": { "type": "string", "description": "Name of the backend tool" },
                 "tool_input": {
                     "type": "object",
-                    "description": "JSON input for the backend tool",
+                    "description": INVOKE_TOOL_INPUT_SCHEMA_DESCRIPTION,
                     "properties": {},
                     "additionalProperties": true
                 }

@@ -191,5 +191,9 @@ fn required_string(arguments: &Map<String, Value>, name: &str) -> Result<String,
 }
 
 fn mcp_error(error: crate::Error) -> McpError {
-    McpError::new(ErrorCode::INTERNAL_ERROR, error.to_string(), None)
+    let code = match &error {
+        crate::Error::Validation(_) => ErrorCode::INVALID_PARAMS,
+        _ => ErrorCode::INTERNAL_ERROR,
+    };
+    McpError::new(code, error.to_string(), None)
 }
