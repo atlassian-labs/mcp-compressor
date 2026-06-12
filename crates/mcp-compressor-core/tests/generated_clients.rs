@@ -499,6 +499,50 @@ fn generated_cli_prints_raw_host_bridge_result() {
     );
 }
 
+/// The generated CLI client must route to the bridge owned by its own session --
+/// the entry keyed under an ancestor PID -- even when another live bridge exists.
+/// This is the multi-session disambiguation the process-tree walk provides; on
+/// Windows it depends on the snapshot-based parent lookup climbing past `cmd.exe`.
+///
+/// The decoy bridge is keyed under a non-ancestor PID (`u32::MAX`) and inserted
+/// first, so it is the fallback's pick. A walk that fails to reach the session PID
+/// would fall back and return `wrong-session`. Both bridges are live, so the
+/// fallback cannot skip the decoy and pass by accident.
+#[test]
+fn generated_cli_routes_to_ancestor_session_bridge_over_live_decoy() {
+    let correct = start_json_result_bridge("correct-session");
+    let decoy = start_json_result_bridge("wrong-session");
+    let tempdir = tempfile::tempdir().unwrap();
+    let config = GeneratorConfig {
+        cli_name: "alpha".to_string(),
+        bridge_url: correct.url.clone(),
+        token: "token".to_string(),
+        tools: vec![mcp_compressor_core::compression::engine::Tool::new(
+            "echo",
+            Some("Echo.".to_string()),
+            serde_json::json!({"type":"object","properties":{"message":{"type":"string"}}}),
+        )],
+        session_pid: std::process::id(),
+        output_dir: tempdir.path().to_path_buf(),
+        extra_cli_bridges: vec![mcp_compressor_core::client_gen::generator::CliBridgeEntry {
+            session_pid: u32::MAX,
+            bridge_url: decoy.url.clone(),
+            token: "token".to_string(),
+        }],
+    };
+    CliGenerator.generate(&config).unwrap();
+    // The walk only matters where the client runs as a real child of this test
+    // process: the Unix `sh` script (no extension) or, on Windows, the `.cmd`
+    // launched through cmd.exe -- which is the path that exercises the ctypes walk.
+    let script_name = if cfg!(windows) { "alpha.cmd" } else { "alpha" };
+    let script = tempdir.path().join(script_name);
+
+    assert_eq!(
+        run_generated_script(&script, &["echo", "--message", "hello"]),
+        "correct-session"
+    );
+}
+
 #[test]
 fn generated_python_module_returns_raw_host_bridge_result() {
     let bridge = start_json_result_bridge("python-ok");

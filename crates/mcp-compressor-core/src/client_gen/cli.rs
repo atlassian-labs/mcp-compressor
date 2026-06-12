@@ -49,6 +49,12 @@ fn render_cli_artifacts(config: &GeneratorConfig) -> Vec<GeneratedArtifact> {
 /// against the tool schema, and `POST` to `/exec` with the session token. The shell
 /// orchestration moves into one `main()` so the Windows `.cmd` runs the same program;
 /// the resolution and parsing helpers are reused from upstream unchanged.
+///
+/// The session bridge is resolved by one shared process-tree walk; only the per-step
+/// parent-PID lookup is platform-specific. `parent_pid` dispatches by `os.name` to
+/// `unix_parent_pid` (a `/proc` or `ps` read) or `windows_parent_pid` (a process
+/// snapshot), keeping the walk one implementation with each platform's lookup in its
+/// own leaf.
 fn client_python_body(config: &GeneratorConfig) -> String {
     let top_help = serde_json::to_string(&help::render_top_level_help(
         &config.cli_name,
@@ -102,32 +108,82 @@ def alive(entry):
     except Exception:
         return False
 
+def windows_parent_pid(pid):
+    # Read the parent PID from a process snapshot. ctypes defaults kernel32 calls
+    # to a 32-bit int return, which truncates the pointer-sized snapshot handle on
+    # 64-bit Python and makes the lookup fail, so declare the real arg/return types.
+    import ctypes
+    from ctypes import wintypes
+    TH32CS_SNAPPROCESS = 0x2
+    INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+    class ProcessEntry(ctypes.Structure):
+        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
+                    ("th32ProcessID", wintypes.DWORD),
+                    ("th32DefaultHeapID", ctypes.c_void_p),
+                    ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
+                    ("th32ParentProcessID", wintypes.DWORD),
+                    ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD),
+                    ("szExeFile", ctypes.c_char * 260)]
+    kernel32 = ctypes.windll.kernel32
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel32.Process32First.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessEntry)]
+    kernel32.Process32Next.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessEntry)]
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    # The documented failure return is INVALID_HANDLE_VALUE, not NULL; guard both.
+    if snapshot is None or snapshot == INVALID_HANDLE_VALUE:
+        return 0
+    try:
+        entry = ProcessEntry()
+        entry.dwSize = ctypes.sizeof(ProcessEntry)
+        ok = kernel32.Process32First(snapshot, ctypes.byref(entry))
+        while ok:
+            if entry.th32ProcessID == pid:
+                return entry.th32ParentProcessID
+            ok = kernel32.Process32Next(snapshot, ctypes.byref(entry))
+        return 0
+    finally:
+        kernel32.CloseHandle(snapshot)
+
+def unix_parent_pid(pid):
+    try:  # Linux: read the parent PID from /proc.
+        with open(f"/proc/{{pid}}/stat", "r", encoding="utf-8") as handle:
+            return int(handle.read().rsplit(")", 1)[1].split()[1])
+    except Exception:
+        pass
+    try:  # Other Unix: ask ps.
+        import subprocess
+        output = subprocess.check_output(["ps", "-o", "ppid=", "-p", str(pid)], text=True)
+        return int(output.strip() or "0")
+    except Exception:
+        return 0
+
+def parent_pid(pid):
+    # The walk is shared; this per-OS parent lookup is the only platform-specific
+    # part. Dispatch by os.name: Windows has no /proc or ps, and a stray ps on PATH
+    # (e.g. Git for Windows) must not be consulted there.
+    try:
+        return windows_parent_pid(pid) if os.name == "nt" else unix_parent_pid(pid)
+    except Exception:
+        return 0
+
 def ancestors():
     pid = os.getppid()
     seen = set()
     while pid and pid not in seen:
         seen.add(pid)
         yield str(pid)
-        try:
-            with open(f"/proc/{{pid}}/stat", "r", encoding="utf-8") as handle:
-                stat = handle.read()
-            pid = int(stat.rsplit(")", 1)[1].split()[1])
-        except Exception:
-            try:
-                import subprocess
-                output = subprocess.check_output(["ps", "-o", "ppid=", "-p", str(pid)], text=True)
-                pid = int(output.strip() or "0")
-            except Exception:
-                break
+        pid = parent_pid(pid)
 
 def find_bridge():
     for pid in ancestors():
         entry = BRIDGES.get(pid)
         if entry and alive(entry):
             return entry
-    # Fall back to any live bridge. On Windows the walk above sees only the
-    # immediate parent (no /proc or ps), so sessions sharing a CLI name are not
-    # disambiguated there and land here.
+    # Last resort: no ancestor PID matched a known bridge (e.g. the session that
+    # launched this client has exited). Return any live bridge so a lone session
+    # still works.
     for entry in BRIDGES.values():
         if alive(entry):
             return entry
