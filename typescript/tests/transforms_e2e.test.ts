@@ -65,10 +65,17 @@ describe("host-owned transform e2e", () => {
       expect(helpDescription).not.toContain("CLI Mode");
       expect(helpDescription).not.toContain("PATH hint");
 
-      expect(transform.paths).toEqual([join(outputDir, "alpha")]);
+      // Windows emits the shell script plus the `.cmd`, and PATH uses `;`/`%PATH%`;
+      // every other platform emits one script and uses `:`/`$PATH`.
+      if (process.platform === "win32") {
+        expect(transform.paths).toEqual([join(outputDir, "alpha"), join(outputDir, "alpha.cmd")]);
+        expect(transform.environment.PATH).toBe(`${outputDir};%PATH%`);
+      } else {
+        expect(transform.paths).toEqual([join(outputDir, "alpha")]);
+        expect(transform.environment.PATH).toBe(`${outputDir}:$PATH`);
+      }
       expect(transform.files).toHaveProperty("alpha");
       expect(transform.files.alpha).toContain("alpha - the alpha toolset");
-      expect(transform.environment.PATH).toBe(`${outputDir}:$PATH`);
       expect(existsSync(join(outputDir, "alpha"))).toBe(false);
     } finally {
       transform.close();
@@ -138,7 +145,9 @@ describe("host-owned transform e2e", () => {
     try {
       const pythonHelp = python.tools.alpha_help?.description ?? "";
       expect(pythonHelp).toContain("provided via a Python module");
-      expect(pythonHelp).toContain(`Python source code is available in ${pythonDir}/alpha.py`);
+      expect(pythonHelp).toContain(
+        `Python source code is available in ${join(pythonDir, "alpha.py")}`,
+      );
       expect(pythonHelp).toContain("Available functions:");
       expect(pythonHelp).toContain(
         "summarize_payload(items, metadata=None, include_details=None)  Summarize a structured payload.",
@@ -149,7 +158,7 @@ describe("host-owned transform e2e", () => {
 
       const tsHelp = typescript.tools.alpha_help?.description ?? "";
       expect(tsHelp).toContain("provided via a TypeScript module");
-      expect(tsHelp).toContain(`TypeScript source code is available in ${tsDir}/alpha.ts`);
+      expect(tsHelp).toContain(`TypeScript source code is available in ${join(tsDir, "alpha.ts")}`);
       expect(tsHelp).toContain(
         "summarizePayload(items, metadata?, include_details?)  Summarize a structured payload.",
       );
