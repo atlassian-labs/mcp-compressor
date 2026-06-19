@@ -377,12 +377,13 @@ mod tests {
             "def real_tool(required_second, optional_first=None, optional_third=None) -> str:"
         ));
         assert!(content.contains("{\"optional_first\": optional_first, \"required_second\": required_second, \"optional_third\": optional_third}"));
-        std::process::Command::new("python3")
+        let python = std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_string());
+        std::process::Command::new(&python)
             .arg("-m")
             .arg("py_compile")
             .arg(&paths[0])
             .status()
-            .expect("python3 should run")
+            .expect("python should run")
             .success()
             .then_some(())
             .expect("generated Python should compile");
@@ -418,12 +419,13 @@ mod tests {
         assert!(content.contains(
             r#"{"cloudId": cloud_id, "maxResults": max_results, "nextPageToken": next_page_token}"#
         ));
-        std::process::Command::new("python3")
+        let python = std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_string());
+        std::process::Command::new(&python)
             .arg("-m")
             .arg("py_compile")
             .arg(&paths[0])
             .status()
-            .expect("python3 should run")
+            .expect("python should run")
             .success()
             .then_some(())
             .expect("generated Python should compile");

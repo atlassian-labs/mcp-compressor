@@ -66,14 +66,29 @@ const alphaTools: Record<string, ExecutableTool<unknown>> = {
 };
 
 function normalizePaths(value: string, replacements: Record<string, string>): string {
-  return Object.entries(replacements).reduce(
+  const replaced = Object.entries(replacements).reduce(
     (text, [actual, placeholder]) => text.split(actual).join(placeholder),
     value,
   );
+  // Generated source paths use the OS separator (`\` on Windows); the goldens are
+  // POSIX. Normalize the separator so these prose snapshots compare on any platform.
+  return process.platform === "win32" ? replaced.split("\\").join("/") : replaced;
+}
+
+// Windows runs the `.cmd`; other platforms run the extensionless shell script.
+function generatedScriptPath(outputDir: string, baseName: string): string {
+  return join(outputDir, process.platform === "win32" ? `${baseName}.cmd` : baseName);
 }
 
 function runScript(scriptPath: string, args: readonly string[]): string {
-  return execFileSync(scriptPath, [...args], { encoding: "utf8" }).trimEnd();
+  // A `.cmd` can only be launched through a shell on Windows; elsewhere the script
+  // runs directly. Normalize CRLF so the snapshots compare on any platform.
+  return execFileSync(scriptPath, [...args], {
+    encoding: "utf8",
+    shell: process.platform === "win32",
+  })
+    .trimEnd()
+    .replace(/\r\n/g, "\n");
 }
 
 function materializeFiles(
@@ -92,10 +107,11 @@ function materializeFiles(
 }
 
 function golden(relativePath: string): string {
-  return readFileSync(
-    join(process.cwd(), "..", "testdata", "golden", relativePath),
-    "utf8",
-  ).trimEnd();
+  // A Windows checkout may store these goldens with CRLF; normalize to LF so they
+  // compare against the LF-normalized script output on any platform.
+  return readFileSync(join(process.cwd(), "..", "testdata", "golden", relativePath), "utf8")
+    .trimEnd()
+    .replace(/\r\n/g, "\n");
 }
 
 function toStableJson(value: unknown): string {
@@ -111,7 +127,7 @@ describe("agent-facing alpha snapshots", () => {
     });
     try {
       materializeFiles(outputDir, transform.files, ["alpha"]);
-      const scriptPath = join(outputDir, "alpha");
+      const scriptPath = generatedScriptPath(outputDir, "alpha");
       expect(runScript(scriptPath, ["--help"])).toBe(golden("agent-facing/cli/alpha-help.txt"));
       expect(runScript(scriptPath, ["echo", "--help"])).toBe(
         golden("agent-facing/cli/alpha-echo-help.txt"),
@@ -152,7 +168,7 @@ describe("agent-facing alpha snapshots", () => {
     transformToolsForJustBash(alphaTools, { serverName: "alpha", bash });
     try {
       materializeFiles(outputDir, cli.files, ["alpha"]);
-      const scriptPath = join(outputDir, "alpha");
+      const scriptPath = generatedScriptPath(outputDir, "alpha");
 
       // Top-level dispatcher help must match the generated CLI `--help` body.
       const cliTopLevel = runScript(scriptPath, ["--help"]);
@@ -224,7 +240,7 @@ describe("agent-facing alpha snapshots", () => {
     );
     try {
       materializeFiles(outputDir, transform.files, ["atlassian"]);
-      const scriptPath = join(outputDir, "atlassian");
+      const scriptPath = generatedScriptPath(outputDir, "atlassian");
       expect(runScript(scriptPath, ["--help"])).toBe(
         golden("agent-facing/atlassian-like/atlassian-help.txt"),
       );

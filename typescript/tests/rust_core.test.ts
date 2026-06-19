@@ -3,7 +3,7 @@ import { request } from "node:http";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { tmpdir } from "node:os";
 import { Bash } from "just-bash";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -761,9 +761,16 @@ describe("local TypeScript tool compression", () => {
       { serverName: "alpha" },
     );
     try {
-      expect(transform.paths).toEqual(["./dist/alpha"]);
+      // Windows emits the shell script plus the `.cmd`, and PATH uses `;`/`%PATH%`;
+      // every other platform emits one script and uses `:`/`$PATH`.
+      if (process.platform === "win32") {
+        expect(transform.paths).toEqual(["./dist\\alpha", "./dist\\alpha.cmd"]);
+        expect(transform.environment.PATH).toBe("./dist;%PATH%");
+      } else {
+        expect(transform.paths).toEqual(["./dist/alpha"]);
+        expect(transform.environment.PATH).toBe("./dist:$PATH");
+      }
       expect(transform.files.alpha).toContain("alpha - the alpha toolset");
-      expect(transform.environment.PATH).toBe("./dist:$PATH");
       expect(transform.tools.alpha_help?.description).toContain("`alpha` CLI");
       expect(transform.tools.alpha_help?.description).not.toContain("PATH hint");
       expect(existsSync(join(home, ".local", "bin", "alpha"))).toBe(false);
@@ -821,7 +828,8 @@ describe("Rust native core wrapper", () => {
       sessionPid: 42,
       outputDir,
     });
-    expect(cliPaths).toHaveLength(1);
+    // Windows emits the shell script plus the `.cmd`; other platforms emit one.
+    expect(cliPaths).toHaveLength(process.platform === "win32" ? 2 : 1);
     expect(readFileSync(cliPaths[0]!, "utf8")).toContain("native-alpha - the native-alpha toolset");
 
     const pyPaths = generateClientArtifacts("python", {
@@ -990,14 +998,18 @@ describe("Rust native core wrapper", () => {
       const tsPaths = typescriptClient.files;
       expect(pythonClient.environment).toEqual({ PYTHONPATH: join(outputDir, "py") });
       expect(typescriptClient.environment).toEqual({});
-      const cliPath = cliPaths.find((path) => path.endsWith("alpha"));
+      // Windows runs the `.cmd`; other platforms run the extensionless shell script.
+      const cliArtifactName = process.platform === "win32" ? "alpha.cmd" : "alpha";
+      const cliPath = cliPaths.find((path) => path.endsWith(cliArtifactName));
       const pythonPath = pythonPaths.find((path) => path.endsWith("alpha.py"));
       const tsPath = tsPaths.find((path) => path.endsWith("alpha.ts"));
       expect(cliPath).toBeDefined();
       expect(pythonPath).toBeDefined();
       expect(tsPath).toBeDefined();
       const cliResult = await new Promise<string>((resolve, reject) => {
-        const child = spawn(cliPath!, ["echo", "--message", "generated-cli"]);
+        const child = spawn(cliPath!, ["echo", "--message", "generated-cli"], {
+          shell: process.platform === "win32",
+        });
         let stdout = "";
         let stderr = "";
         child.stdout.on("data", (chunk) => {
@@ -1017,7 +1029,7 @@ describe("Rust native core wrapper", () => {
       const pyResult = await new Promise<string>((resolve, reject) => {
         const child = spawn(python, [
           "-c",
-          `import sys; sys.path.insert(0, ${JSON.stringify(pythonPath!.replace(/\/alpha\.py$/, ""))}); import alpha; print(alpha.echo('generated'))`,
+          `import sys; sys.path.insert(0, ${JSON.stringify(dirname(pythonPath!))}); import alpha; print(alpha.echo('generated'))`,
         ]);
         let stdout = "";
         let stderr = "";
