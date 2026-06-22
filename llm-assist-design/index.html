@@ -1,0 +1,2530 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="An MCP server wrapper for reducing tokens consumed by MCP tools.">
+      
+      
+        <meta name="author" content="Tim Esler">
+      
+      
+        <link rel="canonical" href="https://atlassian-labs.github.io/mcp-compressor/llm-assist-design/">
+      
+      
+        <link rel="prev" href="../development-release/">
+      
+      
+        <link rel="next" href="../rust-core-design/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="https://raw.githubusercontent.com/atlassian-forks/SWE-PolyBench/refs/heads/main/rovo-dev-logo.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>LLM assist design - mcp-compressor</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="deep-orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#design-optional-local-llm-assistance-in-the-proxy-layer" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="mcp-compressor" class="md-header__button md-logo" aria-label="mcp-compressor" data-md-component="logo">
+      
+  <img src="https://raw.githubusercontent.com/atlassian-forks/SWE-PolyBench/refs/heads/main/rovo-dev-logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            mcp-compressor
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              LLM assist design
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="deep-orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="deep-orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/atlassian-labs/mcp-compressor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    atlassian-labs/mcp-compressor
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../concepts/how-it-works/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../usage/cli/" class="md-tabs__link">
+          
+  
+  
+  Usage
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/atlassian/" class="md-tabs__link">
+          
+  
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/cli/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../development-release/" class="md-tabs__link">
+          
+  
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="mcp-compressor" class="md-nav__button md-logo" aria-label="mcp-compressor" data-md-component="logo">
+      
+  <img src="https://raw.githubusercontent.com/atlassian-forks/SWE-PolyBench/refs/heads/main/rovo-dev-logo.svg" alt="logo">
+
+    </a>
+    mcp-compressor
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/atlassian-labs/mcp-compressor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    atlassian-labs/mcp-compressor
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/how-it-works/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How it works
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/sdks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDKs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/generated-clients/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Generated clients
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/just-bash/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Just Bash
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/auth-and-remote/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote servers and auth
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/atlassian/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Atlassian MCP
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/sdk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDK reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/api-status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API modules
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development-release/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release process
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM assist design
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM assist design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#proposed-user-experience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proposed user experience
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runtime-and-model-choice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime and model choice
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Runtime and model choice">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runtime-llamacpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime: llama.cpp
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#default-model-liquidailfm25-350m-gguf-q4_k_m" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Default model: LiquidAI/LFM2.5-350M-GGUF Q4_K_M
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#download-and-cache-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Download and cache behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature-designs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature designs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Feature designs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-filter-large-tool-responses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Filter large tool responses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-suggest-the-next-tool-or-command-to-call" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Suggest the next tool or command to call
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-generate-skillmd-files-for-proxied-mcp-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Generate SKILL.md files for proxied MCP servers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-automatically-fix-tool-call-validation-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Automatically fix tool call validation errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-llm-powered-help-lookup-for-tools-and-generated-clients" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. LLM-powered help lookup for tools and generated clients
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prompting-and-structured-outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prompting and structured outputs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-and-privacy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security and privacy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#failure-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failure behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rollout-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rollout plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open questions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#research-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Research references
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rust-core-design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internal implementation notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#proposed-user-experience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proposed user experience
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runtime-and-model-choice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime and model choice
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Runtime and model choice">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runtime-llamacpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime: llama.cpp
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#default-model-liquidailfm25-350m-gguf-q4_k_m" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Default model: LiquidAI/LFM2.5-350M-GGUF Q4_K_M
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#download-and-cache-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Download and cache behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature-designs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature designs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Feature designs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-filter-large-tool-responses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Filter large tool responses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-suggest-the-next-tool-or-command-to-call" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Suggest the next tool or command to call
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-generate-skillmd-files-for-proxied-mcp-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Generate SKILL.md files for proxied MCP servers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-automatically-fix-tool-call-validation-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Automatically fix tool call validation errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-llm-powered-help-lookup-for-tools-and-generated-clients" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. LLM-powered help lookup for tools and generated clients
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prompting-and-structured-outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prompting and structured outputs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-and-privacy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security and privacy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#failure-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failure behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rollout-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rollout plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open questions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#research-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Research references
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="design-optional-local-llm-assistance-in-the-proxy-layer">Design: optional local LLM assistance in the proxy layer<a class="headerlink" href="#design-optional-local-llm-assistance-in-the-proxy-layer" title="Permanent link">&para;</a></h1>
+<p>This document proposes an optional local-LLM assistance layer for <code>mcp-compressor</code>. The goal is to keep the existing deterministic compression path fast and dependency-light, while allowing users to opt in to higher-level proxy behaviors that benefit from a small utility model.</p>
+<h2 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h2>
+<p><code>mcp-compressor</code> should add an optional <code>llm-assist</code> subsystem inside the Rust proxy layer. When enabled, the proxy can ask a small local model to help with tasks such as response filtering, next-call suggestions, generated <code>SKILL.md</code> drafts, validation-error repair, and semantic help lookup.</p>
+<p>The recommended first runtime is <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a>, accessed through Rust bindings such as <a href="https://docs.rs/llama-cpp-2/latest/llama_cpp_2/"><code>llama-cpp-2</code></a>. The recommended default model is <a href="https://huggingface.co/LiquidAI/LFM2.5-350M-GGUF">LiquidAI/LFM2.5-350M-GGUF</a> with <code>Q4_K_M</code> quantization. Hugging Face reports this artifact as approximately <strong>229 MB</strong>, with smaller <code>Q4_0</code> at 219 MB and larger <code>Q8_0</code> at 379 MB. Liquid describes LFM2 as a hybrid model family designed for edge and on-device deployment, and the model card includes llama.cpp usage examples.</p>
+<p>The model must be optional. It should be downloaded only when a user enables an LLM-assisted feature or explicitly runs a setup command. Standard proxy mode, SDK sessions, generated clients, and TypeScript local tool compression should not download model artifacts or initialize an inference engine.</p>
+<h2 id="goals">Goals<a class="headerlink" href="#goals" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Preserve the current deterministic compressed MCP proxy behavior by default.</li>
+<li>Keep all LLM assistance local-first and optional.</li>
+<li>Avoid sending backend tool schemas, tool inputs, tool outputs, credentials, or user data to a remote model provider.</li>
+<li>Support incremental adoption: each LLM-assisted feature can be enabled independently.</li>
+<li>Use the LLM for bounded utility tasks, not as the source of truth for MCP protocol behavior.</li>
+<li>Keep public Python and TypeScript packages thin by implementing shared behavior in Rust.</li>
+</ul>
+<h2 id="non-goals">Non-goals<a class="headerlink" href="#non-goals" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Replacing the existing compression levels with an LLM-only compression strategy.</li>
+<li>Running a large general-purpose coding model in the proxy process.</li>
+<li>Fine-tuning or training models as part of <code>mcp-compressor</code>.</li>
+<li>Depending on a hosted inference API for core behavior.</li>
+<li>Allowing the model to call tools autonomously without the client agent's explicit request.</li>
+</ul>
+<h2 id="proposed-user-experience">Proposed user experience<a class="headerlink" href="#proposed-user-experience" title="Permanent link">&para;</a></h2>
+<p>LLM assistance should be off by default:</p>
+<div class="highlight"><pre><span></span><code>mcp-compressor<span class="w"> </span>-c<span class="w"> </span>medium<span class="w"> </span>--<span class="w"> </span>python<span class="w"> </span>server.py
+</code></pre></div>
+<p>A user opts in at the CLI:</p>
+<div class="highlight"><pre><span></span><code>mcp-compressor<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--llm-assist<span class="w"> </span>response-filter,next-suggestion,validation-repair<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--llm-model<span class="w"> </span>LiquidAI/LFM2.5-350M-GGUF:Q4_K_M<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-c<span class="w"> </span>medium<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--<span class="w"> </span>python<span class="w"> </span>server.py
+</code></pre></div>
+<p>SDKs expose the same setting through configuration:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Python</label><label for="__tabbed_1_2">TypeScript</label><label for="__tabbed_1_3">Rust</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">mcp_compressor</span><span class="w"> </span><span class="kn">import</span> <span class="n">CompressorClient</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">CompressorClient</span><span class="p">(</span>
+    <span class="n">compression</span><span class="o">=</span><span class="s2">&quot;medium&quot;</span><span class="p">,</span>
+    <span class="n">llm_assist</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">&quot;features&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;response_filter&quot;</span><span class="p">,</span> <span class="s2">&quot;validation_repair&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;LiquidAI/LFM2.5-350M-GGUF:Q4_K_M&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">)</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">CompressorClient</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;@atlassian/mcp-compressor&quot;</span><span class="p">;</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">client</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">CompressorClient</span><span class="p">({</span>
+<span class="w">  </span><span class="nx">compression</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;medium&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">llmAssist</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">features</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;response_filter&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;validation_repair&quot;</span><span class="p">],</span>
+<span class="w">    </span><span class="nx">model</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;LiquidAI/LFM2.5-350M-GGUF:Q4_K_M&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="p">});</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><span class="k">use</span><span class="w"> </span><span class="n">mcp_compressor</span><span class="p">::</span><span class="n">sdk</span><span class="p">::{</span><span class="n">CompressorClient</span><span class="p">,</span><span class="w"> </span><span class="n">LlmAssistConfig</span><span class="p">};</span>
+
+<span class="kd">let</span><span class="w"> </span><span class="n">client</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">CompressorClient</span><span class="p">::</span><span class="n">builder</span><span class="p">()</span>
+<span class="w">    </span><span class="p">.</span><span class="n">compression</span><span class="p">(</span><span class="s">&quot;medium&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="p">.</span><span class="n">llm_assist</span><span class="p">(</span><span class="n">LlmAssistConfig</span><span class="p">::</span><span class="n">local_default</span><span class="p">())</span>
+<span class="w">    </span><span class="p">.</span><span class="n">build</span><span class="p">()</span><span class="o">?</span><span class="p">;</span>
+</code></pre></div>
+</div>
+</div>
+</div>
+<p>The first enabled use should show a clear one-time message before download in CLI mode:</p>
+<div class="highlight"><pre><span></span><code>LLM assistance needs LiquidAI/LFM2.5-350M-GGUF:Q4_K_M (~229 MB).
+Download to ~/.cache/mcp-compressor/models? [y/N]
+</code></pre></div>
+<p>SDK mode should not prompt unexpectedly. It should either:</p>
+<ul>
+<li>fail with an actionable <code>ModelNotAvailable</code> error, or</li>
+<li>download only when <code>allow_model_download=true</code> is set.</li>
+</ul>
+<h2 id="runtime-and-model-choice">Runtime and model choice<a class="headerlink" href="#runtime-and-model-choice" title="Permanent link">&para;</a></h2>
+<h3 id="runtime-llamacpp">Runtime: llama.cpp<a class="headerlink" href="#runtime-llamacpp" title="Permanent link">&para;</a></h3>
+<p>Use official <code>llama-server</code> from llama.cpp as the first inference backend because it is widely used for local GGUF inference, supports CPU and common acceleration backends, runs on macOS, Linux, and Windows, exposes a clean OpenAI-compatible JSON API, and avoids relying on less-supported Rust bindings or scraping human-oriented CLI output.</p>
+<p>Cross-platform support is a requirement for the default path. The embedded runtime must work on the same primary platforms as the CLI and SDK packages:</p>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Baseline requirement</th>
+<th>Acceleration policy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>macOS arm64/x64</td>
+<td>Supported</td>
+<td>Metal may be used when available, but CPU fallback is required.</td>
+</tr>
+<tr>
+<td>Linux x64/aarch64</td>
+<td>Supported</td>
+<td>CPU fallback is required; CUDA/Vulkan/other acceleration must be optional.</td>
+</tr>
+<tr>
+<td>Windows x64</td>
+<td>Supported unless proven infeasible</td>
+<td>CPU fallback is required; MSVC build and packaged binary behavior must be validated before release.</td>
+</tr>
+</tbody>
+</table>
+<p>The initial implementation should prepare the local runtime in the background when LLM assistance is enabled, then use an <strong>ephemeral <code>llama-server</code></strong> process as an internal runtime detail for each prompt:</p>
+<ol>
+<li>start background preparation at proxy startup,</li>
+<li>install <code>llama-server</code> into the <code>mcp-compressor</code> cache if needed,</li>
+<li>download/cache the configured GGUF model if needed,</li>
+<li>on first LLM use, wait for preparation if it is still running,</li>
+<li>choose a free loopback port,</li>
+<li>start <code>llama-server</code> bound to <code>127.0.0.1</code>,</li>
+<li>wait for <code>/health</code>,</li>
+<li>send one <code>/v1/chat/completions</code> request,</li>
+<li>parse the JSON response, and</li>
+<li>terminate the server.</li>
+</ol>
+<p>This keeps startup latency close to normal proxy startup while avoiding surprise blocking until the first LLM-assisted feature is actually needed. It also keeps the user-facing configuration simple: users choose the model, not the serving mode. Ephemeral serving avoids keeping a 32k-context local server resident for the whole proxy session, which matters when multiple <code>mcp-compressor</code> processes are running. A persistent server can be added later as an internal optimization if repeated prompt volume justifies the memory cost.</p>
+<h3 id="default-model-liquidailfm25-350m-gguf-q4_k_m">Default model: LiquidAI/LFM2.5-350M-GGUF Q4_K_M<a class="headerlink" href="#default-model-liquidailfm25-350m-gguf-q4_k_m" title="Permanent link">&para;</a></h3>
+<p>Use <code>LiquidAI/LFM2.5-350M-GGUF:Q4_K_M</code> as the default because it is small enough to download opportunistically, is designed for edge/on-device use, and is available as a GGUF artifact compatible with llama.cpp. The Hugging Face model page lists:</p>
+<table>
+<thead>
+<tr>
+<th>Quantization</th>
+<th style="text-align: right;">Approximate artifact size</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Q4_0</code></td>
+<td style="text-align: right;">219 MB</td>
+</tr>
+<tr>
+<td><code>Q4_K_M</code></td>
+<td style="text-align: right;">229 MB</td>
+</tr>
+<tr>
+<td><code>Q5_K_M</code></td>
+<td style="text-align: right;">260 MB</td>
+</tr>
+<tr>
+<td><code>Q6_K</code></td>
+<td style="text-align: right;">293 MB</td>
+</tr>
+<tr>
+<td><code>Q8_0</code></td>
+<td style="text-align: right;">379 MB</td>
+</tr>
+<tr>
+<td><code>BF16</code> / <code>F16</code></td>
+<td style="text-align: right;">711 MB</td>
+</tr>
+</tbody>
+</table>
+<p>Default settings:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[llm_assist]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span>
+<span class="n">runtime</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;llama.cpp&quot;</span>
+<span class="n">model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;LiquidAI/LFM2.5-350M-GGUF:Q4_K_M&quot;</span>
+<span class="n">input_token_budget</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">32768</span>
+<span class="n">output_token_budget</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4096</span>
+<span class="n">temperature</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0</span>
+<span class="n">top_p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">1.0</span>
+<span class="n">allow_model_download</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span>
+</code></pre></div>
+<p>The context window needs to be much larger than the original compression wrapper budget because LLM assistance may inspect multiple tool schemas, validation errors, partial tool outputs, generated-client help text, and retrieved documentation snippets at the same time. The proxy should own fixed token budgets of <strong>32,768 input tokens</strong> and <strong>4,096 output tokens</strong>. These should not be user-facing knobs initially; each feature should use deterministic truncation, retrieval, and summarization policies to fit within those limits. If the selected model cannot support the fixed input budget, startup should fail with an actionable model-compatibility error instead of silently lowering quality.</p>
+<p>For the initial design, the user should only configure the model. Users can choose a stronger local model for SKILL generation, a smaller/faster quant for response filtering, or a model with a larger context window if the default artifact cannot meet the fixed context budget on a particular platform.</p>
+<h2 id="download-and-cache-behavior">Download and cache behavior<a class="headerlink" href="#download-and-cache-behavior" title="Permanent link">&para;</a></h2>
+<p>Model acquisition must be lazy and explicit:</p>
+<ol>
+<li>Parse config and determine whether any enabled feature needs local inference.</li>
+<li>Resolve the configured model reference.</li>
+<li>Check the local cache.</li>
+<li>If missing:</li>
+<li>CLI interactive mode asks for confirmation.</li>
+<li>CLI non-interactive mode fails unless <code>--llm-allow-download</code> is set.</li>
+<li>SDK mode fails unless the SDK config sets <code>allow_model_download=true</code>.</li>
+<li>Download the selected GGUF artifact.</li>
+<li>Verify expected metadata where available: repo, filename/quant, size, and optionally checksum when provided by the model host.</li>
+<li>Store a local manifest recording source, resolved file, size, creation time, and license acknowledgement.</li>
+</ol>
+<p>Recommended cache location:</p>
+<div class="highlight"><pre><span></span><code>$MCP_COMPRESSOR_CACHE_DIR/models/
+$XDG_CACHE_HOME/mcp-compressor/models/
+~/Library/Caches/mcp-compressor/models/        # macOS fallback
+%LOCALAPPDATA%\mcp-compressor\models\          # Windows fallback
+</code></pre></div>
+<p>If the embedded runtime uses a Hugging Face-compatible cache API, it may reuse the standard Hugging Face cache to avoid duplicate downloads. <code>mcp-compressor</code> should still maintain its own small manifest so <code>mcp-compressor llm status</code> can explain what is installed and why.</p>
+<p>Management commands:</p>
+<div class="highlight"><pre><span></span><code>mcp-compressor<span class="w"> </span>llm<span class="w"> </span>status
+mcp-compressor<span class="w"> </span>llm<span class="w"> </span>pull<span class="w"> </span>--model<span class="w"> </span>LiquidAI/LFM2.5-350M-GGUF:Q4_K_M
+mcp-compressor<span class="w"> </span>llm<span class="w"> </span><span class="nb">test</span><span class="w"> </span>--prompt<span class="w"> </span><span class="s2">&quot;Say hello in one short sentence.&quot;</span>
+mcp-compressor<span class="w"> </span>llm<span class="w"> </span>remove
+</code></pre></div>
+<p><code>pull</code> installs the managed <code>llama-server</code> artifact and downloads the configured model. <code>status</code> reports whether each asset is ready. <code>test</code> performs setup if needed and sends a single prompt through the ephemeral server path. <code>remove</code> deletes managed runtime/model assets from the <code>mcp-compressor</code> cache.</p>
+<h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart LR
+  Client[MCP client / agent]
+  Proxy[mcp-compressor proxy]
+  Assist[LLM assist coordinator]
+  Cache[Model cache]
+  Runtime[llama.cpp runtime]
+  Backend[MCP backend]
+
+  Client --&gt; Proxy
+  Proxy --&gt; Backend
+  Proxy -. optional prompts .-&gt; Assist
+  Assist --&gt; Cache
+  Assist --&gt; Runtime
+  Runtime --&gt; Assist
+  Assist -. bounded result .-&gt; Proxy</code></pre>
+<p>Add a new Rust module, for example <code>crates/mcp-compressor-core/src/llm_assist/</code>:</p>
+<div class="highlight"><pre><span></span><code>llm_assist/
+  mod.rs              # feature registry and public coordinator
+  config.rs           # runtime/model/download configuration
+  model_store.rs      # cache resolution and manifest management
+  runtime.rs          # trait for local inference
+  llama_cpp.rs        # llama.cpp-backed implementation behind feature flag
+  prompts.rs          # fixed prompts and structured output schemas
+  response_filter.rs  # tool result filtering pipeline
+  suggestions.rs      # next-call suggestion pipeline
+  skill_gen.rs        # SKILL.md generator
+  repair.rs           # validation repair pipeline
+  help.rs             # semantic help lookup pipeline
+</code></pre></div>
+<p>Core trait:</p>
+<div class="highlight"><pre><span></span><code><span class="k">pub</span><span class="w"> </span><span class="k">trait</span><span class="w"> </span><span class="n">LocalLlmRuntime</span><span class="p">:</span><span class="w"> </span><span class="nb">Send</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Sync</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">complete</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">request</span><span class="p">:</span><span class="w"> </span><span class="nc">LlmRequest</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">LlmResponse</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">LlmRequest</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">system_prompt</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">user_prompt</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">response_format</span><span class="p">:</span><span class="w"> </span><span class="nc">LlmResponseFormat</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">output_token_budget</span><span class="p">:</span><span class="w"> </span><span class="kt">usize</span><span class="p">,</span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">timeout</span><span class="p">:</span><span class="w"> </span><span class="nc">Duration</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The proxy should interact with the coordinator through feature-specific methods instead of free-form prompting:</p>
+<div class="highlight"><pre><span></span><code><span class="k">impl</span><span class="w"> </span><span class="n">LlmAssistCoordinator</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">filter_tool_result</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">request</span><span class="p">:</span><span class="w"> </span><span class="nc">ResponseFilterRequest</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">ResponseFilterDecision</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="w">    </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">suggest_next_calls</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">request</span><span class="p">:</span><span class="w"> </span><span class="nc">SuggestionRequest</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">ToolSuggestion</span><span class="o">&gt;&gt;</span><span class="p">;</span>
+<span class="w">    </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">draft_skill</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">request</span><span class="p">:</span><span class="w"> </span><span class="nc">SkillDraftRequest</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="nb">String</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="w">    </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">repair_validation_error</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">request</span><span class="p">:</span><span class="w"> </span><span class="nc">RepairRequest</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">RepairDecision</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="w">    </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">lookup_help</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">request</span><span class="p">:</span><span class="w"> </span><span class="nc">HelpLookupRequest</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">HelpLookupResult</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+<h2 id="feature-designs">Feature designs<a class="headerlink" href="#feature-designs" title="Permanent link">&para;</a></h2>
+<h3 id="1-filter-large-tool-responses">1. Filter large tool responses<a class="headerlink" href="#1-filter-large-tool-responses" title="Permanent link">&para;</a></h3>
+<p>Problem: Some MCP tools return large JSON payloads, logs, search results, or documents where only a small subset is useful for the current call.</p>
+<p>Design:</p>
+<ul>
+<li>Trigger only when enabled and the tool result exceeds configurable thresholds such as byte size, token estimate, or item count.</li>
+<li>Preserve the original tool result by default in the proxy internals for debugging and optional retrieval.</li>
+<li>Ask the local model to produce a structured filtered result with:</li>
+<li>a concise summary,</li>
+<li>retained high-signal fields,</li>
+<li>omitted-field notes,</li>
+<li>confidence and warning flags.</li>
+<li>Never filter binary outputs or opaque attachments.</li>
+<li>Mark filtered outputs clearly so client agents know the result was transformed.</li>
+</ul>
+<p>Example output envelope:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;mcp_compressor_filtered&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;summary&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Found 3 matching issues; the most relevant is PROJ-123.&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;important_items&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PROJ-123&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;In Progress&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;why_relevant&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mentions the failing auth flow&quot;</span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;omitted&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;items&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">47</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;low lexical relevance to the original request&quot;</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;original_available&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Safety rules:</p>
+<ul>
+<li>Filtering must be opt-in per server or per tool class.</li>
+<li>The original result should remain available through an explicit debug or retrieval path.</li>
+<li>Filtering should be disabled automatically for outputs that appear to contain secrets unless the redaction pass succeeds first.</li>
+<li>Tool-call side effects must not be hidden; the proxy should preserve success/failure status exactly.</li>
+</ul>
+<h3 id="2-suggest-the-next-tool-or-command-to-call">2. Suggest the next tool or command to call<a class="headerlink" href="#2-suggest-the-next-tool-or-command-to-call" title="Permanent link">&para;</a></h3>
+<p>Problem: At high compression levels, agents may not know which backend tool to inspect next.</p>
+<p>Design:</p>
+<ul>
+<li>Provide suggestions as metadata alongside wrapper-tool responses, not as autonomous actions.</li>
+<li>Inputs should include the compressed tool catalog, recently inspected schemas, the current tool result summary, and the user's original intent when available.</li>
+<li>Output a ranked list of possible next calls, each with a reason and required arguments still missing.</li>
+</ul>
+<p>Example:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;suggestions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;tool&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;get_tool_schema&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;arguments&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;tool_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;search_jira_using_jql&quot;</span><span class="p">},</span>
+<span class="w">      </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The user needs issue discovery and no JQL-capable schema has been inspected yet.&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;confidence&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.78</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The proxy should expose this either:</p>
+<ul>
+<li>as optional metadata in TOON/JSON wrapper responses, or</li>
+<li>through a dedicated compressed helper tool such as <code>suggest_next_tool</code> when LLM assistance is enabled.</li>
+</ul>
+<h3 id="3-generate-skillmd-files-for-proxied-mcp-servers">3. Generate <code>SKILL.md</code> files for proxied MCP servers<a class="headerlink" href="#3-generate-skillmd-files-for-proxied-mcp-servers" title="Permanent link">&para;</a></h3>
+<p>Problem: Repeated use of a large MCP server benefits from durable, human-readable operating instructions.</p>
+<p>Design:</p>
+<ul>
+<li>Add an explicit command, not an automatic background behavior:</li>
+</ul>
+<div class="highlight"><pre><span></span><code>mcp-compressor<span class="w"> </span>skill<span class="w"> </span>draft<span class="w"> </span>--server<span class="w"> </span>atlassian<span class="w"> </span>--output<span class="w"> </span>./.rovodev/skills/atlassian-mcp/SKILL.md
+</code></pre></div>
+<ul>
+<li>Input to the model:</li>
+<li>tool names,</li>
+<li>compact descriptions,</li>
+<li>full schemas for selected high-value tools,</li>
+<li>examples from observed successful calls when the user opts in,</li>
+<li>server name and authentication notes with secrets redacted.</li>
+<li>Output a draft <code>SKILL.md</code> with:</li>
+<li>what the server is for,</li>
+<li>when to use each major tool family,</li>
+<li>required setup/auth assumptions,</li>
+<li>common workflows,</li>
+<li>pitfalls and validation constraints.</li>
+</ul>
+<p>This should require user approval before writing outside an explicitly requested output path. The model should draft, not publish, operational guidance.</p>
+<h3 id="4-automatically-fix-tool-call-validation-errors">4. Automatically fix tool call validation errors<a class="headerlink" href="#4-automatically-fix-tool-call-validation-errors" title="Permanent link">&para;</a></h3>
+<p>Problem: Client agents often make near-miss calls: wrong enum casing, JSON string where an object is expected, missing wrapper nesting, or incorrect generated-client argument names.</p>
+<p>Design:</p>
+<ul>
+<li>Keep the deterministic validator first.</li>
+<li>If validation fails and <code>validation-repair</code> is enabled, ask the local model for a strict JSON patch or replacement argument object.</li>
+<li>Re-run validation after repair.</li>
+<li>Apply at most one automatic repair attempt by default.</li>
+<li>Include a repair note in the response metadata.</li>
+</ul>
+<p>Repair prompt inputs:</p>
+<ul>
+<li>target tool schema,</li>
+<li>invalid input,</li>
+<li>exact validation error,</li>
+<li>examples of valid shapes if available.</li>
+</ul>
+<p>Repair output:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;replace_arguments&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;arguments&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;issue_url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://example.atlassian.net/browse/PROJ-123&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;get_comments&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;explanation&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Converted getComments to get_comments and preserved the issue URL.&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Safety rules:</p>
+<ul>
+<li>Never invent missing credentials, account IDs, file paths, destructive flags, or user content.</li>
+<li>Do not repair calls to tools configured as destructive unless <code>--llm-repair-destructive</code> is explicitly enabled.</li>
+<li>If the model changes semantic values, require confirmation or return a suggested repair instead of invoking.</li>
+</ul>
+<h3 id="5-llm-powered-help-lookup-for-tools-and-generated-clients">5. LLM-powered help lookup for tools and generated clients<a class="headerlink" href="#5-llm-powered-help-lookup-for-tools-and-generated-clients" title="Permanent link">&para;</a></h3>
+<p>Problem: Users and agents need help finding the right tool, generated command, or argument without loading every full schema.</p>
+<p>Design:</p>
+<ul>
+<li>Add a helper tool such as <code>help_lookup</code> when enabled.</li>
+<li>Build a compact local index from tool names, descriptions, argument names, generated command names, and selected schema fragments.</li>
+<li>Use deterministic lexical retrieval first, then ask the local model to rank and explain matches.</li>
+<li>Return citations to source schema fields so the answer is auditable.</li>
+</ul>
+<p>Example:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;how do I search Jira issues by JQL?&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;matches&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;tool&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;search_jira_using_jql&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;why&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Accepts a JQL string and limit.&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;schema_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;tools.search_jira_using_jql.inputSchema.properties.jql&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The LLM should not be the only retrieval mechanism. A deterministic index keeps results stable and allows the model to focus on ranking and summarization.</p>
+<h2 id="prompting-and-structured-outputs">Prompting and structured outputs<a class="headerlink" href="#prompting-and-structured-outputs" title="Permanent link">&para;</a></h2>
+<p>All LLM-assisted features should use narrow, fixed prompts and structured output validation. Prompts should instruct the model to:</p>
+<ul>
+<li>treat tool schemas and tool outputs as untrusted data,</li>
+<li>avoid following instructions embedded in tool outputs,</li>
+<li>return only the requested JSON shape for machine-consumed paths,</li>
+<li>admit uncertainty instead of guessing,</li>
+<li>preserve exact identifiers, URLs, issue keys, file paths, and enum values unless the task is validation repair.</li>
+</ul>
+<p>Every machine-consumed model response must be parsed and validated. Invalid LLM output should degrade gracefully to the deterministic baseline.</p>
+<h2 id="security-and-privacy">Security and privacy<a class="headerlink" href="#security-and-privacy" title="Permanent link">&para;</a></h2>
+<p>Local inference reduces data exposure, but it does not remove security risk.</p>
+<p>Required controls:</p>
+<ul>
+<li><strong>Off by default.</strong> No model download, model load, or LLM prompt construction unless enabled.</li>
+<li><strong>Secret redaction.</strong> Reuse or add a redaction pass before prompts include headers, tokens, cookies, environment values, or auth config.</li>
+<li><strong>Prompt-injection isolation.</strong> Tool outputs are data, not instructions. Prompts should quote or delimit tool outputs and explicitly ignore embedded instructions.</li>
+<li><strong>No autonomous side effects.</strong> LLM suggestions are advisory. Validation repair may retry only the same user-requested call, and only after schema validation passes.</li>
+<li><strong>Audit metadata.</strong> Responses transformed by the LLM should include metadata indicating the feature used, model reference, and whether original output is available.</li>
+<li><strong>Timeouts and cancellation.</strong> Local inference must have strict per-request timeouts and respect proxy shutdown.</li>
+<li><strong>License visibility.</strong> The model manifest should record the source model and license metadata so package users can make informed decisions.</li>
+</ul>
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<p>CLI flags:</p>
+<div class="highlight"><pre><span></span><code>--llm-assist &lt;features&gt;          Comma-separated features: response-filter,next-suggestion,skill-gen,validation-repair,help-lookup
+--llm-model &lt;model-ref&gt;          Default: LiquidAI/LFM2.5-350M-GGUF:Q4_K_M
+--llm-allow-download             Permit lazy model download in non-interactive contexts
+--llm-cache-dir &lt;path&gt;           Override model cache location
+--llm-timeout &lt;duration&gt;         Bound local inference latency
+</code></pre></div>
+<p>MCP JSON config extension:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;mcpServers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;example&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;command&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;python&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;args&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;server.py&quot;</span><span class="p">],</span>
+<span class="w">      </span><span class="nt">&quot;mcp-compressor&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;llmAssist&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;features&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;response_filter&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;help_lookup&quot;</span><span class="p">],</span>
+<span class="w">          </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;LiquidAI/LFM2.5-350M-GGUF:Q4_K_M&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;allowModelDownload&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;responseFilter&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;minBytes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">32768</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;preserveOriginal&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">          </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<h2 id="failure-behavior">Failure behavior<a class="headerlink" href="#failure-behavior" title="Permanent link">&para;</a></h2>
+<p>LLM assistance should never make the proxy unusable when deterministic behavior would have worked.</p>
+<table>
+<thead>
+<tr>
+<th>Failure</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Model missing and downloads disallowed</td>
+<td>Return actionable setup error for the LLM-assisted feature; continue normal proxy operation where possible.</td>
+</tr>
+<tr>
+<td>Download fails</td>
+<td>Keep cache unchanged; report source and retry guidance.</td>
+</tr>
+<tr>
+<td>Runtime fails to load</td>
+<td>Disable LLM-assisted features for the session and continue deterministic proxying.</td>
+</tr>
+<tr>
+<td>Prompt too large</td>
+<td>Truncate with explicit policy or skip the feature.</td>
+</tr>
+<tr>
+<td>Invalid model output</td>
+<td>Ignore LLM result and return deterministic baseline.</td>
+</tr>
+<tr>
+<td>Timeout</td>
+<td>Cancel inference and return deterministic baseline.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h2>
+<p>Add debug logs and optional metrics for:</p>
+<ul>
+<li>model cache hit/miss,</li>
+<li>model load time,</li>
+<li>inference latency,</li>
+<li>input/output token estimates,</li>
+<li>feature used,</li>
+<li>fallback reason,</li>
+<li>bytes removed by response filtering,</li>
+<li>validation repair attempted/succeeded/failed.</li>
+</ul>
+<p>Logs must not include raw prompts by default because prompts may contain tool outputs or user data.</p>
+<h2 id="rollout-plan">Rollout plan<a class="headerlink" href="#rollout-plan" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Add config types, CLI parsing, and no-op coordinator behind an optional Cargo feature.</li>
+<li>Add model cache/status commands without runtime inference.</li>
+<li>Add local llama.cpp runtime integration and feature-gated smoke tests for macOS, Linux, and Windows release targets.</li>
+<li>Add packaging validation for Python wheels, TypeScript native packages, and Rust binaries on each supported platform; if any target is infeasible, document the limitation and enable the local-server fallback for that target.</li>
+<li>Implement <code>validation-repair</code> first because it has the clearest bounded input/output contract.</li>
+<li>Implement <code>help-lookup</code> with deterministic retrieval plus LLM ranking.</li>
+<li>Implement <code>response-filter</code> with an original-result retrieval path.</li>
+<li>Add <code>next-suggestion</code> metadata.</li>
+<li>Add explicit <code>skill draft</code> command.</li>
+<li>Document security model, download behavior, SDK configuration, platform support, and fallback behavior.</li>
+</ol>
+<h2 id="open-questions">Open questions<a class="headerlink" href="#open-questions" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Should the default binary ship with the <code>llm-assist</code> Cargo feature disabled and offer a separate feature/build for users who want embedded llama.cpp?</li>
+<li>Should model downloads use the Hugging Face cache directly, or should <code>mcp-compressor</code> maintain a separate cache and deduplicate opportunistically?</li>
+<li>What is the best API for retrieving an original unfiltered tool result without exposing stale sensitive data indefinitely?</li>
+<li>Should generated clients surface LLM help/suggestions, or should this remain only in the live proxy API?</li>
+<li>Which features should be safe in non-interactive automation by default?</li>
+</ul>
+<h2 id="research-references">Research references<a class="headerlink" href="#research-references" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="https://huggingface.co/LiquidAI/LFM2.5-350M-GGUF">LiquidAI/LFM2.5-350M-GGUF on Hugging Face</a>: GGUF model card, llama.cpp examples, quantization sizes, and license metadata.</li>
+<li><a href="https://www.liquid.ai/blog/lfm2-5-350m-no-size-left-behind">Liquid AI LFM2.5 350M announcement</a>: describes the 350M model release and edge/on-device positioning.</li>
+<li><a href="https://docs.liquid.ai/docs/inference/llama-cpp">Liquid AI llama.cpp documentation</a>: documents llama.cpp local inference modes and Hugging Face download behavior.</li>
+<li><a href="https://github.com/ggml-org/llama.cpp/blob/master/README.md">llama.cpp README</a>: documents GGUF usage, <code>-hf &lt;user&gt;/&lt;model&gt;[:quant]</code>, and Hugging Face cache behavior.</li>
+<li><a href="https://docs.rs/llama-cpp-2/latest/llama_cpp_2/"><code>llama-cpp-2</code> docs.rs</a>: Rust bindings considered for embedded local inference.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Maintained by <a href="https://atlassian.com">atlassian</a>.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/atlassian-labs/mcp-compressor" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://pypi.org/project/mcp-compressor" target="_blank" rel="noopener" title="pypi.org" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.8 200.5c-7.7-30.9-22.3-54.2-53.4-54.2h-40.1v47.4c0 36.8-31.2 67.8-66.8 67.8H172.7c-29.2 0-53.4 25-53.4 54.3v101.8c0 29 25.2 46 53.4 54.3 33.8 9.9 66.3 11.7 106.8 0 26.9-7.8 53.4-23.5 53.4-54.3v-40.7H226.2v-13.6h160.2c31.1 0 42.6-21.7 53.4-54.2 11.2-33.5 10.7-65.7 0-108.6M286.2 444.7a20.4 20.4 0 1 1 0-40.7 20.4 20.4 0 1 1 0 40.7M167.8 248.1h106.8c29.7 0 53.4-24.5 53.4-54.3V91.9c0-29-24.4-50.7-53.4-55.6-35.8-5.9-74.7-5.6-106.8.1-45.2 8-53.4 24.7-53.4 55.6v40.7h106.9v13.6h-147c-31.1 0-58.3 18.7-66.8 54.2-9.8 40.7-10.2 66.1 0 108.6 7.6 31.6 25.7 54.2 56.8 54.2H101v-48.8c0-35.3 30.5-66.4 66.8-66.4m-6.6-183.4a20.4 20.4 0 1 1 0 40.8 20.4 20.4 0 1 1 0-40.8"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
+      
+    
+  </body>
+</html>
