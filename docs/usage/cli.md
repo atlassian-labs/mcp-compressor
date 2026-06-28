@@ -71,3 +71,25 @@ mcp-compressor --just-bash-mode --server-name atlassian -- https://mcp.atlassian
 ```
 
 Just Bash mode lets language hosts register MCP tools as shell-style commands. See [Just Bash](just-bash.md).
+
+## LLM management
+
+`mcp-compressor` can optionally use a small local LLM for proxy-layer assistance. The `llm` subcommand manages the required runtime and model assets.
+
+```bash
+# Check installation status
+mcp-compressor llm status
+
+# Download the managed llama-server runtime and default model
+mcp-compressor llm pull
+
+# Run a quick inference test
+mcp-compressor llm test
+
+# Remove all managed runtime and model assets
+mcp-compressor llm remove
+```
+
+All assets are stored locally. Nothing is downloaded unless you explicitly run `mcp-compressor llm pull` or `mcp-compressor llm test`. The standard proxy mode (`mcp-compressor -c medium -- ...`) is unaffected when no LLM assets are installed.
+
+See [CLI reference](../reference/cli.md#llm-management) for all options.
