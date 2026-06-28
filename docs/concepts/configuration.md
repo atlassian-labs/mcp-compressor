@@ -37,6 +37,18 @@ You can configure backends directly or with MCP config JSON.
         .build();
     ```
 
+## Multi-server via the CLI
+
+To configure multiple backend servers from the CLI without a config file, use `--multi-server` (repeatable):
+
+```bash
+mcp-compressor -c medium \
+  --multi-server "alpha=python alpha.py" \
+  --multi-server "beta=python beta.py"
+```
+
+The format is `name=command [args...]`. This adds one backend per flag value.
+
 ## MCP config JSON
 
 MCP config JSON is the easiest way to describe multiple backends.
@@ -55,6 +67,15 @@ MCP config JSON is the easiest way to describe multiple backends.
 }
 ```
 
+Pass the config file path with `--config`:
+
+```bash
+mcp-compressor -c medium --config mcp.json
+```
+
+!!! note
+    `--server-name` cannot be combined with `--config`. When using a config file, server names come from the `mcpServers` keys.
+
 For providers that require OAuth, the URL-only form triggers native OAuth. For non-interactive CI or static-token providers, add explicit headers:
 
 ```json
@@ -63,14 +84,14 @@ For providers that require OAuth, the URL-only form triggers native OAuth. For n
     "remote": {
       "url": "https://mcp.example.com/v1/mcp",
       "headers": {
-        "Authorization": "Bearer ${TOKEN}"
+        "Authorization": "******"
       }
     }
   }
 }
 ```
 
-Environment variables inside header values can be interpolated by the Rust backend argument/header parser.
+Environment variables in header values (`${TOKEN}`) are interpolated by the backend argument parser at runtime.
 
 ## Filters
 
@@ -79,7 +100,11 @@ Use include/exclude filters to reduce the backend tool set before compression.
 === "CLI"
 
     ```bash
+    # Include only specific tools
     mcp-compressor -c medium --include-tools getPage,updatePage -- python server.py
+
+    # Exclude specific tools
+    mcp-compressor -c medium --exclude-tools dangerousDelete -- python server.py
     ```
 
 === "Python"
@@ -88,6 +113,7 @@ Use include/exclude filters to reduce the backend tool set before compression.
     CompressorClient(
         servers=servers,
         include_tools=["getPage", "updatePage"],
+        exclude_tools=["dangerousDelete"],
     )
     ```
 
@@ -97,6 +123,7 @@ Use include/exclude filters to reduce the backend tool set before compression.
     new CompressorClient({
       servers,
       includeTools: ["getPage", "updatePage"],
+      excludeTools: ["dangerousDelete"],
     });
     ```
 
@@ -105,5 +132,47 @@ Use include/exclude filters to reduce the backend tool set before compression.
     ```rust
     CompressorClient::builder()
         .include_tools(["getPage", "updatePage"])
+        .exclude_tools(["dangerousDelete"])
         .build();
     ```
+
+Filters are applied before compression: the compressed frontend only sees the filtered tool set.
+
+## TOON output
+
+TOON (Token-Oriented Object Notation) is a token-efficient alternative representation for JSON-structured data. When enabled, the proxy converts JSON text in tool outputs to TOON format before returning results to the client. TOON encodes the same information as JSON using fewer tokens, which reduces the context consumed by large tool responses.
+
+=== "CLI"
+
+    ```bash
+    mcp-compressor -c medium --toonify -- python server.py
+    ```
+
+=== "Python"
+
+    ```python
+    CompressorClient(
+        servers=servers,
+        toonify=True,
+    )
+    ```
+
+=== "TypeScript"
+
+    ```ts
+    new CompressorClient({
+      servers,
+      toonify: true,
+    });
+    ```
+
+=== "Rust"
+
+    ```rust
+    CompressorClient::builder()
+        .toonify(true)
+        .build();
+    ```
+
+!!! note
+    TOON output is most effective for tool responses that return deeply nested JSON objects. Plain text responses pass through unchanged.

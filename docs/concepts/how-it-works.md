@@ -34,14 +34,42 @@ atlassian_list_tools
 
 A model can first inspect the compact listing, then call `get_tool_schema` only for the tool it wants, then call `invoke_tool`.
 
+When there is exactly one backend server and no explicit `--server-name`, the wrapper tools are exposed without a prefix:
+
+```text
+get_tool_schema
+invoke_tool
+```
+
 ## Compression levels
 
-| Level | Tool listing behavior | Typical use |
+| Level | Tool listing format | Description included |
 |---|---|---|
-| `low` | More descriptive compressed listings | Smaller servers or exploratory use |
-| `medium` | Balanced descriptions and parameter names | Default choice |
-| `high` | Very compact listings focused on names/args | Large toolsets |
-| `max` | Minimal frontend surface plus `list_tools` | Very large/multi-server setups |
+| `low` | `<tool>name(arg1, arg2): Full description</tool>` | Full description text |
+| `medium` | `<tool>name(arg1, arg2): First sentence</tool>` | First line of description, up to the first `.` |
+| `high` | `<tool>name(arg1, arg2)</tool>` | None |
+| `max` | `<tool>name</tool>` | None; a `list_tools` frontend tool is also added |
+
+The default level is `medium`.
+
+### Schema response format
+
+When a model calls `get_tool_schema`, it always receives the full tool description and complete JSON Schema, regardless of the active compression level:
+
+```text
+<tool>toolName(arg1, arg2): Full description of the tool</tool>
+
+{
+  "type": "object",
+  "properties": {
+    "arg1": { "type": "string", "description": "..." },
+    "arg2": { "type": "integer", "description": "..." }
+  },
+  "required": ["arg1"]
+}
+```
+
+This ensures the model gets complete parameter information exactly when it needs it, without wasting context on tools it may never call.
 
 ## Transports
 

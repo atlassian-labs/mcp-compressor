@@ -1,5 +1,10 @@
 # Design: optional local LLM assistance in the proxy layer
 
+!!! info "Implementation status"
+    **Implemented:** The `mcp-compressor llm` management subcommand (`status`, `pull`, `remove`, `test`) is available in the current CLI. It manages local llama-server and model assets.
+
+    **Planned / in progress:** Active LLM-assisted proxy features (`--llm-assist`, SDK `llmAssist` config, response filtering, next-call suggestions, validation repair) are described in this design document but are not yet exposed in the public API. The standard proxy mode is unaffected.
+
 This document proposes an optional local-LLM assistance layer for `mcp-compressor`. The goal is to keep the existing deterministic compression path fast and dependency-light, while allowing users to opt in to higher-level proxy behaviors that benefit from a small utility model.
 
 ## Summary
