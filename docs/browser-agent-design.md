@@ -358,7 +358,7 @@ silently refreshes it if expired):
 ```ts
 const authProvider = async () => {
   const token = await tokenStore.currentAccessToken(); // reads localStorage, refreshes if needed
-  return { Authorization: `****** };
+  return { Authorization: `Bearer ${token}` };
 };
 
 const client = new BrowserMcpClient({
