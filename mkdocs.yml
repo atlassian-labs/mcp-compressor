@@ -32,6 +32,7 @@ nav:
   - Development:
       - Release process: development-release.md
       - LLM assist design: llm-assist-design.md
+      - Browser agent design: browser-agent-design.md
       - Internal implementation notes: rust-core-design.md
 plugins:
   - search
