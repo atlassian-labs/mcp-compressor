@@ -652,7 +652,7 @@ fn truncate_clean(value: &str, max_chars: usize) -> String {
     prefix
 }
 
-fn get_tool_schema_wrapper_tool(name: String, description: &str) -> Tool {
+pub(crate) fn get_tool_schema_wrapper_tool(name: String, description: &str) -> Tool {
     Tool::new(
         name,
         Some(description.to_string()),
@@ -666,7 +666,7 @@ fn get_tool_schema_wrapper_tool(name: String, description: &str) -> Tool {
     )
 }
 
-fn invoke_wrapper_tool(name: String, description: &str) -> Tool {
+pub(crate) fn invoke_wrapper_tool(name: String, description: &str) -> Tool {
     Tool::new(
         name,
         Some(description.to_string()),
@@ -686,7 +686,7 @@ fn invoke_wrapper_tool(name: String, description: &str) -> Tool {
     )
 }
 
-fn list_wrapper_tool(name: String, description: &str) -> Tool {
+pub(crate) fn list_wrapper_tool(name: String, description: &str) -> Tool {
     Tool::new(
         name,
         Some(description.to_string()),

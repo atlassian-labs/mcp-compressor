@@ -2,28 +2,31 @@
 
 use crate::compression::engine::Tool;
 use crate::compression::{CompressionEngine, CompressionLevel};
-use crate::server::compressed::INVOKE_TOOL_INPUT_SCHEMA_DESCRIPTION;
+use crate::server::compressed::{
+    get_tool_schema_wrapper_tool, invoke_wrapper_tool, list_wrapper_tool,
+};
 
 const TITLE: &str = "\
 \x1b[32m█▀▄▀█ █▀▀ █▀█   █▀▀ █▀█ █▀▄▀█ █▀█ █▀█ █▀▀ █▀▀ █▀▀ █▀█ █▀█\x1b[0m
 \x1b[32m█ ▀ █ █▄▄ █▀▀   █▄▄ █▄█ █ ▀ █ █▀▀ █▀▄ ██▄ ▄▄█ ▄▄█ █▄█ █▀▄\x1b[0m";
 
+/// Size of a single tool as advertised: name + description + full input_schema JSON.
+fn tool_surface_size(tool: &Tool) -> usize {
+    let name_len = tool.name.len();
+    let desc_len = tool.description.as_deref().unwrap_or("").len();
+    let schema_len = serde_json::to_string(&tool.input_schema)
+        .map(|s| s.len())
+        .unwrap_or(0);
+    name_len + desc_len + schema_len
+}
+
 /// Compute compression statistics for all levels given a set of backend tools.
+///
+/// Both the original and compressed sizes are computed symmetrically using
+/// `tool_surface_size` — the same `name + description + input_schema` formula
+/// applied to the actual wrapper `Tool` objects the server would advertise.
 pub fn compression_stats(tools: &[Tool]) -> CompressionStats {
-    let original: usize = tools
-        .iter()
-        .map(|t| {
-            let name_len = t.name.len();
-            let desc_len = t.description.as_deref().unwrap_or("").len();
-            let schema_len = t
-                .input_schema
-                .get("properties")
-                .and_then(|p| serde_json::to_string(p).ok())
-                .map(|s| s.len())
-                .unwrap_or(0);
-            name_len + desc_len + schema_len
-        })
-        .sum();
+    let original: usize = tools.iter().map(|t| tool_surface_size(t)).sum();
 
     let levels = [
         CompressionLevel::Low,
@@ -52,47 +55,24 @@ fn compressed_frontend_size(tools: &[Tool], level: &CompressionLevel) -> usize {
     let engine = CompressionEngine::new(level.clone());
     let listing = engine.format_listing(tools);
 
-    let get_tool_schema_description = format!(
+    let schema_desc = format!(
         "Get the complete schema and description for one backend tool. Available tools:\n{listing}"
     );
-    let invoke_tool_description = "Invoke one backend tool by name with JSON input.";
-    let list_tools_description = "List backend tools available through this compressed MCP server.";
+    let invoke_desc = "Invoke one backend tool by name with JSON input.";
 
-    let schema_wrapper = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "tool_name": {"type": "string", "description": "Name of the backend tool"}
-        },
-        "required": ["tool_name"]
-    });
-    let invoke_wrapper = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "tool_name": {"type": "string", "description": "Name of the backend tool"},
-            "tool_input": {
-                "type": "object",
-                "description": INVOKE_TOOL_INPUT_SCHEMA_DESCRIPTION,
-                "properties": {},
-                "additionalProperties": true
-            }
-        },
-        "required": ["tool_name", "tool_input"]
-    });
-    let list_wrapper = serde_json::json!({
-        "type": "object",
-        "properties": {}
-    });
-
-    let mut size = get_tool_schema_description.len()
-        + invoke_tool_description.len()
-        + schema_wrapper.to_string().len()
-        + invoke_wrapper.to_string().len();
+    let mut wrapper_tools = vec![
+        get_tool_schema_wrapper_tool("get_tool_schema".to_string(), &schema_desc),
+        invoke_wrapper_tool("invoke_tool".to_string(), invoke_desc),
+    ];
 
     if *level == CompressionLevel::Max {
-        size += list_tools_description.len() + list_wrapper.to_string().len();
+        wrapper_tools.push(list_wrapper_tool(
+            "list_tools".to_string(),
+            "List backend tools available through this compressed MCP server.",
+        ));
     }
 
-    size
+    wrapper_tools.iter().map(|t| tool_surface_size(t)).sum()
 }
 
 /// Print the startup banner with compression chart to stderr.
@@ -389,5 +369,160 @@ mod tests {
             .map(|(_, size)| *size)
             .unwrap();
         assert!(max > 0);
+    }
+
+    /// Verify that original size includes the full input_schema (not just properties).
+    /// This ensures the original/compressed ratio is computed symmetrically.
+    #[test]
+    fn original_size_includes_full_input_schema() {
+        let tools = vec![Tool::new(
+            "echo",
+            Some("Echo a message".to_string()),
+            serde_json::json!({
+                "type": "object",
+                "properties": {"message": {"type": "string"}},
+                "required": ["message"]
+            }),
+        )];
+        let stats = compression_stats(&tools);
+        // The full schema JSON includes "type", "required", and structure — should be
+        // larger than just the properties object.
+        let full_schema_len =
+            serde_json::to_string(&tools[0].input_schema).unwrap().len();
+        let props_only_len = serde_json::to_string(
+            tools[0].input_schema.get("properties").unwrap(),
+        )
+        .unwrap()
+        .len();
+        assert!(full_schema_len > props_only_len);
+        // original_size should include the full schema, not just properties
+        let expected = "echo".len()
+            + "Echo a message".len()
+            + full_schema_len;
+        assert_eq!(stats.original_size, expected);
+    }
+
+    /// Small tool sets: verify symmetric measurement produces honest ratios.
+    /// With only 2 tools, compressed CAN be larger (wrapper overhead is real),
+    /// but the old asymmetric bug exaggerated this by undercounting the original.
+    #[test]
+    fn small_tool_set_symmetric_measurement() {
+        // Simulate a small backend like mcp-server-time with 2 simple tools
+        let tools = vec![
+            Tool::new(
+                "get_current_time",
+                Some("Get the current time in a given timezone.".to_string()),
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "timezone": {
+                            "type": "string",
+                            "description": "IANA timezone name"
+                        }
+                    },
+                    "required": ["timezone"]
+                }),
+            ),
+            Tool::new(
+                "convert_time",
+                Some("Convert time between timezones.".to_string()),
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "source_timezone": {"type": "string"},
+                        "time": {"type": "string"},
+                        "target_timezone": {"type": "string"}
+                    },
+                    "required": ["source_timezone", "time", "target_timezone"]
+                }),
+            ),
+        ];
+        let stats = compression_stats(&tools);
+
+        // The original size should be larger now that we include full input_schema.
+        // Previously it was undercounted (only properties), making ratios seem worse.
+        // Verify original includes full schema serialization.
+        let expected_original: usize = tools.iter().map(|t| tool_surface_size(t)).sum();
+        assert_eq!(stats.original_size, expected_original);
+
+        // Compressed size should equal the surface of actual wrapper Tool objects
+        let medium = stats
+            .compressed
+            .iter()
+            .find(|(l, _)| *l == CompressionLevel::Medium)
+            .map(|(_, s)| *s)
+            .unwrap();
+        // The compressed size should include "get_tool_schema" and "invoke_tool" name lengths
+        assert!(medium >= "get_tool_schema".len() + "invoke_tool".len());
+    }
+
+    /// Verify that compressed_frontend_size uses the same wrapper tool constructors
+    /// as the real CompressedServer, so the stats can never drift from reality.
+    #[test]
+    fn compressed_size_matches_actual_wrapper_tools() {
+        use crate::server::compressed::{
+            get_tool_schema_wrapper_tool, invoke_wrapper_tool, list_wrapper_tool,
+        };
+
+        let tools = vec![Tool::new(
+            "echo",
+            Some("Echo a message".to_string()),
+            serde_json::json!({
+                "type": "object",
+                "properties": {"message": {"type": "string"}},
+                "required": ["message"]
+            }),
+        )];
+
+        let stats = compression_stats(&tools);
+
+        // Manually build the same wrapper tools the banner function would construct
+        let engine = CompressionEngine::new(CompressionLevel::Medium);
+        let listing = engine.format_listing(&tools);
+        let schema_desc = format!(
+            "Get the complete schema and description for one backend tool. Available tools:\n{listing}"
+        );
+        let wrappers = vec![
+            get_tool_schema_wrapper_tool("get_tool_schema".to_string(), &schema_desc),
+            invoke_wrapper_tool(
+                "invoke_tool".to_string(),
+                "Invoke one backend tool by name with JSON input.",
+            ),
+        ];
+        let expected: usize = wrappers.iter().map(|t| tool_surface_size(t)).sum();
+
+        let medium_size = stats
+            .compressed
+            .iter()
+            .find(|(l, _)| *l == CompressionLevel::Medium)
+            .map(|(_, s)| *s)
+            .unwrap();
+        assert_eq!(medium_size, expected);
+
+        // Max level adds list_tools wrapper
+        let max_size = stats
+            .compressed
+            .iter()
+            .find(|(l, _)| *l == CompressionLevel::Max)
+            .map(|(_, s)| *s)
+            .unwrap();
+        let engine_max = CompressionEngine::new(CompressionLevel::Max);
+        let listing_max = engine_max.format_listing(&tools);
+        let schema_desc_max = format!(
+            "Get the complete schema and description for one backend tool. Available tools:\n{listing_max}"
+        );
+        let wrappers_max = vec![
+            get_tool_schema_wrapper_tool("get_tool_schema".to_string(), &schema_desc_max),
+            invoke_wrapper_tool(
+                "invoke_tool".to_string(),
+                "Invoke one backend tool by name with JSON input.",
+            ),
+            list_wrapper_tool(
+                "list_tools".to_string(),
+                "List backend tools available through this compressed MCP server.",
+            ),
+        ];
+        let expected_max: usize = wrappers_max.iter().map(|t| tool_surface_size(t)).sum();
+        assert_eq!(max_size, expected_max);
     }
 }
