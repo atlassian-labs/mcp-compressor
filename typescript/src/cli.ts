@@ -224,9 +224,7 @@ function resolveFromPath(name: string): string | null {
   const pathEnv = process.env.PATH ?? "";
   const dirs = pathEnv.split(delimiter);
   const exts =
-    process.platform === "win32"
-      ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";")
-      : [""];
+    process.platform === "win32" ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";") : [""];
   for (const dir of dirs) {
     for (const ext of exts) {
       const candidate = join(dir, name + ext);
