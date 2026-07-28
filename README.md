@@ -1,5 +1,7 @@
 # mcp-compressor
 
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2Fatlassian-labs%2Fmcp-compressor.svg)](https://mcptoplist.com/server/glama%2Fatlassian-labs%2Fmcp-compressor)
+
 [![Release](https://img.shields.io/github/v/release/atlassian-labs/mcp-compressor)](https://github.com/atlassian-labs/mcp-compressor/releases)
 [![Build status](https://img.shields.io/github/actions/workflow/status/atlassian-labs/mcp-compressor/main.yml?branch=main)](https://github.com/atlassian-labs/mcp-compressor/actions/workflows/main.yml?query=branch%3Amain)
 [![Commit activity](https://img.shields.io/github/commit-activity/m/atlassian-labs/mcp-compressor)](https://github.com/atlassian-labs/mcp-compressor/commits/main)
