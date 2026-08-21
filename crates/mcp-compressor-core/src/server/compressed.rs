@@ -150,17 +150,7 @@ impl CompressedServer {
         config: CompressedServerConfig,
         mcp_config_json: &str,
     ) -> Result<Self, Error> {
-        let mcp_config = MCPConfig::from_json(mcp_config_json)?;
-        let mut backends = Vec::new();
-        for name in mcp_config.server_names() {
-            let server = mcp_config
-                .server(&name)
-                .ok_or_else(|| Error::Config(format!("server not found: {name}")))?;
-            backends.push(
-                BackendServerConfig::new(name, server.command.clone(), server.args.clone())
-                    .with_env(server.env.clone()),
-            );
-        }
+        let backends = MCPConfig::from_json(mcp_config_json)?.into_backend_configs()?;
 
         if backends.len() == 1 {
             let backend = backends.into_iter().next().expect("one backend exists");

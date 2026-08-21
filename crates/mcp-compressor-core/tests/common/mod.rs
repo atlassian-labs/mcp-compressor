@@ -5,6 +5,7 @@ use mcp_compressor_core::compression::CompressionLevel;
 use mcp_compressor_core::server::{
     BackendConfigSource, BackendServerConfig, CompressedServerConfig, ProxyTransformMode,
 };
+use serde_json::json;
 
 /// A spawned child process that is killed, with its descendants, when dropped.
 ///
@@ -145,13 +146,11 @@ pub fn mcp_config_json(backends: &[(&str, &str)]) -> String {
         .iter()
         .map(|(name, fixture)| {
             let path = fixture_path(fixture).to_string_lossy().into_owned();
-            format!(
-                r#""{name}":{{"command":"{}","args":["{}"]}}"#,
-                python_command(),
-                path
+            (
+                name.to_string(),
+                json!({ "command": python_command(), "args": [path] }),
             )
         })
-        .collect::<Vec<_>>()
-        .join(",");
-    format!(r#"{{"mcpServers":{{{servers}}}}}"#)
+        .collect::<serde_json::Map<_, _>>();
+    json!({ "mcpServers": servers }).to_string()
 }

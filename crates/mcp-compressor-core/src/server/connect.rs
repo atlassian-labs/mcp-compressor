@@ -125,6 +125,7 @@ async fn connect_streamable_http_backend(
 async fn connect_oauth_streamable_http_backend(
     backend: &BackendServerConfig,
 ) -> Result<RunningService<RoleClient, ()>, Error> {
+    let http_client = oauth_http_client(backend)?;
     let mut manager = AuthorizationManager::new(backend.command.as_str())
         .await
         .map_err(|error| Error::Config(format!("failed to initialize OAuth manager: {error}")))?;
@@ -153,7 +154,12 @@ async fn connect_oauth_streamable_http_backend(
             .start_authorization(
                 &[],
                 &redirect_uri,
-                Some(backend.oauth_app_name.as_deref().unwrap_or("mcp-compressor")),
+                Some(
+                    backend
+                        .oauth_app_name
+                        .as_deref()
+                        .unwrap_or("mcp-compressor"),
+                ),
             )
             .await
             .map_err(|error| {
@@ -192,7 +198,7 @@ async fn connect_oauth_streamable_http_backend(
         })?;
     }
 
-    let client = AuthClient::new(reqwest::Client::default(), manager);
+    let client = AuthClient::new(http_client, manager);
     let transport = StreamableHttpClientTransport::with_client(
         client,
         StreamableHttpClientTransportConfig::with_uri(backend.command.clone()),
@@ -202,6 +208,14 @@ async fn connect_oauth_streamable_http_backend(
         .map_err(|error| remote_backend_error(&backend.command, error.to_string()))
 }
 
+fn oauth_http_client(backend: &BackendServerConfig) -> Result<reqwest::Client, Error> {
+    let headers = backend_http_headers(backend)?.into_iter().collect();
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .map_err(|error| Error::Config(format!("failed to build OAuth HTTP client: {error}")))
+}
+
 fn remote_backend_error(uri: &str, error: String) -> Error {
     let auth_hint = if error.contains("401")
         || error.contains("403")
@@ -209,11 +223,11 @@ fn remote_backend_error(uri: &str, error: String) -> Error {
         || error.to_ascii_lowercase().contains("unauthorized")
     {
         "\n\nThis remote MCP server appears to require authentication. \
-Pass explicit backend headers after the URL, for example: \
-`-- <url> -H \"Authorization=Bearer <token>\"`. Native OAuth support is not implemented yet."
+For direct URL mode, pass explicit backend headers with the full command, for example: \
+`mcp-compressor -- <url> -H \"Authorization=Bearer <token>\"`. Use native OAuth by omitting the `Authorization` header; other configured headers are sent alongside OAuth. For MCP JSON config, set valid headers in the server headers object."
     } else {
-        "\n\nIf this remote MCP server requires authentication, pass explicit backend headers after the URL, \
-for example: `-- <url> -H \"Authorization=Bearer <token>\"`. Native OAuth support is not implemented yet."
+        "\n\nIf this remote MCP server requires authentication, use native OAuth or configure explicit headers. For direct URL mode, pass explicit backend headers with the full command, \
+for example: `mcp-compressor -- <url> -H \"Authorization=Bearer <token>\"`. Use native OAuth by omitting the `Authorization` header; other configured headers are sent alongside OAuth. For MCP JSON config, set valid headers in the server headers object."
     };
     Error::Config(format!(
         "failed to initialize remote streamable HTTP backend {uri}: {error}{auth_hint}"
@@ -226,4 +240,59 @@ fn convert_tool(tool: rmcp::model::Tool) -> Tool {
         tool.description.map(|description| description.to_string()),
         Value::Object((*tool.input_schema).clone()),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn oauth_http_client_sends_configured_headers() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 4096];
+            let read = stream.read(&mut request).unwrap();
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .unwrap();
+            String::from_utf8_lossy(&request[..read]).into_owned()
+        });
+        let backend =
+            BackendServerConfig::new("remote", format!("http://{address}/mcp"), [] as [&str; 0])
+                .with_headers([("X-Tenant", "tenant-123")]);
+
+        oauth_http_client(&backend)
+            .unwrap()
+            .get(format!("http://{address}/mcp"))
+            .send()
+            .await
+            .unwrap();
+
+        assert!(server
+            .join()
+            .unwrap()
+            .to_ascii_lowercase()
+            .contains("x-tenant: tenant-123"));
+    }
+
+    #[tokio::test]
+    async fn oauth_backend_validates_headers_before_authorization() {
+        let backend = BackendServerConfig::new(
+            "remote",
+            "http://127.0.0.1:0/mcp",
+            [] as [&str; 0],
+        )
+        .with_headers([("invalid header", "value")]);
+
+        let error = connect_oauth_streamable_http_backend(&backend)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("invalid HTTP header name"));
+    }
 }

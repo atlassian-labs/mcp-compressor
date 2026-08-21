@@ -52,6 +52,7 @@ The format is `name=command [args...]`. This adds one backend per flag value.
 ## MCP config JSON
 
 MCP config JSON is the easiest way to describe multiple backends.
+The server map may use either the `mcpServers` or `servers` envelope, but not both in the same file.
 
 ```json
 {
@@ -74,7 +75,7 @@ mcp-compressor -c medium --config mcp.json
 ```
 
 !!! note
-    `--server-name` cannot be combined with `--config`. When using a config file, server names come from the `mcpServers` keys.
+    `--server-name` cannot be combined with `--config`. When using a config file, server names come from the selected server-map keys.
 
 For providers that require OAuth, the URL-only form triggers native OAuth. For non-interactive CI or static-token providers, add explicit headers:
 
