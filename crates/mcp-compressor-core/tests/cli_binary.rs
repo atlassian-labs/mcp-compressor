@@ -1,6 +1,7 @@
 mod common;
 
 use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
 use std::process::{Command as StdCommand, Stdio};
 use std::time::{Duration, Instant};
 
@@ -199,7 +200,9 @@ fn rust_cli_code_mode_defaults_to_dist_directory() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Python code client ready"))
-        .stdout(predicate::str::contains("dist/alpha.py"));
+        .stdout(predicate::str::contains(
+            PathBuf::from("dist").join("alpha.py").display().to_string(),
+        ));
 
     assert!(dist.join("alpha.py").exists());
 }
