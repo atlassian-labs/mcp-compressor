@@ -90,6 +90,7 @@ jobs:
           timeout 180 cargo test -p mcp-compressor-core --test proxy_http -- --nocapture
           timeout 180 cargo test -p mcp-compressor-core --test generated_clients -- --nocapture
           timeout 180 cargo test -p mcp-compressor-core --test cli_binary -- --nocapture
+          timeout 180 cargo test -p mcp-compressor-core --test cli_stack -- --nocapture
           timeout 180 cargo test -p mcp-compressor-core --test transform_modes -- --nocapture
 
   rust-binary-e2e:
