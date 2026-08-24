@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
+
+# Run the fixture servers with the interpreter that runs this suite. A bare
+# "python3" is not the test environment's interpreter on Windows, where it
+# resolves to a Store execution alias pointing at some other installation that
+# has no fastmcp, so every backend connection closes during initialize.
+PYTHON = os.environ.get("PYTHON", sys.executable)
 
 
 def rust_core_command(*args: str) -> list[str]:
@@ -23,6 +31,13 @@ def rust_core_command(*args: str) -> list[str]:
     ]
 
 
+def multi_server_spec(name: str, script: Path) -> str:
+    # --multi-server splits on whitespace and has no quoting, so an interpreter
+    # path containing spaces cannot be expressed here.
+    assert " " not in PYTHON, f"--multi-server cannot quote the interpreter path: {PYTHON}"
+    return f"{name}={PYTHON} {script}"
+
+
 async def test_rust_core_normal_stdio_mode_with_fixture_server() -> None:
     root = Path(__file__).parents[1]
     alpha = root / "crates" / "mcp-compressor-core" / "tests" / "fixtures" / "alpha_server.py"
@@ -32,7 +47,7 @@ async def test_rust_core_normal_stdio_mode_with_fixture_server() -> None:
         "--server-name",
         "alpha",
         "--",
-        "python3",
+        PYTHON,
         str(alpha),
     )
 
@@ -93,9 +108,9 @@ async def test_rust_core_normal_stdio_mode_with_multi_server_direct_config() -> 
         "--server-name",
         "suite",
         "--multi-server",
-        f"alpha=python3 {alpha}",
+        multi_server_spec("alpha", alpha),
         "--multi-server",
-        f"beta=python3 {beta}",
+        multi_server_spec("beta", beta),
     )
 
     async with Client(StdioTransport(command=command[0], args=command[1:])) as client:
@@ -145,7 +160,7 @@ async def test_rust_core_normal_streamable_http_mode_with_fixture_server() -> No
         "--port",
         "0",
         "--",
-        "python3",
+        PYTHON,
         str(alpha),
     )
     process = subprocess.Popen(  # noqa: S603
@@ -196,7 +211,7 @@ async def test_rust_core_normal_stdio_mode_with_remote_streamable_http_backend()
         "--port",
         "0",
         "--",
-        "python3",
+        PYTHON,
         str(alpha),
     )
     process = subprocess.Popen(  # noqa: S603
@@ -256,8 +271,8 @@ async def test_rust_core_normal_stdio_mode_with_json_config(tmp_path: Path) -> N
     config.write_text(
         json.dumps({
             "mcpServers": {
-                "alpha": {"command": "python3", "args": [str(alpha)]},
-                "beta": {"command": "python3", "args": [str(beta)]},
+                "alpha": {"command": PYTHON, "args": [str(alpha)]},
+                "beta": {"command": PYTHON, "args": [str(beta)]},
             }
         }),
         encoding="utf-8",
