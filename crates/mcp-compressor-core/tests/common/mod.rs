@@ -87,8 +87,8 @@ fn kill_process_tree(child: &mut Child) {
 
 #[cfg(unix)]
 fn kill_process_tree(child: &mut Child) {
-    // The child leads its own process group, so signalling the negated pid
-    // reaches the backends it spawned as well.
+    // The child leads its own process group, so signalling that group reaches
+    // the backends it spawned as well.
     unsafe {
         libc::killpg(child.id() as i32, libc::SIGKILL);
     }
