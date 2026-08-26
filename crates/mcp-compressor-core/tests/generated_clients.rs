@@ -49,22 +49,23 @@ async fn running_proxy_config(output_dir: &std::path::Path) -> (GeneratorConfig,
 }
 
 fn generated_script_output(script: &std::path::Path, args: &[&str]) -> std::process::Output {
+    let program = std::path::PathBuf::from(generated_script_command(script).get_program());
     let mut last_error = None;
     for attempt in 0..5 {
-        match generated_script_command(script).args(args).output() {
+        match Command::new(&program).args(args).output() {
             Ok(output) => return output,
             Err(error) if error.raw_os_error() == Some(26) && attempt < 4 => {
                 last_error = Some(error);
                 thread::sleep(Duration::from_millis(25 * (attempt + 1) as u64));
             }
-            Err(error) => panic!("failed to execute {}: {error}", script.display()),
+            Err(error) => panic!("failed to execute {}: {error}", program.display()),
         }
     }
     let error =
         last_error.unwrap_or_else(|| io::Error::other("unknown generated script execution error"));
     panic!(
         "failed to execute {} after retrying ETXTBSY: {error}",
-        script.display()
+        program.display()
     );
 }
 
