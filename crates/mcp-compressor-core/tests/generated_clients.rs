@@ -49,23 +49,30 @@ async fn running_proxy_config(output_dir: &std::path::Path) -> (GeneratorConfig,
 }
 
 fn generated_script_output(script: &std::path::Path, args: &[&str]) -> std::process::Output {
+    let program = std::path::PathBuf::from(generated_script_command(script).get_program());
     let mut last_error = None;
     for attempt in 0..5 {
-        match Command::new(script).args(args).output() {
+        match Command::new(&program).args(args).output() {
             Ok(output) => return output,
             Err(error) if error.raw_os_error() == Some(26) && attempt < 4 => {
                 last_error = Some(error);
                 thread::sleep(Duration::from_millis(25 * (attempt + 1) as u64));
             }
-            Err(error) => panic!("failed to execute {}: {error}", script.display()),
+            Err(error) => panic!("failed to execute {}: {error}", program.display()),
         }
     }
     let error =
         last_error.unwrap_or_else(|| io::Error::other("unknown generated script execution error"));
     panic!(
         "failed to execute {} after retrying ETXTBSY: {error}",
-        script.display()
+        program.display()
     );
+}
+
+fn generated_script_command(script: &std::path::Path) -> Command {
+    #[cfg(windows)]
+    let script = script.with_extension("cmd");
+    Command::new(script)
 }
 
 #[test]
@@ -200,7 +207,7 @@ async fn generated_cli_script_handles_structured_json_arguments() {
     CliGenerator.generate(&config).unwrap();
     let script = tempdir.path().join("alpha");
 
-    let output = std::process::Command::new(&script)
+    let output = generated_script_command(&script)
         .args([
             "summarize-payload",
             "--items",
@@ -231,7 +238,7 @@ async fn generated_cli_script_matches_legacy_argument_parser_features() {
     CliGenerator.generate(&config).unwrap();
     let script = tempdir.path().join("alpha");
 
-    let repeated = std::process::Command::new(&script)
+    let repeated = generated_script_command(&script)
         .args([
             "summarize-payload",
             "--items",
@@ -253,7 +260,7 @@ async fn generated_cli_script_matches_legacy_argument_parser_features() {
     assert!(stdout.contains("one"));
     assert!(stdout.contains("two"));
 
-    let json_escape = std::process::Command::new(&script)
+    let json_escape = generated_script_command(&script)
         .args([
             "summarize-payload",
             "--json",
@@ -391,8 +398,8 @@ async fn generated_typescript_module_invokes_real_proxy_and_backend() {
     let output = Command::new("bun")
         .arg("--eval")
         .arg(format!(
-            "import {{ echo }} from '{}'; console.log(await echo('hello'));",
-            module_path.display()
+            "import {{ echo }} from {module:?}; console.log(await echo('hello'));",
+            module = module_path.display().to_string()
         ))
         .output()
         .unwrap();
@@ -730,6 +737,7 @@ fn run_generated_script(script: &std::path::Path, args: &[&str]) -> String {
     );
     String::from_utf8(output.stdout)
         .unwrap()
+        .replace("\r\n", "\n")
         .trim_end()
         .to_string()
 }
