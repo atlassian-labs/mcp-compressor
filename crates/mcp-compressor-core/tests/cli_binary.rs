@@ -415,7 +415,8 @@ fn rust_cli_mode_honors_explicit_output_dir() {
 fn rust_cli_mode_manual_flow_generates_script_that_invokes_backend() {
     let tempdir = tempfile::tempdir().unwrap();
     let output_dir = tempdir.path().join("generated");
-    let mut child = StdCommand::new(assert_cmd::cargo::cargo_bin("mcp-compressor"))
+    let mut command = StdCommand::new(assert_cmd::cargo::cargo_bin("mcp-compressor"));
+    command
         .env("MCP_COMPRESSOR_CLI_OUTPUT_DIR", &output_dir)
         .args([
             "--cli-mode",
@@ -426,11 +427,12 @@ fn rust_cli_mode_manual_flow_generates_script_that_invokes_backend() {
             common::fixture_path("alpha_server.py").to_str().unwrap(),
         ])
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
+        .stderr(Stdio::piped());
+    // Guarded so a failing assertion below cannot strand the compressor and its
+    // backend; a stranded compressor keeps the test binary's artifact locked.
+    let mut child = common::ChildGuard::spawn(&mut command).unwrap();
 
-    let stdout = child.stdout.take().unwrap();
+    let stdout = child.take_stdout();
     let mut reader = BufReader::new(stdout);
     let script_path = wait_for_generated_cli_path(&mut reader);
 
@@ -467,9 +469,6 @@ fn rust_cli_mode_manual_flow_generates_script_that_invokes_backend() {
         String::from_utf8_lossy(&output.stdout).trim(),
         "alpha:hello"
     );
-
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 fn wait_for_generated_cli_path(reader: &mut impl BufRead) -> String {
@@ -517,7 +516,8 @@ fn rust_cli_mode_exits_on_ctrl_c() {
         use std::process::Stdio;
         use std::time::{Duration, Instant};
 
-        let mut child = StdCommand::new(assert_cmd::cargo::cargo_bin("mcp-compressor"))
+        let mut command = StdCommand::new(assert_cmd::cargo::cargo_bin("mcp-compressor"));
+        command
             .arg("--cli-mode")
             .arg("--server-name")
             .arg("alpha")
@@ -527,11 +527,12 @@ fn rust_cli_mode_exits_on_ctrl_c() {
             .arg(common::python_command())
             .arg(common::fixture_path("alpha_server.py"))
             .stderr(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("spawn mcp-compressor");
+            .stdout(Stdio::piped());
+        // Guarded so the assertions below cannot strand the compressor and its
+        // backend when the CLI fails to become ready.
+        let mut child = common::ChildGuard::spawn(&mut command).expect("spawn mcp-compressor");
 
-        let stdout = child.stdout.take().expect("stdout");
+        let stdout = child.take_stdout();
         let reader = BufReader::new(stdout);
         let started = Instant::now();
         let mut saw_ready = false;
