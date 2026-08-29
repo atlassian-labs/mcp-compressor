@@ -1,6 +1,6 @@
 mod common;
 
-use std::{io, net::TcpListener, process::Command, thread, time::Duration};
+use std::{io, net::Shutdown, net::TcpListener, process::Command, thread, time::Duration};
 
 use mcp_compressor_core::client_gen::cli::CliGenerator;
 use mcp_compressor_core::client_gen::python::PythonGenerator;
@@ -610,9 +610,7 @@ fn start_json_result_bridge(result: &str) -> TestBridge {
     thread::spawn(move || {
         for stream in listener.incoming().take(8) {
             let mut stream = stream.unwrap();
-            let mut buffer = [0_u8; 4096];
-            let read = std::io::Read::read(&mut stream, &mut buffer).unwrap_or(0);
-            let request = String::from_utf8_lossy(&buffer[..read]);
+            let request = read_http_request(&mut stream);
             let body = if request.starts_with("GET /health") {
                 "ok".to_string()
             } else {
@@ -623,11 +621,70 @@ fn start_json_result_bridge(result: &str) -> TestBridge {
                 body.len(), body
             );
             let _ = std::io::Write::write_all(&mut stream, response.as_bytes());
+            let _ = std::io::Write::flush(&mut stream);
+            let _ = stream.shutdown(Shutdown::Write);
         }
     });
     TestBridge {
         url: format!("http://{addr}"),
     }
+}
+
+/// Read a whole HTTP request, not just whatever the first `read` happens to
+/// return. A request can require multiple socket reads, and closing a socket that
+/// still holds unread bytes makes Windows answer with RST instead of FIN. The
+/// client then sees a connection reset rather than the response we wrote.
+fn read_http_request(stream: &mut impl std::io::Read) -> String {
+    let mut data = Vec::new();
+    let mut buffer = [0_u8; 4096];
+    loop {
+        if let Some(header_end) = find_subslice(&data, b"\r\n\r\n") {
+            let body_start = header_end + 4;
+            let expected = body_start + content_length(&data[..header_end]);
+            if data.len() >= expected {
+                break;
+            }
+        }
+        match std::io::Read::read(stream, &mut buffer) {
+            Ok(0) | Err(_) => break,
+            Ok(read) => data.extend_from_slice(&buffer[..read]),
+        }
+    }
+    String::from_utf8_lossy(&data).into_owned()
+}
+
+fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+fn content_length(headers: &[u8]) -> usize {
+    String::from_utf8_lossy(headers)
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse().ok())?
+        })
+        .unwrap_or(0)
+}
+
+/// The reader must continue when a request body is returned by a later `read`.
+#[test]
+fn read_http_request_collects_body_from_later_read() {
+    use std::io::{Cursor, Read};
+
+    let body = b"{\"tool\":\"echo\",\"input\":{}}";
+    let headers = format!(
+        "POST /exec HTTP/1.1\r\nHost: bridge\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    let mut reads = Cursor::new(headers.as_bytes()).chain(Cursor::new(body));
+
+    let request = read_http_request(&mut reads);
+
+    assert_eq!(request.as_bytes(), [headers.as_bytes(), body].concat());
 }
 
 fn simple_generator_config(
