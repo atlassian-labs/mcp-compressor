@@ -61,10 +61,11 @@ def _exec(tool: str, tool_input: dict) -> str:
     except urllib.error.HTTPError as exc:
         message = exc.read().decode(errors="replace") or exc.reason
         raise RuntimeError(f"mcp-compressor proxy returned HTTP {{exc.code}}: {{message}}") from None
-    except urllib.error.URLError as exc:
+    except OSError as exc:
+        details = getattr(exc, "reason", exc)
         raise RuntimeError(
             "mcp-compressor proxy is not running; restart the mcp-compressor process and try again. "
-            f"details: {{exc.reason}}"
+            f"details: {{details}}"
         ) from None
 "#,
         bridge = config.bridge_url,
