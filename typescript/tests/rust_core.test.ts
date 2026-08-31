@@ -1447,4 +1447,22 @@ describe("Rust native core wrapper", () => {
       },
     ]);
   });
+
+  it("preserves remote MCP config metadata through the native addon", () => {
+    expect(
+      parseMcpConfig(
+        '{"mcpServers":{"remote":{"url":"https://example.test/mcp","headers":{"X-Tenant":"tenant-123"},"oauthAppName":"Test Agent"}}}',
+      ),
+    ).toEqual([
+      {
+        name: "remote",
+        command: "https://example.test/mcp",
+        args: [],
+        env: [],
+        cli_prefix: "remote",
+        headers: [["X-Tenant", "tenant-123"]],
+        oauth_app_name: "Test Agent",
+      },
+    ]);
+  });
 });

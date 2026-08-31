@@ -131,6 +131,7 @@ async fn multi_server_json_mcp_config_connects_and_routes() {
 
 #[tokio::test]
 async fn remote_json_mcp_config_uses_url_and_headers() {
+    let authorization = "Bearer test-token";
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let request_task = tokio::spawn(async move {
@@ -154,7 +155,7 @@ async fn remote_json_mcp_config_uses_url_and_headers() {
         "mcpServers": {
             "remote": {
                 "url": format!("http://{address}/mcp"),
-                "headers": { "Authorization": "Bearer test-token" }
+                "headers": { "Authorization": authorization }
             }
         }
     })
@@ -184,9 +185,10 @@ async fn remote_json_mcp_config_uses_url_and_headers() {
         .unwrap();
 
     assert!(
-        request
-            .to_ascii_lowercase()
-            .contains("authorization: bearer test-token"),
+        request.to_ascii_lowercase().contains(&format!(
+            "authorization: {}",
+            authorization.to_ascii_lowercase()
+        )),
         "remote backend must forward configured headers"
     );
     assert!(

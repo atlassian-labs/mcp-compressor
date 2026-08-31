@@ -190,6 +190,15 @@ impl MCPConfig {
         self.servers.get(name)
     }
 
+    pub(crate) fn server_metadata(
+        &self,
+        name: &str,
+    ) -> Option<(&HashMap<String, String>, Option<&str>)> {
+        self.options
+            .get(name)
+            .map(|options| (&options.headers, options.oauth_app_name.as_deref()))
+    }
+
     /// Return the CLI prefix (sanitized server name) for a given server.
     ///
     /// Used to namespace subcommands in multi-server CLI mode.
@@ -306,6 +315,50 @@ mod tests {
 
         assert_eq!(backend.headers["X-Trace-Id"], "abc123");
         assert!(backend.should_use_oauth());
+    }
+
+    #[test]
+    fn url_backend_can_force_oauth_from_json_args() {
+        let json = r#"{
+            "mcpServers": {
+                "remote": {
+                    "url": "https://example.test/mcp",
+                    "args": ["--auth", "oauth"],
+                    "headers": { "Authorization": "Bearer static-token" }
+                }
+            }
+        }"#;
+        let backend = MCPConfig::from_json(json)
+            .unwrap()
+            .into_backend_configs()
+            .unwrap()
+            .remove(0);
+
+        assert_eq!(backend.auth_mode, crate::server::BackendAuthMode::OAuth);
+        assert!(backend.should_use_oauth());
+    }
+
+    #[test]
+    fn url_backend_can_force_explicit_headers_from_json_args() {
+        let json = r#"{
+            "mcpServers": {
+                "remote": {
+                    "url": "https://example.test/mcp",
+                    "args": ["--auth=explicit-headers"]
+                }
+            }
+        }"#;
+        let backend = MCPConfig::from_json(json)
+            .unwrap()
+            .into_backend_configs()
+            .unwrap()
+            .remove(0);
+
+        assert_eq!(
+            backend.auth_mode,
+            crate::server::BackendAuthMode::ExplicitHeaders
+        );
+        assert!(!backend.should_use_oauth());
     }
 
     /// `BackendServerConfig::new` parses `-H` and `--env` out of `args`, so the
@@ -555,13 +608,28 @@ mod tests {
     }
 
     #[test]
-    fn config_requires_exactly_one_server_envelope() {
-        for json in [r#"{}"#, r#"{"mcpServers":{},"servers":{}}"#] {
-            let error = MCPConfig::from_json(json).unwrap_err();
-            assert!(error
-                .to_string()
-                .contains("exactly one of mcpServers or servers"));
-        }
+    fn empty_servers_envelope_is_accepted() {
+        let config = MCPConfig::from_json(r#"{"servers":{}}"#).unwrap();
+
+        assert!(config.server_names().is_empty());
+    }
+
+    #[test]
+    fn missing_server_envelope_is_error() {
+        let error = MCPConfig::from_json(r#"{}"#).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("exactly one of mcpServers or servers"));
+    }
+
+    #[test]
+    fn multiple_server_envelopes_are_error() {
+        let error = MCPConfig::from_json(r#"{"mcpServers":{},"servers":{}}"#).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("exactly one of mcpServers or servers"));
     }
 
     // ------------------------------------------------------------------

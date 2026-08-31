@@ -256,6 +256,8 @@ export interface ParsedMcpServer {
   args: string[];
   env: Array<[string, string]>;
   cli_prefix: string;
+  headers?: Array<[string, string]>;
+  oauth_app_name?: string;
 }
 
 export function parseMcpConfig(configJson: string): ParsedMcpServer[] {
