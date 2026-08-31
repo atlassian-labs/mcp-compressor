@@ -37,8 +37,26 @@ where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,
 {
+    let args: Vec<std::ffi::OsString> = args.into_iter().map(Into::into).collect();
+    // Neither argument parsing nor the top-level future is small, and the stack
+    // they would otherwise run on is not ours to size: the process main thread
+    // gets 1 MiB on Windows, and embedders can call this from any thread. Do the
+    // whole run on a thread whose stack we control, and give the runtime's
+    // worker threads the same reserve so spawned work has equal headroom.
+    std::thread::Builder::new()
+        .stack_size(CLI_STACK_SIZE)
+        .spawn(move || run_on_current_thread(args))
+        .map_err(|error| CliError::Runtime(error.to_string()))?
+        .join()
+        .unwrap_or_else(|_| Err(CliError::Runtime("compressor run panicked".to_string())))
+}
+
+fn run_on_current_thread(args: Vec<std::ffi::OsString>) -> Result<(), CliError> {
     let cli = CliOptions::try_parse_from(args).map_err(|error| {
-        if matches!(error.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) {
+        if matches!(
+            error.kind(),
+            ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+        ) {
             CliError::Display(error.to_string())
         } else {
             CliError::Usage(error.to_string())
@@ -46,10 +64,19 @@ where
     })?;
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
+        .thread_stack_size(CLI_STACK_SIZE)
         .build()
         .map_err(|error| CliError::Runtime(error.to_string()))?;
     runtime.block_on(async move { run_async(cli).await })
 }
+
+/// Stack size for the thread that parses arguments and drives the CLI runtime,
+/// and for the runtime's own worker threads.
+///
+/// Sized for headroom rather than measured need: the aggregated startup,
+/// discovery and transform state machine grows as command paths are added, and
+/// an overflow aborts the process with no usable diagnostic.
+const CLI_STACK_SIZE: usize = 16 * 1024 * 1024;
 
 async fn run_async(cli: CliOptions) -> Result<(), CliError> {
     cli.validate().map_err(CliError::Usage)?;
