@@ -463,3 +463,21 @@ def test_native_extension_parses_mcp_config() -> None:
             "cli_prefix": "my-server",
         }
     ]
+
+
+def test_native_extension_preserves_remote_mcp_config_metadata() -> None:
+    parsed = parse_mcp_config(
+        '{"mcpServers":{"remote":{"url":"https://example.test/mcp",'
+        '"headers":{"X-Tenant":"tenant-123"},"oauthAppName":"Test Agent"}}}'
+    )
+    assert parsed == [
+        {
+            "name": "remote",
+            "command": "https://example.test/mcp",
+            "args": [],
+            "env": [],
+            "cli_prefix": "remote",
+            "headers": [["X-Tenant", "tenant-123"]],
+            "oauth_app_name": "Test Agent",
+        }
+    ]

@@ -415,13 +415,14 @@ mod tests {
 
     #[test]
     fn ffi_parses_mcp_config() {
+        std::env::set_var("MCP_COMPRESSOR_FFI_RAW_ENV_TEST", "resolved");
         let parsed = parse_mcp_config(
             r#"{
                 "mcpServers": {
                     "my server": {
                         "command": "python3",
                         "args": ["server.py"],
-                        "env": { "A": "B" }
+                        "env": { "A": "${MCP_COMPRESSOR_FFI_RAW_ENV_TEST}" }
                     }
                 }
             }"#,
@@ -430,6 +431,34 @@ mod tests {
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].name, "my server");
         assert_eq!(parsed[0].cli_prefix, "my-server");
-        assert_eq!(parsed[0].env, vec![("A".to_string(), "B".to_string())]);
+        assert_eq!(
+            parsed[0].env,
+            vec![(
+                "A".to_string(),
+                "${MCP_COMPRESSOR_FFI_RAW_ENV_TEST}".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn ffi_preserves_remote_mcp_config_metadata() {
+        let parsed = parse_mcp_config(
+            r#"{
+                "mcpServers": {
+                    "remote": {
+                        "url": "https://example.test/mcp",
+                        "headers": { "X-Tenant": "tenant-123" },
+                        "oauthAppName": "Test Agent"
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            parsed[0].headers,
+            vec![("X-Tenant".to_string(), "tenant-123".to_string())]
+        );
+        assert_eq!(parsed[0].oauth_app_name.as_deref(), Some("Test Agent"));
     }
 }

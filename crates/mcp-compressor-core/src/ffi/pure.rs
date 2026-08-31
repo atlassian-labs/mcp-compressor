@@ -44,12 +44,22 @@ pub fn render_cli_subcommand_help(cli_name: String, tool: FfiTool) -> String {
 
 pub fn parse_mcp_config(config_json: &str) -> Result<Vec<FfiMcpServer>, Error> {
     let config = MCPConfig::from_json(config_json)?;
-    Ok(config
+    config
         .server_names()
         .into_iter()
-        .filter_map(|name| {
-            let server = config.server(&name)?;
-            Some(FfiMcpServer {
+        .map(|name| {
+            let server = config
+                .server(&name)
+                .ok_or_else(|| Error::Config(format!("server not found: {name}")))?;
+            let (headers, oauth_app_name) = config
+                .server_metadata(&name)
+                .ok_or_else(|| Error::Config(format!("server metadata not found: {name}")))?;
+            let mut headers = headers
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect::<Vec<_>>();
+            headers.sort_by(|(left, _), (right, _)| left.cmp(right));
+            Ok(FfiMcpServer {
                 cli_prefix: config.cli_prefix(&name),
                 name,
                 command: server.command.clone(),
@@ -59,7 +69,9 @@ pub fn parse_mcp_config(config_json: &str) -> Result<Vec<FfiMcpServer>, Error> {
                     .iter()
                     .map(|(key, value)| (key.clone(), value.clone()))
                     .collect(),
+                headers,
+                oauth_app_name: oauth_app_name.map(str::to_string),
             })
         })
-        .collect())
+        .collect()
 }

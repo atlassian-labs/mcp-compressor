@@ -339,7 +339,7 @@ fn parse_key_value_arg(value: &str) -> Option<(String, String)> {
     Some((key.to_string(), value.to_string()))
 }
 
-fn interpolate_env(value: &str) -> String {
+pub(crate) fn interpolate_env(value: &str) -> String {
     let mut output = String::new();
     let chars = value.chars().collect::<Vec<_>>();
     let mut index = 0;
@@ -391,6 +391,15 @@ mod tests {
         assert!(backend.args.is_empty());
         assert_eq!(backend.headers["Authorization"], "Bearer token");
         assert_eq!(backend.headers["X-Test"], "yes");
+    }
+
+    #[test]
+    fn direct_headers_preserve_environment_placeholders() {
+        let backend =
+            BackendServerConfig::new("remote", "https://example.test/mcp", [] as [&str; 0])
+                .with_headers([("X-Test-Path", "${PATH}")]);
+
+        assert_eq!(backend.headers["X-Test-Path"], "${PATH}");
     }
 
     #[test]

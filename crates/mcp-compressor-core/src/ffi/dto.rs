@@ -23,6 +23,10 @@ pub struct FfiMcpServer {
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,
     pub cli_prefix: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub headers: Vec<(String, String)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oauth_app_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
