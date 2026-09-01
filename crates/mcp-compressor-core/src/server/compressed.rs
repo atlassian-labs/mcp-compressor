@@ -511,12 +511,15 @@ impl CompressedServer {
     }
 
     fn backend_for_wrapper(&self, wrapper_tool_name: &str) -> Result<&ConnectedBackend, Error> {
-        if self.backends.len() == 1 && self.backends[0].public_name.is_empty() {
-            return Ok(&self.backends[0]);
-        }
         self.backends
             .iter()
-            .find(|backend| wrapper_tool_name.starts_with(&self.wrapper_prefix(backend)))
+            .find(|backend| {
+                wrapper_tool_name
+                    .strip_prefix(&self.wrapper_prefix(backend))
+                    .is_some_and(|suffix| {
+                        matches!(suffix, "get_tool_schema" | "invoke_tool" | "list_tools")
+                    })
+            })
             .ok_or_else(|| Error::ToolNotFound(wrapper_tool_name.to_string()))
     }
 }

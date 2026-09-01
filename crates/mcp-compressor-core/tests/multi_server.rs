@@ -1,6 +1,6 @@
 mod common;
 
-use mcp_compressor_core::server::CompressedServer;
+use mcp_compressor_core::{server::CompressedServer, Error};
 use serde_json::json;
 
 #[tokio::test]
@@ -74,4 +74,46 @@ async fn multi_stdio_backends_are_prefixed_and_routed_independently() {
     assert!(resources
         .iter()
         .any(|uri| uri == "compressor://suite_beta/uncompressed-tools"));
+}
+
+#[tokio::test]
+async fn overlapping_backend_names_route_by_exact_wrapper_name() {
+    for reverse_order in [false, true] {
+        let mut backends = vec![
+            common::backend("foo", "alpha_server.py"),
+            common::backend("foo_bar", "beta_server.py"),
+        ];
+        if reverse_order {
+            backends.reverse();
+        }
+        let server = CompressedServer::connect_multi_stdio(
+            common::max_config(Some("suite")),
+            backends,
+        )
+        .await
+        .unwrap();
+
+        let result = server
+            .invoke_tool(
+                "suite_foo_bar_invoke_tool",
+                "multiply",
+                json!({ "a": 4, "b": 5 }),
+            )
+            .await
+            .unwrap();
+        assert_eq!(result, "20");
+
+        let error = server
+            .invoke_tool(
+                "suite_foo_extra_invoke_tool",
+                "add",
+                json!({ "a": 3, "b": 7 }),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            Error::ToolNotFound(name) if name == "suite_foo_extra_invoke_tool"
+        ));
+    }
 }

@@ -31,6 +31,26 @@ async fn single_stdio_backend_exposes_only_compressed_wrapper_tools() {
 }
 
 #[tokio::test]
+async fn unnamed_single_backend_rejects_unknown_wrapper_names() {
+    let server = CompressedServer::connect_stdio(
+        common::max_config(None),
+        common::backend("", "alpha_server.py"),
+    )
+    .await
+    .unwrap();
+
+    let error = server
+        .invoke_tool("unknown_invoke_tool", "add", json!({ "a": 2, "b": 5 }))
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        Error::ToolNotFound(name) if name == "unknown_invoke_tool"
+    ));
+}
+
+#[tokio::test]
 async fn single_stdio_backend_invoke_wrapper_tool_input_schema_explains_selected_tool_schema() {
     let server = CompressedServer::connect_stdio(
         common::max_config(Some("alpha")),
