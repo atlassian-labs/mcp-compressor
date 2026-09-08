@@ -6,9 +6,8 @@ use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
     Annotated, CallToolRequestParams, CallToolResult, Content, ErrorCode, GetPromptRequestParams,
     GetPromptResult, InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
-    PaginatedRequestParams, Prompt,
-    RawResource, ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents,
-    ServerCapabilities, Tool,
+    PaginatedRequestParams, Prompt, RawResource, ReadResourceRequestParams, ReadResourceResult,
+    Resource, ResourceContents, ServerCapabilities, Tool,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer};
@@ -66,23 +65,27 @@ impl ServerHandler for FrontendServer {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let wrapper_name = request.name.to_string();
         let arguments = request.arguments.unwrap_or_default();
-        let output = if wrapper_name.ends_with("get_tool_schema") {
-            let tool_name = required_string(&arguments, "tool_name")?;
-            self.compressed
-                .get_tool_schema(&wrapper_name, &tool_name)
-                .await
-        } else if wrapper_name.ends_with("invoke_tool") {
+        if wrapper_name.ends_with("invoke_tool") {
             let tool_name = required_string(&arguments, "tool_name")?;
             let tool_input = arguments
                 .get("tool_input")
                 .cloned()
                 .unwrap_or_else(|| Value::Object(Map::new()));
+            return self
+                .compressed
+                .invoke_tool_result(&wrapper_name, &tool_name, tool_input, Some(context.meta))
+                .await
+                .map_err(mcp_error);
+        }
+
+        let output = if wrapper_name.ends_with("get_tool_schema") {
+            let tool_name = required_string(&arguments, "tool_name")?;
             self.compressed
-                .invoke_tool(&wrapper_name, &tool_name, tool_input)
+                .get_tool_schema(&wrapper_name, &tool_name)
                 .await
         } else if wrapper_name.ends_with("list_tools") {
             self.compressed.list_backend_tools(&wrapper_name).await
@@ -120,9 +123,10 @@ impl ServerHandler for FrontendServer {
             .read_resource(&request.uri)
             .await
             .map_err(mcp_error)?;
-        Ok(ReadResourceResult::new(vec![
-            ResourceContents::text(text, request.uri),
-        ]))
+        Ok(ReadResourceResult::new(vec![ResourceContents::text(
+            text,
+            request.uri,
+        )]))
     }
 
     async fn list_prompts(
@@ -170,16 +174,19 @@ fn convert_tool(tool: crate::compression::engine::Tool) -> Tool {
 }
 
 fn convert_resource(uri: String) -> Resource {
-    Annotated::new(RawResource {
-        name: uri.clone(),
-        uri,
-        title: None,
-        description: None,
-        mime_type: None,
-        icons: None,
-        size: None,
-        meta: None,
-    }, None)
+    Annotated::new(
+        RawResource {
+            name: uri.clone(),
+            uri,
+            title: None,
+            description: None,
+            mime_type: None,
+            icons: None,
+            size: None,
+            meta: None,
+        },
+        None,
+    )
 }
 
 fn required_string(arguments: &Map<String, Value>, name: &str) -> Result<String, McpError> {

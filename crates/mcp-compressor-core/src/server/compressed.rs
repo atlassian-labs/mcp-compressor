@@ -5,8 +5,8 @@
 //! language bindings, and the standalone Rust CLI.
 
 use rmcp::model::{
-    CallToolRequestParams, Content, GetPromptRequestParams, GetPromptResult, RawContent,
-    ReadResourceRequestParams, ResourceContents,
+    CallToolRequestParams, CallToolResult, Content, GetPromptRequestParams, GetPromptResult, Meta,
+    RawContent, ReadResourceRequestParams, ResourceContents,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -304,8 +304,24 @@ impl CompressedServer {
         tool_input: Value,
     ) -> Result<String, Error> {
         let backend = self.backend_for_wrapper(_wrapper_tool_name)?;
-        self.invoke_backend(backend, backend_tool_name, tool_input)
-            .await
+        let result = self
+            .invoke_backend_result(backend, backend_tool_name, tool_input, None)
+            .await?;
+        Ok(self.tool_result_to_string(result))
+    }
+
+    pub(crate) async fn invoke_tool_result(
+        &self,
+        wrapper_tool_name: &str,
+        backend_tool_name: &str,
+        tool_input: Value,
+        request_meta: Option<Meta>,
+    ) -> Result<CallToolResult, Error> {
+        let backend = self.backend_for_wrapper(wrapper_tool_name)?;
+        let result = self
+            .invoke_backend_result(backend, backend_tool_name, tool_input, request_meta)
+            .await?;
+        Ok(toonify_result(self.config.toonify, result))
     }
 
     /// List frontend resources, including pass-through backend resources and
@@ -420,16 +436,19 @@ impl CompressedServer {
             .first()
             .filter(|_| self.backends.len() == 1)
             .ok_or_else(|| Error::ToolNotFound(backend_tool_name.to_string()))?;
-        self.invoke_backend(backend, backend_tool_name, tool_input)
-            .await
+        let result = self
+            .invoke_backend_result(backend, backend_tool_name, tool_input, None)
+            .await?;
+        Ok(self.tool_result_to_string(result))
     }
 
-    async fn invoke_backend(
+    async fn invoke_backend_result(
         &self,
         backend: &ConnectedBackend,
         backend_tool_name: &str,
         tool_input: Value,
-    ) -> Result<String, Error> {
+        request_meta: Option<Meta>,
+    ) -> Result<CallToolResult, Error> {
         let tool = backend
             .tools
             .iter()
@@ -441,27 +460,24 @@ impl CompressedServer {
             _ => None,
         };
         let mut params = CallToolRequestParams::new(backend_tool_name.to_string());
+        params.meta = request_meta.map(strip_caller_progress_token);
         if let Some(arguments) = arguments {
             params = params.with_arguments(arguments);
         }
-        let result = backend
+        backend
             .client
             .call_tool(params)
             .await
-            .map_err(|error| Error::Config(error.to_string()))?;
+            .map_err(|error| Error::Config(error.to_string()))
+    }
+
+    fn tool_result_to_string(&self, result: CallToolResult) -> String {
         let output = call_tool_result_to_string(result);
-        Ok(self.maybe_toonify_output(&output))
+        self.maybe_toonify_output(&output)
     }
 
     fn maybe_toonify_output(&self, output: &str) -> String {
-        if !self.config.toonify {
-            return output.to_string();
-        }
-        let Ok(value) = serde_json::from_str::<Value>(output) else {
-            return output.to_string();
-        };
-        toon_format::encode(&value, &toon_format::EncodeOptions::default())
-            .unwrap_or_else(|_| output.to_string())
+        toonify_output(self.config.toonify, output)
     }
 
     fn cli_help_tools(&self) -> Vec<Tool> {
@@ -522,6 +538,16 @@ impl CompressedServer {
             })
             .ok_or_else(|| Error::ToolNotFound(wrapper_tool_name.to_string()))
     }
+}
+
+/// Drop the caller's progress token before forwarding request metadata.
+///
+/// The proxy does not relay `notifications/progress` from the backend, so
+/// passing the caller's token through would promise progress that never
+/// arrives. Every other `_meta` entry is forwarded untouched.
+fn strip_caller_progress_token(mut meta: Meta) -> Meta {
+    meta.remove("progressToken");
+    meta
 }
 
 fn validate_required_tool_input(tool: &Tool, tool_input: &Value) -> Result<(), Error> {
@@ -731,5 +757,90 @@ fn value_to_string(value: &Value) -> String {
             value_to_string(&map["result"])
         }
         _ => value.to_string(),
+    }
+}
+
+fn toonify_output(toonify: bool, output: &str) -> String {
+    if !toonify {
+        return output.to_string();
+    }
+    let Ok(value) = serde_json::from_str::<Value>(output) else {
+        return output.to_string();
+    };
+    toon_format::encode(&value, &toon_format::EncodeOptions::default())
+        .unwrap_or_else(|_| output.to_string())
+}
+
+/// Apply `--toonify` to a pass-through tool result.
+///
+/// The MCP frontend returns the backend `CallToolResult` verbatim to preserve
+/// structured and typed content, so the TOON re-encoding has to happen here
+/// instead of in the string-returning path. Only JSON text blocks change;
+/// typed content, structured content and error results are left untouched.
+fn toonify_result(toonify: bool, mut result: CallToolResult) -> CallToolResult {
+    if !toonify || result.is_error == Some(true) {
+        return result;
+    }
+    for item in result.content.iter_mut() {
+        if let RawContent::Text(text) = &mut item.raw {
+            text.text = toonify_output(true, &text.text);
+        }
+    }
+    result
+}
+
+#[cfg(test)]
+mod toonify_tests {
+    use super::*;
+
+    fn json_result() -> CallToolResult {
+        serde_json::from_value(serde_json::json!({
+            "content": [{"type": "text", "text": "[{\"id\":1,\"name\":\"alpha\"}]"}]
+        }))
+        .unwrap()
+    }
+
+    /// The MCP frontend returns backend results verbatim, so `--toonify`
+    /// must still be applied there or the flag silently does nothing.
+    #[test]
+    fn toonify_reencodes_json_text_blocks_of_passthrough_results() {
+        let result = toonify_result(true, json_result());
+
+        let text = match &result.content[0].raw {
+            RawContent::Text(text) => text.text.clone(),
+            other => panic!("expected text content, got {other:?}"),
+        };
+        assert_ne!(text, "[{\"id\":1,\"name\":\"alpha\"}]");
+        assert_eq!(
+            text,
+            toonify_output(true, "[{\"id\":1,\"name\":\"alpha\"}]")
+        );
+    }
+
+    /// Without the flag the result must stay byte-identical.
+    #[test]
+    fn toonify_disabled_preserves_passthrough_results() {
+        let result = toonify_result(false, json_result());
+
+        let text = match &result.content[0].raw {
+            RawContent::Text(text) => text.text.clone(),
+            other => panic!("expected text content, got {other:?}"),
+        };
+        assert_eq!(text, "[{\"id\":1,\"name\":\"alpha\"}]");
+    }
+
+    /// Backend failures must not be re-encoded; agents rely on the raw text.
+    #[test]
+    fn toonify_preserves_backend_error_results() {
+        let mut result = json_result();
+        result.is_error = Some(true);
+
+        let result = toonify_result(true, result);
+
+        let text = match &result.content[0].raw {
+            RawContent::Text(text) => text.text.clone(),
+            other => panic!("expected text content, got {other:?}"),
+        };
+        assert_eq!(text, "[{\"id\":1,\"name\":\"alpha\"}]");
     }
 }

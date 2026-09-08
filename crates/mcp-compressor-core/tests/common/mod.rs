@@ -154,3 +154,10 @@ pub fn mcp_config_json(backends: &[(&str, &str)]) -> String {
         .collect::<serde_json::Map<_, _>>();
     json!({ "mcpServers": servers }).to_string()
 }
+
+pub fn toonify_config(server_name: impl Into<Option<&'static str>>) -> CompressedServerConfig {
+    CompressedServerConfig {
+        toonify: true,
+        ..max_config(server_name)
+    }
+}
