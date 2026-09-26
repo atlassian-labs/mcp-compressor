@@ -1,11 +1,11 @@
 use std::process::Stdio;
 
 use rmcp::model::Prompt;
-use rmcp::service::RunningService;
-use rmcp::transport::auth::{AuthClient, AuthorizationManager};
+use rmcp::service::{ClientLifecycleMode, ClientServiceExt, RunningService};
+use rmcp::transport::auth::{AuthClient, AuthorizationManager, AuthorizationRequest};
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::transport::{ConfigureCommandExt, StreamableHttpClientTransport, TokioChildProcess};
-use rmcp::{RoleClient, ServiceExt};
+use rmcp::RoleClient;
 use serde_json::Value;
 
 use crate::compression::engine::Tool;
@@ -55,7 +55,7 @@ pub(crate) async fn connect_backend(
         .map(|resources| {
             resources
                 .into_iter()
-                .map(|resource| resource.raw.uri)
+                .map(|resource| resource.uri)
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
@@ -87,7 +87,7 @@ async fn connect_stdio_backend(
     }
 
     let transport = TokioChildProcess::new(command.configure(|_| {})).map_err(Error::Io)?;
-    ().serve(transport)
+    ().serve_with_lifecycle(transport, ClientLifecycleMode::Initialize)
         .await
         .map_err(|error| Error::Config(error.to_string()))
 }
@@ -111,12 +111,12 @@ async fn connect_streamable_http_backend(
     if let Some(provider) = backend.header_provider.clone() {
         let client = DynamicAuthHttpClient::new(reqwest::Client::new(), headers, provider);
         let transport = StreamableHttpClientTransport::with_client(client, config);
-        ().serve(transport)
+        ().serve_with_lifecycle(transport, ClientLifecycleMode::Initialize)
             .await
             .map_err(|error| remote_backend_error(&backend.command, error.to_string()))
     } else {
         let transport = StreamableHttpClientTransport::from_config(config);
-        ().serve(transport)
+        ().serve_with_lifecycle(transport, ClientLifecycleMode::Initialize)
             .await
             .map_err(|error| remote_backend_error(&backend.command, error.to_string()))
     }
@@ -152,9 +152,7 @@ async fn connect_oauth_streamable_http_backend(
         }
         state
             .start_authorization(
-                &[],
-                &redirect_uri,
-                Some(
+                AuthorizationRequest::new(redirect_uri).with_client_name(
                     backend
                         .oauth_app_name
                         .as_deref()
@@ -203,7 +201,7 @@ async fn connect_oauth_streamable_http_backend(
         client,
         StreamableHttpClientTransportConfig::with_uri(backend.command.clone()),
     );
-    ().serve(transport)
+    ().serve_with_lifecycle(transport, ClientLifecycleMode::Initialize)
         .await
         .map_err(|error| remote_backend_error(&backend.command, error.to_string()))
 }

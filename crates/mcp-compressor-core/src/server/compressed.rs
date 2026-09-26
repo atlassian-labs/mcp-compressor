@@ -5,8 +5,8 @@
 //! language bindings, and the standalone Rust CLI.
 
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Content, GetPromptRequestParams, GetPromptResult, Meta,
-    RawContent, ReadResourceRequestParams, ResourceContents,
+    CallToolRequestParams, CallToolResult, ContentBlock, GetPromptRequestParams, GetPromptResult,
+    ReadResourceRequestParams, RequestMetaObject, ResourceContents,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -307,7 +307,7 @@ impl CompressedServer {
         let result = self
             .invoke_backend_result(backend, backend_tool_name, tool_input, None)
             .await?;
-        Ok(self.tool_result_to_string(result))
+        self.tool_result_to_string(result)
     }
 
     pub(crate) async fn invoke_tool_result(
@@ -315,7 +315,7 @@ impl CompressedServer {
         wrapper_tool_name: &str,
         backend_tool_name: &str,
         tool_input: Value,
-        request_meta: Option<Meta>,
+        request_meta: Option<RequestMetaObject>,
     ) -> Result<CallToolResult, Error> {
         let backend = self.backend_for_wrapper(wrapper_tool_name)?;
         let result = self
@@ -355,7 +355,7 @@ impl CompressedServer {
             .read_resource(ReadResourceRequestParams::new(uri))
             .await
             .map_err(|error| Error::Config(error.to_string()))?;
-        Ok(resource_contents_to_string(result.contents))
+        resource_contents_to_string(result.contents)
     }
 
     /// List frontend prompts passed through from backend servers.
@@ -439,7 +439,7 @@ impl CompressedServer {
         let result = self
             .invoke_backend_result(backend, backend_tool_name, tool_input, None)
             .await?;
-        Ok(self.tool_result_to_string(result))
+        self.tool_result_to_string(result)
     }
 
     async fn invoke_backend_result(
@@ -447,7 +447,7 @@ impl CompressedServer {
         backend: &ConnectedBackend,
         backend_tool_name: &str,
         tool_input: Value,
-        request_meta: Option<Meta>,
+        request_meta: Option<RequestMetaObject>,
     ) -> Result<CallToolResult, Error> {
         let tool = backend
             .tools
@@ -460,7 +460,7 @@ impl CompressedServer {
             _ => None,
         };
         let mut params = CallToolRequestParams::new(backend_tool_name.to_string());
-        params.meta = request_meta.map(strip_caller_progress_token);
+        params.meta = request_meta.map(backend_request_meta);
         if let Some(arguments) = arguments {
             params = params.with_arguments(arguments);
         }
@@ -471,9 +471,9 @@ impl CompressedServer {
             .map_err(|error| Error::Config(error.to_string()))
     }
 
-    fn tool_result_to_string(&self, result: CallToolResult) -> String {
-        let output = call_tool_result_to_string(result);
-        self.maybe_toonify_output(&output)
+    fn tool_result_to_string(&self, result: CallToolResult) -> Result<String, Error> {
+        let output = call_tool_result_to_string(result)?;
+        Ok(self.maybe_toonify_output(&output))
     }
 
     fn maybe_toonify_output(&self, output: &str) -> String {
@@ -540,13 +540,12 @@ impl CompressedServer {
     }
 }
 
-/// Drop the caller's progress token before forwarding request metadata.
-///
-/// The proxy does not relay `notifications/progress` from the backend, so
-/// passing the caller's token through would promise progress that never
-/// arrives. Every other `_meta` entry is forwarded untouched.
-fn strip_caller_progress_token(mut meta: Meta) -> Meta {
+/// Remove frontend negotiation and unrelayed progress metadata.
+fn backend_request_meta(mut meta: RequestMetaObject) -> RequestMetaObject {
     meta.remove("progressToken");
+    meta.remove("io.modelcontextprotocol/protocolVersion");
+    meta.remove("io.modelcontextprotocol/clientInfo");
+    meta.remove("io.modelcontextprotocol/clientCapabilities");
     meta
 }
 
@@ -716,38 +715,40 @@ pub(crate) fn list_wrapper_tool(name: String, description: &str) -> Tool {
     )
 }
 
-fn call_tool_result_to_string(result: rmcp::model::CallToolResult) -> String {
+fn call_tool_result_to_string(result: rmcp::model::CallToolResult) -> Result<String, Error> {
     if let Some(structured) = result.structured_content {
-        return value_to_string(&structured);
+        return Ok(value_to_string(&structured));
     }
 
-    result
+    Ok(result
         .content
         .into_iter()
         .map(content_to_string)
-        .collect::<Vec<_>>()
-        .join("\n")
+        .collect::<Result<Vec<_>, _>>()?
+        .join("\n"))
 }
 
-fn content_to_string(content: Content) -> String {
-    match content.raw {
-        RawContent::Text(text) => text.text,
-        RawContent::Image(image) => image.data,
-        RawContent::Resource(resource) => resource_contents_to_string(vec![resource.resource]),
-        RawContent::Audio(audio) => audio.data,
-        RawContent::ResourceLink(resource) => resource.uri,
-    }
+fn content_to_string(content: ContentBlock) -> Result<String, Error> {
+    Ok(match content {
+        ContentBlock::Text(text) => text.text,
+        ContentBlock::Image(image) => image.data,
+        ContentBlock::Resource(resource) => resource_contents_to_string(vec![resource.resource])?,
+        ContentBlock::Audio(audio) => audio.data,
+        ContentBlock::ResourceLink(resource) => resource.uri,
+        other => serde_json::to_string(&other)?,
+    })
 }
 
-fn resource_contents_to_string(contents: Vec<ResourceContents>) -> String {
-    contents
+fn resource_contents_to_string(contents: Vec<ResourceContents>) -> Result<String, Error> {
+    Ok(contents
         .into_iter()
         .map(|content| match content {
-            ResourceContents::TextResourceContents { text, .. } => text,
-            ResourceContents::BlobResourceContents { blob, .. } => blob,
+            ResourceContents::TextResourceContents { text, .. } => Ok(text),
+            ResourceContents::BlobResourceContents { blob, .. } => Ok(blob),
+            other => serde_json::to_string(&other),
         })
-        .collect::<Vec<_>>()
-        .join("\n")
+        .collect::<Result<Vec<_>, _>>()?
+        .join("\n"))
 }
 
 fn value_to_string(value: &Value) -> String {
@@ -782,7 +783,7 @@ fn toonify_result(toonify: bool, mut result: CallToolResult) -> CallToolResult {
         return result;
     }
     for item in result.content.iter_mut() {
-        if let RawContent::Text(text) = &mut item.raw {
+        if let ContentBlock::Text(text) = item {
             text.text = toonify_output(true, &text.text);
         }
     }
@@ -806,8 +807,8 @@ mod toonify_tests {
     fn toonify_reencodes_json_text_blocks_of_passthrough_results() {
         let result = toonify_result(true, json_result());
 
-        let text = match &result.content[0].raw {
-            RawContent::Text(text) => text.text.clone(),
+        let text = match &result.content[0] {
+            ContentBlock::Text(text) => text.text.clone(),
             other => panic!("expected text content, got {other:?}"),
         };
         assert_ne!(text, "[{\"id\":1,\"name\":\"alpha\"}]");
@@ -822,8 +823,8 @@ mod toonify_tests {
     fn toonify_disabled_preserves_passthrough_results() {
         let result = toonify_result(false, json_result());
 
-        let text = match &result.content[0].raw {
-            RawContent::Text(text) => text.text.clone(),
+        let text = match &result.content[0] {
+            ContentBlock::Text(text) => text.text.clone(),
             other => panic!("expected text content, got {other:?}"),
         };
         assert_eq!(text, "[{\"id\":1,\"name\":\"alpha\"}]");
@@ -837,8 +838,8 @@ mod toonify_tests {
 
         let result = toonify_result(true, result);
 
-        let text = match &result.content[0].raw {
-            RawContent::Text(text) => text.text.clone(),
+        let text = match &result.content[0] {
+            ContentBlock::Text(text) => text.text.clone(),
             other => panic!("expected text content, got {other:?}"),
         };
         assert_eq!(text, "[{\"id\":1,\"name\":\"alpha\"}]");

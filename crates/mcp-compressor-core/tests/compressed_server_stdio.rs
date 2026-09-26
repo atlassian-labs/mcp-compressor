@@ -5,7 +5,8 @@ use mcp_compressor_core::{
     Error,
 };
 use rmcp::{
-    model::{CallToolRequestParams, Meta},
+    model::{CallToolRequestParams, MetaObject, RequestMetaObject},
+    service::{ClientLifecycleMode, ClientServiceExt},
     ServiceExt,
 };
 use serde_json::json;
@@ -28,7 +29,10 @@ async fn mcp_frontend_preserves_complete_backend_tool_results() {
             .await
             .unwrap();
     });
-    let mut client = ().serve(client_transport).await.unwrap();
+    let mut client =
+        ().serve_with_lifecycle(client_transport, ClientLifecycleMode::Initialize)
+            .await
+            .unwrap();
 
     let mut request = CallToolRequestParams::new("alpha_invoke_tool").with_arguments(
         json!({"tool_name": "rich_result", "tool_input": {}})
@@ -36,9 +40,9 @@ async fn mcp_frontend_preserves_complete_backend_tool_results() {
             .unwrap()
             .clone(),
     );
-    request.meta = Some(Meta(
+    request.meta = Some(RequestMetaObject(MetaObject(
         json!({"trace": "forwarded"}).as_object().unwrap().clone(),
-    ));
+    )));
     let result = client.call_tool(request).await.unwrap();
     let mut result = serde_json::to_value(result).unwrap();
     let progress_token = result
@@ -118,7 +122,10 @@ async fn mcp_frontend_does_not_forward_the_caller_progress_token() {
             .await
             .unwrap();
     });
-    let mut client = ().serve(client_transport).await.unwrap();
+    let mut client =
+        ().serve_with_lifecycle(client_transport, ClientLifecycleMode::Initialize)
+            .await
+            .unwrap();
 
     let mut request = CallToolRequestParams::new("alpha_invoke_tool").with_arguments(
         json!({"tool_name": "rich_result", "tool_input": {}})
@@ -126,12 +133,12 @@ async fn mcp_frontend_does_not_forward_the_caller_progress_token() {
             .unwrap()
             .clone(),
     );
-    request.meta = Some(Meta(
+    request.meta = Some(RequestMetaObject(MetaObject(
         json!({"trace": "kept", "progressToken": "caller-token"})
             .as_object()
             .unwrap()
             .clone(),
-    ));
+    )));
     let result = client.call_tool(request).await.unwrap();
     let result = serde_json::to_value(result).unwrap();
     let backend_meta = result
@@ -322,7 +329,10 @@ async fn mcp_frontend_toonifies_json_text_results() {
             .await
             .unwrap();
     });
-    let mut client = ().serve(client_transport).await.unwrap();
+    let mut client =
+        ().serve_with_lifecycle(client_transport, ClientLifecycleMode::Initialize)
+            .await
+            .unwrap();
 
     let result = client
         .call_tool(

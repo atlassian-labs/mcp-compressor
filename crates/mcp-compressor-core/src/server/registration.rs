@@ -4,10 +4,11 @@ use std::sync::Arc;
 
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
-    Annotated, CallToolRequestParams, CallToolResult, Content, ErrorCode, GetPromptRequestParams,
-    GetPromptResult, InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
-    PaginatedRequestParams, Prompt, RawResource, ReadResourceRequestParams, ReadResourceResult,
-    Resource, ResourceContents, ServerCapabilities, Tool,
+    CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, ErrorCode,
+    GetPromptRequestParams, GetPromptResponse, InitializeResult, ListPromptsResult,
+    ListResourcesResult, ListToolsResult, PaginatedRequestParams, Prompt, ProtocolVersion,
+    ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource,
+    ResourceContents, ResultType, ServerCapabilities, Tool,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer};
@@ -49,7 +50,7 @@ impl ServerHandler for FrontendServer {
     async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
         let tools = self
             .compressed
@@ -59,10 +60,105 @@ impl ServerHandler for FrontendServer {
             .into_iter()
             .map(convert_tool)
             .collect();
-        Ok(ListToolsResult::with_all_items(tools))
+        let result = ListToolsResult::with_all_items(tools);
+        Ok(if modern_request(&context) {
+            result.with_ttl_ms(0).with_cache_scope(CacheScope::Private)
+        } else {
+            result
+        })
     }
 
     async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, McpError> {
+        let mut result = self.call_tool_result(request, context).await?;
+        result.result_type = Some(ResultType::COMPLETE);
+        Ok(result.into())
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, McpError> {
+        let resources = self
+            .compressed
+            .list_resources()
+            .await
+            .map_err(mcp_error)?
+            .into_iter()
+            .map(convert_resource)
+            .collect();
+        let result = ListResourcesResult::with_all_items(resources);
+        Ok(if modern_request(&context) {
+            result.with_ttl_ms(0).with_cache_scope(CacheScope::Private)
+        } else {
+            result
+        })
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResponse, McpError> {
+        let text = self
+            .compressed
+            .read_resource(&request.uri)
+            .await
+            .map_err(mcp_error)?;
+        let mut result = ReadResourceResult::new(vec![ResourceContents::text(text, request.uri)]);
+        result.result_type = Some(ResultType::COMPLETE);
+        if modern_request(&context) {
+            result = result.with_ttl_ms(0).with_cache_scope(CacheScope::Private);
+        }
+        Ok(result.into())
+    }
+
+    async fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, McpError> {
+        let prompts = self
+            .compressed
+            .list_prompts()
+            .await
+            .map_err(mcp_error)?
+            .into_iter()
+            .map(|name| Prompt::new(name, Option::<String>::None, None))
+            .collect();
+        let result = ListPromptsResult::with_all_items(prompts);
+        Ok(if modern_request(&context) {
+            result.with_ttl_ms(0).with_cache_scope(CacheScope::Private)
+        } else {
+            result
+        })
+    }
+
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResponse, McpError> {
+        let mut result = self
+            .compressed
+            .get_prompt(&request.name, request.arguments)
+            .await
+            .map_err(mcp_error)?;
+        result.result_type = Some(ResultType::COMPLETE);
+        Ok(result.into())
+    }
+
+    fn get_tool(&self, _name: &str) -> Option<Tool> {
+        None
+    }
+}
+
+impl FrontendServer {
+    async fn call_tool_result(
         &self,
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
@@ -94,71 +190,14 @@ impl ServerHandler for FrontendServer {
         }
         .map_err(mcp_error)?;
 
-        Ok(CallToolResult::success(vec![Content::text(output)]))
+        Ok(CallToolResult::success(vec![ContentBlock::text(output)]))
     }
+}
 
-    async fn list_resources(
-        &self,
-        _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
-    ) -> Result<ListResourcesResult, McpError> {
-        let resources = self
-            .compressed
-            .list_resources()
-            .await
-            .map_err(mcp_error)?
-            .into_iter()
-            .map(convert_resource)
-            .collect();
-        Ok(ListResourcesResult::with_all_items(resources))
-    }
-
-    async fn read_resource(
-        &self,
-        request: ReadResourceRequestParams,
-        _context: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, McpError> {
-        let text = self
-            .compressed
-            .read_resource(&request.uri)
-            .await
-            .map_err(mcp_error)?;
-        Ok(ReadResourceResult::new(vec![ResourceContents::text(
-            text,
-            request.uri,
-        )]))
-    }
-
-    async fn list_prompts(
-        &self,
-        _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
-    ) -> Result<ListPromptsResult, McpError> {
-        let prompts = self
-            .compressed
-            .list_prompts()
-            .await
-            .map_err(mcp_error)?
-            .into_iter()
-            .map(|name| Prompt::new(name, Option::<String>::None, None))
-            .collect();
-        Ok(ListPromptsResult::with_all_items(prompts))
-    }
-
-    async fn get_prompt(
-        &self,
-        request: GetPromptRequestParams,
-        _context: RequestContext<RoleServer>,
-    ) -> Result<GetPromptResult, McpError> {
-        self.compressed
-            .get_prompt(&request.name, request.arguments)
-            .await
-            .map_err(mcp_error)
-    }
-
-    fn get_tool(&self, _name: &str) -> Option<Tool> {
-        None
-    }
+fn modern_request(context: &RequestContext<RoleServer>) -> bool {
+    context
+        .protocol_version()
+        .is_some_and(|version| version >= ProtocolVersion::V_2026_07_28)
 }
 
 fn convert_tool(tool: crate::compression::engine::Tool) -> Tool {
@@ -174,19 +213,7 @@ fn convert_tool(tool: crate::compression::engine::Tool) -> Tool {
 }
 
 fn convert_resource(uri: String) -> Resource {
-    Annotated::new(
-        RawResource {
-            name: uri.clone(),
-            uri,
-            title: None,
-            description: None,
-            mime_type: None,
-            icons: None,
-            size: None,
-            meta: None,
-        },
-        None,
-    )
+    Resource::new(uri.clone(), uri)
 }
 
 fn required_string(arguments: &Map<String, Value>, name: &str) -> Result<String, McpError> {

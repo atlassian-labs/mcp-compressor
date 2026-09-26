@@ -98,21 +98,20 @@ impl StreamableHttpClient for DynamicAuthHttpClient {
     async fn get_stream(
         &self,
         uri: Arc<str>,
-        session_id: Arc<str>,
+        session_id: Option<Arc<str>>,
         last_event_id: Option<String>,
         auth_token: Option<String>,
         custom_headers: HashMap<HeaderName, HeaderValue>,
     ) -> Result<BoxStream<'static, Result<Sse, SseError>>, StreamableHttpError<Self::Error>> {
         let mut headers = self.merged_headers()?;
         headers.extend(custom_headers);
-        let mut request = self
-            .client
-            .get(uri.as_ref())
-            .header(
-                reqwest::header::ACCEPT,
-                [EVENT_STREAM_MIME_TYPE, JSON_MIME_TYPE].join(", "),
-            )
-            .header(HEADER_SESSION_ID, session_id.as_ref());
+        let mut request = self.client.get(uri.as_ref()).header(
+            reqwest::header::ACCEPT,
+            [EVENT_STREAM_MIME_TYPE, JSON_MIME_TYPE].join(", "),
+        );
+        if let Some(session_id) = session_id {
+            request = request.header(HEADER_SESSION_ID, session_id.as_ref());
+        }
         if let Some(last_event_id) = last_event_id {
             request = request.header(HEADER_LAST_EVENT_ID, last_event_id);
         }
@@ -142,7 +141,7 @@ impl StreamableHttpClient for DynamicAuthHttpClient {
             }
             None => return Err(StreamableHttpError::UnexpectedContentType(None)),
         }
-        Ok(SseStream::from_byte_stream(response.bytes_stream()).boxed())
+        Ok(SseStream::from_bytes_stream(response.bytes_stream()).boxed())
     }
 
     async fn delete_session(
@@ -272,7 +271,7 @@ impl StreamableHttpClient for DynamicAuthHttpClient {
         match content_type.as_deref() {
             Some(ct) if ct.as_bytes().starts_with(EVENT_STREAM_MIME_TYPE.as_bytes()) => {
                 Ok(StreamableHttpPostResponse::Sse(
-                    SseStream::from_byte_stream(response.bytes_stream()).boxed(),
+                    SseStream::from_bytes_stream(response.bytes_stream()).boxed(),
                     session_id,
                 ))
             }

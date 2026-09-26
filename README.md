@@ -55,6 +55,20 @@ The frontend usually exposes only:
 - `invoke_tool`
 - optionally `list_tools` at `max` compression
 
+### MCP protocol negotiation
+
+The stdio and streamable HTTP frontends accept both legacy `initialize` clients
+and modern `2026-07-28` discovery clients, including Python MCP SDK 2.2.0 in
+`auto`, `legacy`, or explicit `2026-07-28` mode. Backend connections initialize
+independently, so modern clients can use legacy backends without sending
+frontend negotiation metadata to them. Backends must support legacy `initialize`;
+modern-only backends are not supported. Application tool-call metadata and tool
+result content, annotations, structured content, and error flags are preserved.
+
+Modern catalog and resource-read responses use `ttlMs: 0` and private cache
+scope. Catalogs remain static for the connection; dynamic change subscriptions
+are not advertised or supported. Legacy responses omit modern protocol fields.
+
 ## Pattern 2: local proxy for SDKs and generated clients
 
 Use this when your application wants to embed compression directly and call tools from code or shell commands.
