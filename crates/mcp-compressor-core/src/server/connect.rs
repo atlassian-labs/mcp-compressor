@@ -188,7 +188,7 @@ async fn connect_oauth_streamable_http_backend(
         );
         let callback = listener.wait_for_callback().map_err(Error::Io)?;
         state
-            .handle_callback(&callback.code, &callback.state)
+            .handle_callback_with_issuer(&callback.code, &callback.state, callback.iss.as_deref())
             .await
             .map_err(|error| {
                 Error::Config(format!("failed to complete OAuth authorization: {error}"))

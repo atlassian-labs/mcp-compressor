@@ -258,6 +258,7 @@ fn browser_open_disabled() -> bool {
 pub struct OAuthCallback {
     pub code: String,
     pub state: String,
+    pub iss: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -288,6 +289,7 @@ fn parse_callback_request(request: &str) -> OAuthCallbackResult {
     let mut state = None;
     let mut error = None;
     let mut error_description = None;
+    let mut iss = None;
     for pair in query.split('&') {
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
         match key {
@@ -295,6 +297,7 @@ fn parse_callback_request(request: &str) -> OAuthCallbackResult {
             "state" => state = Some(percent_decode(value)),
             "error" => error = Some(percent_decode(value)),
             "error_description" => error_description = Some(percent_decode(value)),
+            "iss" => iss = Some(percent_decode(value)),
             _ => {}
         }
     }
@@ -306,7 +309,7 @@ fn parse_callback_request(request: &str) -> OAuthCallbackResult {
     }
     match (code, state) {
         (Some(code), Some(state)) if !code.is_empty() && !state.is_empty() => {
-            OAuthCallbackResult::Success(OAuthCallback { code, state })
+            OAuthCallbackResult::Success(OAuthCallback { code, state, iss })
         }
         _ => OAuthCallbackResult::Malformed(
             "OAuth callback was missing non-empty code or state".to_string(),
@@ -768,6 +771,7 @@ mod tests {
             OAuthCallbackResult::Success(OAuthCallback {
                 code: "abc 123".to_string(),
                 state: "state value".to_string(),
+                iss: None,
             })
         );
     }
@@ -797,6 +801,38 @@ mod tests {
             parse_callback_request("GET /callback?state=abc HTTP/1.1\r\n\r\n"),
             OAuthCallbackResult::Malformed(_)
         ));
+    }
+
+    #[test]
+    fn callback_request_parser_extracts_iss_when_present() {
+        let callback = parse_callback_request(
+            "GET /callback?code=mycode&state=mystate&iss=https%3A%2F%2Fmcp.cloudflare.com HTTP/1.1\r\n\r\n",
+        );
+
+        assert_eq!(
+            callback,
+            OAuthCallbackResult::Success(OAuthCallback {
+                code: "mycode".to_string(),
+                state: "mystate".to_string(),
+                iss: Some("https://mcp.cloudflare.com".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn callback_request_parser_iss_absent_gives_none() {
+        let callback = parse_callback_request(
+            "GET /callback?code=mycode&state=mystate HTTP/1.1\r\n\r\n",
+        );
+
+        assert_eq!(
+            callback,
+            OAuthCallbackResult::Success(OAuthCallback {
+                code: "mycode".to_string(),
+                state: "mystate".to_string(),
+                iss: None,
+            })
+        );
     }
 
     #[test]
