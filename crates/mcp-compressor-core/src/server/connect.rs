@@ -55,7 +55,7 @@ pub(crate) async fn connect_backend(
         .map(|resources| {
             resources
                 .into_iter()
-                .map(|resource| resource.raw.uri)
+                .map(|resource| resource.uri)
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();

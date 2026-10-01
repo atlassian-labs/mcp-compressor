@@ -5,8 +5,8 @@
 //! language bindings, and the standalone Rust CLI.
 
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Content, GetPromptRequestParams, GetPromptResult, Meta,
-    RawContent, ReadResourceRequestParams, ResourceContents,
+    CallToolRequestParams, CallToolResult, ContentBlock, GetPromptRequestParams, GetPromptResult,
+    Meta, ReadResourceRequestParams, ResourceContents,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -729,13 +729,14 @@ fn call_tool_result_to_string(result: rmcp::model::CallToolResult) -> String {
         .join("\n")
 }
 
-fn content_to_string(content: Content) -> String {
-    match content.raw {
-        RawContent::Text(text) => text.text,
-        RawContent::Image(image) => image.data,
-        RawContent::Resource(resource) => resource_contents_to_string(vec![resource.resource]),
-        RawContent::Audio(audio) => audio.data,
-        RawContent::ResourceLink(resource) => resource.uri,
+fn content_to_string(content: ContentBlock) -> String {
+    match content {
+        ContentBlock::Text(text) => text.text,
+        ContentBlock::Image(image) => image.data,
+        ContentBlock::Resource(resource) => resource_contents_to_string(vec![resource.resource]),
+        ContentBlock::Audio(audio) => audio.data,
+        ContentBlock::ResourceLink(resource) => resource.uri,
+        _ => String::new(),
     }
 }
 
@@ -745,6 +746,7 @@ fn resource_contents_to_string(contents: Vec<ResourceContents>) -> String {
         .map(|content| match content {
             ResourceContents::TextResourceContents { text, .. } => text,
             ResourceContents::BlobResourceContents { blob, .. } => blob,
+            _ => String::new(),
         })
         .collect::<Vec<_>>()
         .join("\n")
@@ -926,7 +928,7 @@ fn toonify_result(toonify: bool, mut result: CallToolResult) -> CallToolResult {
         return result;
     }
     for item in result.content.iter_mut() {
-        if let RawContent::Text(text) = &mut item.raw {
+        if let ContentBlock::Text(text) = item {
             text.text = toonify_output(true, &text.text);
         }
     }
@@ -950,8 +952,8 @@ mod toonify_tests {
     fn toonify_reencodes_json_text_blocks_of_passthrough_results() {
         let result = toonify_result(true, json_result());
 
-        let text = match &result.content[0].raw {
-            RawContent::Text(text) => text.text.clone(),
+        let text = match &result.content[0] {
+            ContentBlock::Text(text) => text.text.clone(),
             other => panic!("expected text content, got {other:?}"),
         };
         assert_ne!(text, "[{\"id\":1,\"name\":\"alpha\"}]");
@@ -966,8 +968,8 @@ mod toonify_tests {
     fn toonify_disabled_preserves_passthrough_results() {
         let result = toonify_result(false, json_result());
 
-        let text = match &result.content[0].raw {
-            RawContent::Text(text) => text.text.clone(),
+        let text = match &result.content[0] {
+            ContentBlock::Text(text) => text.text.clone(),
             other => panic!("expected text content, got {other:?}"),
         };
         assert_eq!(text, "[{\"id\":1,\"name\":\"alpha\"}]");
@@ -981,8 +983,8 @@ mod toonify_tests {
 
         let result = toonify_result(true, result);
 
-        let text = match &result.content[0].raw {
-            RawContent::Text(text) => text.text.clone(),
+        let text = match &result.content[0] {
+            ContentBlock::Text(text) => text.text.clone(),
             other => panic!("expected text content, got {other:?}"),
         };
         assert_eq!(text, "[{\"id\":1,\"name\":\"alpha\"}]");
@@ -1085,8 +1087,8 @@ mod toonify_tests {
 
         let result = toonify_result(true, result);
 
-        let text = match &result.content[0].raw {
-            RawContent::Text(text) => text.text.clone(),
+        let text = match &result.content[0] {
+            ContentBlock::Text(text) => text.text.clone(),
             other => panic!("expected text content, got {other:?}"),
         };
         assert_eq!(text, "[1]{id,name}:\n  1,alpha");

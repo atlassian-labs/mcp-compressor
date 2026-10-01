@@ -4,10 +4,10 @@ use std::sync::Arc;
 
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
-    Annotated, CallToolRequestParams, CallToolResult, Content, ErrorCode, GetPromptRequestParams,
+    CallToolRequestParams, CallToolResult, ContentBlock, ErrorCode, GetPromptRequestParams,
     GetPromptResult, InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
-    PaginatedRequestParams, Prompt, RawResource, ReadResourceRequestParams, ReadResourceResult,
-    Resource, ResourceContents, ServerCapabilities, Tool,
+    PaginatedRequestParams, Prompt, ReadResourceRequestParams, ReadResourceResult, Resource,
+    ResourceContents, ServerCapabilities, Tool,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer};
@@ -94,7 +94,7 @@ impl ServerHandler for FrontendServer {
         }
         .map_err(mcp_error)?;
 
-        Ok(CallToolResult::success(vec![Content::text(output)]))
+        Ok(CallToolResult::success(vec![ContentBlock::text(output)]))
     }
 
     async fn list_resources(
@@ -174,19 +174,7 @@ fn convert_tool(tool: crate::compression::engine::Tool) -> Tool {
 }
 
 fn convert_resource(uri: String) -> Resource {
-    Annotated::new(
-        RawResource {
-            name: uri.clone(),
-            uri,
-            title: None,
-            description: None,
-            mime_type: None,
-            icons: None,
-            size: None,
-            meta: None,
-        },
-        None,
-    )
+    Resource::new(uri.clone(), uri)
 }
 
 fn required_string(arguments: &Map<String, Value>, name: &str) -> Result<String, McpError> {
