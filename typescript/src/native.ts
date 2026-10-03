@@ -39,7 +39,7 @@ export interface NativeCore {
 
 export interface NativeCompressedSession {
   infoJson(): string;
-  close(): void;
+  close(): Promise<void>;
   updateAuthProviderHeadersJson(providerIndex: number, headersJson: string): void;
 }
 

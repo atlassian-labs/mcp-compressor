@@ -5,10 +5,11 @@ import { tmpdir } from "node:os";
 import { Bash } from "just-bash";
 import { dirname, join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   CompressorClient,
+  CompressorProxy,
   compressTools,
   installJustBashCommands,
   interpolateRecord,
@@ -26,6 +27,7 @@ import {
 import { adoptNativeSession } from "../src/native_client.js";
 
 import {
+  CompressedSession,
   compressToolListing,
   formatToolSchemaResponse,
   clearOAuthCredentials,
@@ -38,6 +40,7 @@ import {
   parseToolArgv,
   type ToolSpec,
 } from "../src/rust_core.js";
+import type { NativeCompressedSession } from "../src/native.js";
 
 function invokeProxy(
   bridgeUrl: string,
@@ -92,11 +95,57 @@ function fixturePath(name: string): string {
   return join(process.cwd(), "..", "crates", "mcp-compressor-core", "tests", "fixtures", name);
 }
 
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitUntil(
+  predicate: () => boolean | Promise<boolean>,
+  message: string,
+  timeoutMs = 5_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(message);
+}
+
+async function bridgeIsReachable(bridgeUrl: string): Promise<boolean> {
+  try {
+    return (await fetch(`${bridgeUrl}/health`)).ok;
+  } catch {
+    return false;
+  }
+}
+
 function alphaBackend() {
   return {
     name: "alpha",
     commandOrUrl: process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python"),
     args: [fixturePath("alpha_server.py")],
+  };
+}
+
+function nativeSession(close: () => Promise<void>): NativeCompressedSession {
+  return {
+    infoJson: () =>
+      JSON.stringify({
+        bridge_url: "",
+        token: "",
+        frontend_tools: [],
+        backend_tools: [],
+        backend_tools_by_server: [],
+        just_bash_providers: [],
+      }),
+    close,
+    updateAuthProviderHeadersJson: () => {},
   };
 }
 
@@ -262,6 +311,147 @@ const sampleTool: ToolSpec = {
 };
 
 describe("Public TypeScript SDK workflow", () => {
+  it("permits reconnecting after native shutdown reports an error", async () => {
+    const client = new CompressorClient({
+      servers: {
+        alpha: {
+          command: process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python"),
+          args: [fixturePath("alpha_server.py")],
+        },
+      },
+      compressionLevel: "max",
+    });
+    const proxy = await client.connect();
+    const close = CompressedSession.prototype.close;
+    const failure = new Error("native shutdown failed after releasing resources");
+    const closeSpy = vi
+      .spyOn(CompressedSession.prototype, "close")
+      .mockImplementationOnce(async function (this: CompressedSession) {
+        await close.call(this);
+        throw failure;
+      });
+    try {
+      await expect(client.close()).rejects.toThrow(failure);
+      closeSpy.mockRestore();
+      const reconnected = await client.connect();
+      expect(reconnected).not.toBe(proxy);
+      await expect(reconnected.invoke("echo", { message: "reconnected" })).resolves.toBe(
+        "alpha:reconnected",
+      );
+    } finally {
+      closeSpy.mockRestore();
+      await client.close();
+      await proxy.close();
+    }
+  });
+
+  it("waits for the same shutdown on repeated session and proxy closes", async () => {
+    let finish!: () => void;
+    const shutdown = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    let calls = 0;
+    const session = new CompressedSession({
+      infoJson: () => "{}",
+      close: () => {
+        calls++;
+        return calls === 1 ? shutdown : Promise.resolve();
+      },
+      updateAuthProviderHeadersJson: () => {},
+    });
+    const proxy = new CompressorProxy(session, null);
+    const first = proxy.close();
+    let finished = false;
+    const second = proxy.close().then(() => {
+      finished = true;
+    });
+    const sessionClose = session.close();
+    try {
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(finished).toBe(false);
+      expect(calls).toBe(1);
+    } finally {
+      finish();
+      await Promise.all([first, second, sessionClose]);
+    }
+  });
+
+  it("releases the native bridge and child when a session closes", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "mcp-compressor-lifecycle-"));
+    const pidFile = join(directory, "lifecycle.pid");
+    const session = await startCompressedSession(
+      { compressionLevel: "max", serverName: "lifecycle" },
+      [
+        {
+          name: "lifecycle",
+          commandOrUrl: process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python"),
+          args: [fixturePath("lifecycle_server.py"), "--pid-file", pidFile],
+        },
+      ],
+    );
+    const info = session.info();
+    const pid = Number.parseInt(readFileSync(pidFile, "utf8"), 10);
+    const childPid = Number.parseInt(
+      readFileSync(join(directory, "lifecycle.child.pid"), "utf8"),
+      10,
+    );
+    try {
+      expect(processExists(pid)).toBe(true);
+      expect(processExists(childPid)).toBe(true);
+      expect(await bridgeIsReachable(info.bridge_url)).toBe(true);
+      await session.close();
+      await session.close();
+      await waitUntil(
+        async () => !(await bridgeIsReachable(info.bridge_url)),
+        "bridge remained reachable after session.close()",
+      );
+      expect(() => session.info()).toThrow(/closed/i);
+      await waitUntil(
+        () => !processExists(pid) && !processExists(childPid),
+        "backend process tree remained alive after session.close()",
+        15_000,
+      );
+    } finally {
+      await session.close();
+      if (processExists(pid)) process.kill(pid, "SIGTERM");
+      if (processExists(childPid)) process.kill(childPid, "SIGTERM");
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("awaits the native shutdown when a proxy closes", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "mcp-compressor-proxy-close-"));
+    const pidFile = join(directory, "lifecycle.pid");
+    const client = new CompressorClient({
+      servers: {
+        lifecycle: {
+          command: process.env.PYTHON ?? join(process.cwd(), "..", ".venv", "bin", "python"),
+          args: [fixturePath("lifecycle_server.py"), "--pid-file", pidFile],
+        },
+      },
+      compressionLevel: "max",
+    });
+
+    const proxy = await client.connect();
+    const pid = Number.parseInt(readFileSync(pidFile, "utf8"), 10);
+    const childPid = Number.parseInt(
+      readFileSync(join(directory, "lifecycle.child.pid"), "utf8"),
+      10,
+    );
+    try {
+      // close() must be awaitable: a fire-and-forget close leaves the backend
+      // process running while the caller believes shutdown finished.
+      await proxy.close();
+      expect(processExists(pid)).toBe(false);
+      expect(processExists(childPid)).toBe(false);
+    } finally {
+      await client.close();
+      if (processExists(pid)) process.kill(pid, "SIGTERM");
+      if (processExists(childPid)) process.kill(childPid, "SIGTERM");
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 30_000);
   it("supports schema lookup with multi-server disambiguation", async () => {
     const client = new CompressorClient({
       servers: {
@@ -1472,7 +1662,7 @@ describe("Rust native core wrapper", () => {
           invokeProxy(info.bridge_url, info.token, "beta_invoke_tool", "multiply", { a: 6, b: 7 }),
         ).resolves.toBe("42");
       } finally {
-        session.close();
+        await session.close();
       }
     } finally {
       if (previousPath === undefined) {
@@ -1627,6 +1817,37 @@ describe("Rust native core wrapper", () => {
       }
       rmSync(configHome, { recursive: true, force: true });
     }
+  });
+
+  it("treats a repeated close as a no-op after native shutdown fails", async () => {
+    const close = vi.fn().mockRejectedValueOnce(new Error("shutdown failed"));
+    const session = new CompressedSession(nativeSession(close));
+
+    await expect(session.close()).rejects.toThrow("shutdown failed");
+    await expect(session.close()).resolves.toBeUndefined();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not log a proxy shutdown error", async () => {
+    const close = vi.fn().mockRejectedValueOnce(new Error("shutdown failed"));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const proxy = new CompressorProxy(new CompressedSession(nativeSession(close)), null);
+
+    try {
+      await expect(proxy.close()).rejects.toThrow("shutdown failed");
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  it("treats a repeated proxy close as a no-op after native shutdown fails", async () => {
+    const close = vi.fn().mockRejectedValueOnce(new Error("shutdown failed"));
+    const proxy = new CompressorProxy(new CompressedSession(nativeSession(close)), null);
+
+    await expect(proxy.close()).rejects.toThrow("shutdown failed");
+    await expect(proxy.close()).resolves.toBeUndefined();
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
   it("parses MCP config through the native addon", () => {

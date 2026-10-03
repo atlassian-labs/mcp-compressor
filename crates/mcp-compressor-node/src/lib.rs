@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 
 use mcp_compressor_core::server::{BackendAuthMode, BackendServerConfig};
 use napi::Error as NapiError;
@@ -180,19 +180,44 @@ pub fn clear_oauth_credentials_json(target: Option<String>) -> napi::Result<Stri
 // codeql[cpp/access-invalid-pointer]: This exported napi class contains only Rust-owned fields.
 // napi-rs generates the JS wrapper; this line does not dereference raw pointers.
 pub struct NativeCompressedSession {
-    inner: FfiCompressedSession,
+    inner: Mutex<Option<FfiCompressedSession>>,
     auth_header_stores: Vec<HeaderStore>,
+}
+
+impl NativeCompressedSession {
+    fn inner(&self) -> napi::Result<MutexGuard<'_, Option<FfiCompressedSession>>> {
+        let inner = self
+            .inner
+            .lock()
+            .map_err(|_| napi_error("Compressed session state lock is poisoned"))?;
+        if inner.is_none() {
+            return Err(napi_error("Compressed session is closed"));
+        }
+        Ok(inner)
+    }
 }
 
 #[napi]
 impl NativeCompressedSession {
     #[napi]
     pub fn info_json(&self) -> napi::Result<String> {
-        serde_json::to_string(&self.inner.info()).map_err(napi_error)
+        let inner = self.inner()?;
+        serde_json::to_string(&inner.as_ref().expect("validated session state").info())
+            .map_err(napi_error)
     }
 
     #[napi]
-    pub fn close(&mut self) {}
+    pub async fn close(&self) -> napi::Result<()> {
+        let inner = self
+            .inner
+            .lock()
+            .map_err(|_| napi_error("Compressed session state lock is poisoned"))?
+            .take();
+        if let Some(inner) = inner {
+            inner.close().await.map_err(napi_error)?;
+        }
+        Ok(())
+    }
 
     #[napi]
     pub fn update_auth_provider_headers_json(
@@ -200,6 +225,7 @@ impl NativeCompressedSession {
         provider_index: u32,
         headers_json: String,
     ) -> napi::Result<()> {
+        drop(self.inner()?);
         let headers = parse_json::<BTreeMap<String, String>>(&headers_json)?;
         let store = self
             .auth_header_stores
@@ -228,7 +254,7 @@ pub async fn start_compressed_session_json(
         .await
         .map_err(napi_error)?;
     Ok(NativeCompressedSession {
-        inner,
+        inner: Mutex::new(Some(inner)),
         auth_header_stores: Vec::new(),
     })
 }
@@ -267,7 +293,7 @@ pub async fn start_compressed_session_with_provider_backends_json(
     .await
     .map_err(napi_error)?;
     Ok(NativeCompressedSession {
-        inner,
+        inner: Mutex::new(Some(inner)),
         auth_header_stores: providers,
     })
 }
@@ -282,7 +308,7 @@ pub async fn start_compressed_session_from_mcp_config_json(
         .await
         .map_err(napi_error)?;
     Ok(NativeCompressedSession {
-        inner,
+        inner: Mutex::new(Some(inner)),
         auth_header_stores: Vec::new(),
     })
 }

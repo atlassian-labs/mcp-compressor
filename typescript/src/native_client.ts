@@ -266,12 +266,15 @@ const proxyCloseCallbacks = new WeakMap<CompressorProxy, () => void>();
  *
  * Internal; not part of the public package surface.
  */
-export function adoptNativeSession<T>(session: { close(): void }, build: () => T): T {
+export function adoptNativeSession<T>(
+  session: { close(): void | Promise<void> },
+  build: () => T,
+): T {
   try {
     return build();
   } catch (error) {
     try {
-      session.close();
+      void Promise.resolve(session.close()).catch(() => {});
     } catch {
       // Closing a session that never became reachable is best effort.
     }
@@ -281,6 +284,7 @@ export function adoptNativeSession<T>(session: { close(): void }, build: () => T
 
 export class CompressorProxy {
   private closed = false;
+  private closing: Promise<void> | null = null;
 
   constructor(
     private readonly session: CompressedSession,
@@ -389,18 +393,17 @@ export class CompressorProxy {
     return (await this.invokeWrapper(wrapper, { tool_name: tool, tool_input: toolInput })).text;
   }
 
-  close(): void {
-    if (this.closed) {
-      return;
+  close(): Promise<void> {
+    if (this.closing) {
+      return this.closing;
     }
     this.closed = true;
-    try {
-      this.session.close();
-    } finally {
-      const onClose = proxyCloseCallbacks.get(this);
-      proxyCloseCallbacks.delete(this);
-      onClose?.();
-    }
+    const onClose = proxyCloseCallbacks.get(this);
+    proxyCloseCallbacks.delete(this);
+    onClose?.();
+    const closing = this.session.close();
+    this.closing = closing.catch(() => {});
+    return closing;
   }
 
   toExecutableTools(): Record<string, ExecutableTool> {
@@ -547,7 +550,7 @@ export class CompressorClient {
     }
     const proxy = this.proxy;
     try {
-      proxy?.close();
+      await proxy?.close();
     } finally {
       if (this.proxy === proxy) {
         this.proxy = null;

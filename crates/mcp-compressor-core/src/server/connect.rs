@@ -5,8 +5,14 @@ use rmcp::service::RunningService;
 use rmcp::transport::auth::{AuthClient, AuthorizationManager};
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::transport::{ConfigureCommandExt, StreamableHttpClientTransport, TokioChildProcess};
-use rmcp::{RoleClient, ServiceExt};
+use rmcp::{Peer, RoleClient, ServiceExt};
 use serde_json::Value;
+
+use process_wrap::tokio::CommandWrap;
+#[cfg(windows)]
+use process_wrap::tokio::JobObject;
+#[cfg(unix)]
+use process_wrap::tokio::ProcessGroup;
 
 use crate::compression::engine::Tool;
 use crate::oauth::{
@@ -20,10 +26,33 @@ use crate::Error;
 #[derive(Debug)]
 pub(crate) struct ConnectedBackend {
     pub public_name: String,
-    pub client: RunningService<RoleClient, ()>,
+    pub client: Peer<RoleClient>,
     pub tools: Vec<Tool>,
     pub resources: Vec<String>,
     pub prompts: Vec<Prompt>,
+    process_id: Option<u32>,
+    transport: BackendTransport,
+    service: tokio::sync::Mutex<RunningService<RoleClient, ()>>,
+}
+
+impl ConnectedBackend {
+    /// Release the backend without consuming it.
+    ///
+    /// Session shutdown must not depend on being the last owner of the
+    /// server: while an HTTP bridge is draining, its connection tasks still
+    /// hold a clone, and an ownership-based shutdown would silently skip the
+    /// release and leak the backend process tree.
+    pub async fn shutdown_shared(&self) -> Result<(), Error> {
+        let mut service = self.service.lock().await;
+        if !service.is_closed() && matches!(self.transport, BackendTransport::Stdio) {
+            terminate_owned_process_tree(self.process_id).await;
+        }
+        service
+            .close()
+            .await
+            .map(|_| ())
+            .map_err(|error| Error::Io(std::io::Error::other(error)))
+    }
 }
 
 pub(crate) async fn connect_backend(
@@ -32,9 +61,11 @@ pub(crate) async fn connect_backend(
     include_tools: &[String],
     exclude_tools: &[String],
 ) -> Result<ConnectedBackend, Error> {
-    let client = match backend.transport {
+    let (client, process_id) = match backend.transport {
         BackendTransport::Stdio => connect_stdio_backend(&backend).await?,
-        BackendTransport::StreamableHttp => connect_streamable_http_backend(&backend).await?,
+        BackendTransport::StreamableHttp => {
+            (connect_streamable_http_backend(&backend).await?, None)
+        }
     };
 
     let rmcp_tools = client
@@ -63,16 +94,19 @@ pub(crate) async fn connect_backend(
 
     Ok(ConnectedBackend {
         public_name,
-        client,
+        client: client.peer().clone(),
         tools,
         resources,
         prompts,
+        process_id,
+        transport: backend.transport,
+        service: tokio::sync::Mutex::new(client),
     })
 }
 
 async fn connect_stdio_backend(
     backend: &BackendServerConfig,
-) -> Result<RunningService<RoleClient, ()>, Error> {
+) -> Result<(RunningService<RoleClient, ()>, Option<u32>), Error> {
     let mut command = tokio::process::Command::new(&backend.command);
     command
         .args(&backend.args)
@@ -86,10 +120,53 @@ async fn connect_stdio_backend(
         command.env(key, value);
     }
 
-    let transport = TokioChildProcess::new(command.configure(|_| {})).map_err(Error::Io)?;
+    let mut command = CommandWrap::from(command.configure(|_| {}));
+    #[cfg(windows)]
+    command.wrap(JobObject);
+    #[cfg(unix)]
+    command.wrap(ProcessGroup::leader());
+    let transport = TokioChildProcess::new(command).map_err(Error::Io)?;
+    let process_id = transport.id();
     ().serve(transport)
         .await
+        .map(|client| (client, process_id))
         .map_err(|error| Error::Config(error.to_string()))
+}
+
+#[cfg(windows)]
+async fn terminate_owned_process_tree(process_id: Option<u32>) {
+    let Some(process_id) = process_id else {
+        return;
+    };
+    let status = tokio::process::Command::new("taskkill")
+        .args(["/PID", &process_id.to_string(), "/T", "/F"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await;
+    match status {
+        Ok(status) if !status.success() => {
+            eprintln!("failed to terminate backend process tree {process_id}: {status}");
+        }
+        Err(error) => {
+            eprintln!("failed to terminate backend process tree {process_id}: {error}");
+        }
+        Ok(_) => {}
+    }
+}
+
+#[cfg(unix)]
+async fn terminate_owned_process_tree(process_id: Option<u32>) {
+    let Some(process_id) = process_id else {
+        return;
+    };
+    let result = unsafe { libc::kill(-(process_id as i32), libc::SIGKILL) };
+    if result != 0 {
+        let error = std::io::Error::last_os_error();
+        if error.raw_os_error() != Some(libc::ESRCH) {
+            eprintln!("failed to terminate backend process group {process_id}: {error}");
+        }
+    }
 }
 
 async fn connect_streamable_http_backend(
@@ -248,6 +325,48 @@ mod tests {
     use std::net::TcpListener;
 
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn shutdown_reaps_backend_before_returning() {
+        let python = std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_string());
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/lifecycle_server.py");
+        let directory = tempfile::tempdir().unwrap();
+        let pid_file = directory.path().join("backend.pid");
+        let backend = connect_backend(
+            BackendServerConfig::new(
+                "lifecycle",
+                python,
+                [
+                    fixture.to_string_lossy().into_owned(),
+                    "--pid-file".to_string(),
+                    pid_file.to_string_lossy().into_owned(),
+                ],
+            ),
+            "lifecycle".to_string(),
+            &[],
+            &[],
+        )
+        .await
+        .unwrap();
+        let pid = backend.process_id.unwrap();
+        let child_pid = std::fs::read_to_string(pid_file.with_extension("child.pid")).unwrap();
+
+        backend.shutdown_shared().await.unwrap();
+        let state_after_close = std::fs::read_to_string(format!("/proc/{pid}/stat"));
+        let child_state_after_close = std::fs::read_to_string(format!("/proc/{child_pid}/stat"));
+        backend.shutdown_shared().await.unwrap();
+
+        assert!(
+            matches!(&state_after_close, Err(error) if error.kind() == std::io::ErrorKind::NotFound),
+            "backend still existed immediately after shutdown: {state_after_close:?}"
+        );
+        assert!(
+            matches!(&child_state_after_close, Err(error) if error.kind() == std::io::ErrorKind::NotFound),
+            "backend child still existed immediately after shutdown: {child_state_after_close:?}"
+        );
+    }
 
     #[tokio::test]
     async fn oauth_http_client_sends_configured_headers() {

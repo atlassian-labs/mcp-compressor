@@ -1276,6 +1276,7 @@ dependencies = [
  "libc",
  "open",
  "predicates",
+ "process-wrap",
  "rand 0.8.6",
  "reqwest",
  "rmcp",

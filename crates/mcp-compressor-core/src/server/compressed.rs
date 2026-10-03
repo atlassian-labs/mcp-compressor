@@ -95,6 +95,27 @@ pub struct CompressedServer {
 }
 
 impl CompressedServer {
+    pub async fn shutdown(self) -> Result<(), Error> {
+        self.shutdown_shared().await
+    }
+
+    /// Release every backend without consuming the server.
+    ///
+    /// SDK sessions are held behind an `Arc` that a draining HTTP bridge can
+    /// still share, so shutdown must not require exclusive ownership.
+    pub async fn shutdown_shared(&self) -> Result<(), Error> {
+        let mut first_error = None;
+        for backend in &self.backends {
+            if let Err(error) = backend.shutdown_shared().await {
+                first_error.get_or_insert(error);
+            }
+        }
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+
     /// Connect to one upstream stdio MCP server.
     pub async fn connect_stdio(
         config: CompressedServerConfig,

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from urllib import error, request
 
@@ -40,6 +43,54 @@ def invoke_proxy(bridge_url: str, token: str, tool: str, tool_name: str, tool_in
     )
     with request.urlopen(req, timeout=10) as response:  # noqa: S310 - local Rust test proxy
         return response.read().decode()
+
+
+def process_exists(pid: int) -> bool:
+    if os.name != "nt":
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        return True
+    open_process = ctypes.windll.kernel32.OpenProcess
+    open_process.restype = ctypes.c_void_p
+    handle = open_process(0x1000, False, pid)
+    if not handle:
+        return False
+    exit_code = ctypes.c_ulong()
+    queried = ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+    ctypes.windll.kernel32.CloseHandle(handle)
+    return bool(queried) and exit_code.value == 259
+
+
+def terminate_process(pid: int) -> None:
+    if os.name != "nt":
+        os.kill(pid, signal.SIGTERM)
+        return
+    open_process = ctypes.windll.kernel32.OpenProcess
+    open_process.restype = ctypes.c_void_p
+    handle = open_process(0x0001, False, pid)
+    if not handle:
+        return
+    ctypes.windll.kernel32.TerminateProcess(handle, 1)
+    ctypes.windll.kernel32.CloseHandle(handle)
+
+
+def wait_until(predicate, message: str, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.02)
+    raise AssertionError(message)
+
+
+def bridge_is_reachable(bridge_url: str) -> bool:
+    try:
+        with request.urlopen(f"{bridge_url}/health", timeout=0.2) as response:  # noqa: S310
+            return response.status == 200
+    except (OSError, error.URLError):
+        return False
 
 
 def sample_tool() -> ToolSpec:
@@ -82,6 +133,46 @@ def test_native_extension_starts_session_and_invokes_backend() -> None:
     )
 
 
+def test_native_session_close_releases_bridge_and_child(tmp_path: Path) -> None:
+    pid_file = tmp_path / "lifecycle.pid"
+    session = start_compressed_session(
+        CompressedSessionConfig(compression_level="max", server_name="lifecycle"),
+        [
+            BackendConfig(
+                name="lifecycle",
+                command_or_url=PYTHON,
+                args=[str(FIXTURES / "lifecycle_server.py"), "--pid-file", str(pid_file)],
+            )
+        ],
+    )
+    info = session.info()
+    pid = int(pid_file.read_text(encoding="utf-8"))
+    child_pid = int(pid_file.with_suffix(".child.pid").read_text(encoding="utf-8"))
+    try:
+        assert process_exists(pid)
+        assert process_exists(child_pid)
+        assert bridge_is_reachable(str(info["bridge_url"]))
+        session.close()
+        session.close()
+        wait_until(
+            lambda: not bridge_is_reachable(str(info["bridge_url"])),
+            "bridge remained reachable after session.close()",
+        )
+        with pytest.raises(ValueError, match="closed"):
+            session.info()
+        wait_until(
+            lambda: not process_exists(pid) and not process_exists(child_pid),
+            "backend process tree remained alive after session.close()",
+            timeout=15.0,
+        )
+    finally:
+        session.close()
+        if process_exists(pid):
+            terminate_process(pid)
+        if process_exists(child_pid):
+            terminate_process(child_pid)
+
+
 def test_high_level_compressor_client_exposes_compressed_tools_and_invocation(monkeypatch) -> None:
     monkeypatch.setenv("MCP_COMPRESSOR_BINARY", os.devnull + "-missing")
     monkeypatch.setenv("PATH", "")
@@ -102,15 +193,20 @@ def test_high_level_compressor_client_exposes_compressed_tools_and_invocation(mo
         assert proxy.invoke("multiply", {"a": 6, "b": 7}, server="beta") == "42"
 
 
-def test_high_level_compressor_client_writes_generated_clients(monkeypatch, tmp_path) -> None:
+def test_high_level_compressor_client_writes_generated_clients(
+    monkeypatch, tmp_path, request: pytest.FixtureRequest
+) -> None:
     monkeypatch.setenv("MCP_COMPRESSOR_BINARY", os.devnull + "-missing")
-    with CompressorClient(
+    client = CompressorClient(
         servers={"alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]}},
         compression_level="max",
-    ) as proxy:
-        cli_paths = proxy.write_client("cli", tmp_path / "bin", name="alpha")
-        python_paths = proxy.write_client("python", tmp_path / "py", name="alpha")
-        ts_paths = proxy.write_client("typescript", tmp_path / "ts", name="alpha")
+    )
+    proxy = client.connect()
+    request.addfinalizer(client.close)
+    request.addfinalizer(proxy.close)
+    cli_paths = proxy.write_client("cli", tmp_path / "bin", name="alpha")
+    python_paths = proxy.write_client("python", tmp_path / "py", name="alpha")
+    ts_paths = proxy.write_client("typescript", tmp_path / "ts", name="alpha")
     cli_artifact_name = "alpha.cmd" if os.name == "nt" else "alpha"
     cli_script = next(path for path in cli_paths if path.name == cli_artifact_name)
     cli_result = subprocess.run(  # noqa: S603 - trusted generated test CLI
