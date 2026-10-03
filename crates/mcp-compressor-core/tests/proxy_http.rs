@@ -2,6 +2,7 @@ mod common;
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::time::Duration;
 
 use mcp_compressor_core::proxy::ToolProxyServer;
 use mcp_compressor_core::server::CompressedServer;
@@ -106,4 +107,49 @@ async fn proxy_exec_dispatches_to_real_backend_with_session_token() {
 
     assert!((200..300).contains(&response.status));
     assert_eq!(response.body.trim(), "alpha:hello");
+}
+
+#[tokio::test(start_paused = true)]
+async fn proxy_exec_surfaces_configured_backend_timeout() {
+    let temp = tempfile::tempdir().unwrap();
+    let ready_file = temp.path().join("ready");
+    let timeout = Duration::from_millis(500);
+    let backend = common::backend("hanging", "hanging_server.py")
+        .with_env([("READY_FILE", ready_file.to_str().unwrap())])
+        .with_timeout(timeout);
+    let compressed = common::drive_with_frozen_time(CompressedServer::connect_stdio(
+        common::max_config(Some("hanging")),
+        backend,
+    ))
+    .await
+    .unwrap();
+    let proxy = ToolProxyServer::start(compressed).await.unwrap();
+    let body = json!({
+        "tool": "hanging_invoke_tool",
+        "input": { "tool_name": "hang", "tool_input": {} }
+    })
+    .to_string();
+
+    let client = reqwest::Client::new();
+    let response = common::expire_after_fixture_ready(
+        client
+            .post(proxy.exec_url())
+            .bearer_auth(proxy.token_value())
+            .header("Content-Type", "application/json")
+            .body(body)
+            .send(),
+        &ready_file,
+        "tools/call",
+        timeout,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(response.status(), 400);
+    let body = common::drive_with_frozen_time(response.text())
+        .await
+        .unwrap();
+    assert!(body.contains("hanging"), "got: {body}");
+    assert!(body.contains("call tool `hang`"), "got: {body}");
+    assert!(body.contains("timed out"), "got: {body}");
 }

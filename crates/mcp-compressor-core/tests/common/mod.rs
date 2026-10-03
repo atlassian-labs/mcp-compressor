@@ -161,3 +161,51 @@ pub fn toonify_config(server_name: impl Into<Option<&'static str>>) -> Compresse
         ..max_config(server_name)
     }
 }
+
+#[allow(dead_code)]
+pub async fn drive_with_frozen_time<F: std::future::Future>(future: F) -> F::Output {
+    tokio::pin!(future);
+    let started = std::time::Instant::now();
+    loop {
+        tokio::select! {
+            biased;
+            result = &mut future => return result,
+            _ = tokio::task::yield_now() => {}
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(60),
+            "fixture did not progress within the wall-clock watchdog"
+        );
+        // Keep Tokio from auto-advancing while an external process starts or exits.
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+#[allow(dead_code)]
+pub async fn expire_after_fixture_ready<F: std::future::Future>(
+    future: F,
+    ready_file: &std::path::Path,
+    operation: &str,
+    timeout: std::time::Duration,
+) -> F::Output {
+    tokio::pin!(future);
+    drive_with_frozen_time(async {
+        loop {
+            tokio::select! {
+                biased;
+                _ = &mut future => panic!("operation completed before fixture reached {operation}"),
+                _ = tokio::task::yield_now() => {}
+            }
+            match std::fs::read_to_string(ready_file) {
+                Ok(value) if value == operation => break,
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => panic!("failed to read fixture readiness: {error}"),
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await;
+    tokio::time::advance(timeout).await;
+    drive_with_frozen_time(future).await
+}

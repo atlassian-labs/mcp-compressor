@@ -17,6 +17,7 @@ base64    = "0.22"
 thiserror  = "1"
 rand       = "0.8"
 tokio      = { version = "1", features = ["signal", "sync", "rt-multi-thread"] }
+tokio-util = "0.7"
 rmcp       = { version = "1.7.0", features = ["client", "server", "transport-child-process", "transport-io", "transport-streamable-http-server", "transport-streamable-http-client-reqwest", "reqwest", "auth"] }
 axum       = "0.8"
 libc       = "0.2"
@@ -33,11 +34,12 @@ tar = "0.4"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 open = "5.3"
 toon-format = { version = "0.4.5", default-features = false }
+process-wrap = { version = "9.1.0", features = ["tokio1"] }
 csv = "1"
 yaml_serde = "0.10"
 [dev-dependencies]
 # async test runtime and macros (#[tokio::test])
-tokio    = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+tokio    = { version = "1", features = ["rt", "rt-multi-thread", "macros", "test-util"] }
 # temporary directories for client_gen file-generation tests
 tempfile = "3"
 # binary e2e contract tests
