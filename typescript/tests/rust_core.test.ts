@@ -367,7 +367,7 @@ describe("Public TypeScript SDK workflow", () => {
 
       const [firstProxy, secondProxy] = await Promise.all([firstConnection, secondConnection]);
       expect(firstProxy).toBe(secondProxy);
-      expect(providerCalls).toBe(2);
+      expect(providerCalls).toBe(1);
       firstProxy.close();
       await client.close();
     } finally {
@@ -438,7 +438,7 @@ describe("Public TypeScript SDK workflow", () => {
 
       failProvider = false;
       const proxy = await client.connect();
-      expect(providerCalls).toBe(3);
+      expect(providerCalls).toBe(2);
       proxy.close();
       await client.close();
     } finally {

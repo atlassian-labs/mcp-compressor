@@ -51,6 +51,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(f"invalid rotating bearer token: {actual}".encode())
             return
+        print(f"AUTH_PROXY_TOKEN_NUMBER={token_number}", file=sys.stderr, flush=True)
         with Handler.lock:
             Handler.counter += 1
             if token_number == Handler.last_token and Handler.counter <= ALLOW_ANY_REPEATS + 1:
@@ -72,7 +73,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 Handler.last_token = token_number
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length) if length else None
-        target = f"{TARGET_URL}{self.path}"
+        target = TARGET_URL if self.path == "/" else f"{TARGET_URL}{self.path}"
         headers = {
             key: value
             for key, value in self.headers.items()

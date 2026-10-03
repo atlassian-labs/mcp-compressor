@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 from typing import Any
 
@@ -21,6 +22,13 @@ def echo(message: str) -> str:
 def add(a: int, b: int) -> int:
     """Add two integers on alpha."""
     return a + b
+
+
+@mcp.tool
+async def slow_echo(message: str, seconds: float = 0.5) -> str:
+    """Echo a message from alpha after a delay."""
+    await asyncio.sleep(seconds)
+    return f"alpha:{message}"
 
 
 @mcp.tool

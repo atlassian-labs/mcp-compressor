@@ -131,7 +131,7 @@ async function normalizeServersWithProviders(
       const backend: ProviderMaterializedBackend = await sdkObjectToNative(
         name,
         config as Record<string, unknown>,
-        { includeProvider: true },
+        { includeProvider: provider === undefined },
       );
       if (provider !== undefined) {
         backend.providerIndex = providers.length;
@@ -285,21 +285,7 @@ export class CompressorProxy {
   constructor(
     private readonly session: CompressedSession,
     private readonly defaultServer: string | null,
-    private readonly authProviders: AuthProvider[] = [],
   ) {}
-
-  private async refreshAuthProviders(): Promise<void> {
-    await Promise.all(
-      this.authProviders.map(async (provider, index) => {
-        const headers = await provider();
-        const materialized: Record<string, string> = {};
-        for (const [key, value] of Object.entries(headers)) {
-          materialized[key] = String(value);
-        }
-        this.session.updateAuthProviderHeaders(index, materialized);
-      }),
-    );
-  }
 
   info(): CompressedSessionInfo {
     return this.session.info();
@@ -346,7 +332,6 @@ export class CompressorProxy {
     if (this.closed) {
       throw new Error("Compressor proxy is closed");
     }
-    await this.refreshAuthProviders();
     const response = await fetch(`${this.bridgeUrl}/exec`, {
       method: "POST",
       headers: {
@@ -511,7 +496,7 @@ export class CompressorClient {
             )
           : await startCompressedSession(config, normalized.backends);
     const proxy = adoptNativeSession(session, () => {
-      const adopted = new CompressorProxy(session, this.defaultServer(), this.authProviders);
+      const adopted = new CompressorProxy(session, this.defaultServer());
       proxyCloseCallbacks.set(adopted, () => {
         if (this.proxy === adopted) {
           this.proxy = null;

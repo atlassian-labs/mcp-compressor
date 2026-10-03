@@ -1,12 +1,23 @@
 mod common;
 
-use std::{io, net::Shutdown, net::TcpListener, process::Command, thread, time::Duration};
+use std::{
+    io,
+    net::Shutdown,
+    net::TcpListener,
+    process::Command,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    thread,
+    time::{Duration, Instant},
+};
 
 use mcp_compressor_core::client_gen::cli::CliGenerator;
 use mcp_compressor_core::client_gen::python::PythonGenerator;
 use mcp_compressor_core::client_gen::typescript::TypeScriptGenerator;
 use mcp_compressor_core::client_gen::{ClientGenerator, GeneratorConfig};
-use mcp_compressor_core::proxy::{RunningToolProxy, ToolProxyServer};
+use mcp_compressor_core::proxy::{BeforeExecHook, RunningToolProxy, ToolProxyServer};
 use mcp_compressor_core::server::CompressedServer;
 
 async fn real_backend_tools() -> Vec<mcp_compressor_core::compression::engine::Tool> {
@@ -50,23 +61,79 @@ async fn running_proxy_config(output_dir: &std::path::Path) -> (GeneratorConfig,
 
 fn generated_script_output(script: &std::path::Path, args: &[&str]) -> std::process::Output {
     let program = std::path::PathBuf::from(generated_script_command(script).get_program());
-    let mut last_error = None;
-    for attempt in 0..5 {
-        match Command::new(&program).args(args).output() {
-            Ok(output) => return output,
-            Err(error) if error.raw_os_error() == Some(26) && attempt < 4 => {
-                last_error = Some(error);
-                thread::sleep(Duration::from_millis(25 * (attempt + 1) as u64));
+    retry_text_file_busy(
+        || Command::new(&program).args(args).output(),
+        Duration::from_secs(5),
+    )
+    .unwrap_or_else(|error| panic!("failed to execute {}: {error}", program.display()))
+}
+
+fn retry_text_file_busy<T>(
+    mut operation: impl FnMut() -> io::Result<T>,
+    timeout: Duration,
+) -> io::Result<T> {
+    let started = Instant::now();
+    loop {
+        match operation() {
+            Err(error) if error.raw_os_error() == Some(26) => {
+                let remaining = timeout.saturating_sub(started.elapsed());
+                if remaining.is_zero() {
+                    return Err(error);
+                }
+                thread::sleep(Duration::from_millis(25).min(remaining));
             }
-            Err(error) => panic!("failed to execute {}: {error}", program.display()),
+            result => return result,
         }
     }
-    let error =
-        last_error.unwrap_or_else(|| io::Error::other("unknown generated script execution error"));
-    panic!(
-        "failed to execute {} after retrying ETXTBSY: {error}",
-        program.display()
+}
+
+#[test]
+fn text_file_busy_retry_recovers_after_more_than_five_launch_attempts() {
+    let mut attempts = 0;
+    let result = retry_text_file_busy(
+        || {
+            attempts += 1;
+            if attempts <= 6 {
+                Err(io::Error::from_raw_os_error(26))
+            } else {
+                Ok("launched")
+            }
+        },
+        Duration::from_secs(5),
     );
+
+    assert_eq!(result.unwrap(), "launched");
+    assert_eq!(attempts, 7);
+}
+
+#[test]
+fn text_file_busy_retry_stops_when_the_deadline_is_exhausted() {
+    let mut attempts = 0;
+    let result = retry_text_file_busy(
+        || {
+            attempts += 1;
+            Err::<(), _>(io::Error::from_raw_os_error(26))
+        },
+        Duration::ZERO,
+    );
+
+    assert_eq!(result.unwrap_err().raw_os_error(), Some(26));
+    assert_eq!(attempts, 1);
+}
+
+#[test]
+fn text_file_busy_retry_does_not_retry_other_launch_errors() {
+    let mut attempts = 0;
+    let result = retry_text_file_busy(
+        || {
+            attempts += 1;
+            Err::<(), _>(io::Error::from(io::ErrorKind::PermissionDenied))
+        },
+        Duration::from_secs(5),
+    );
+
+    assert_eq!(result.unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(attempts, 1);
 }
 
 fn generated_script_command(script: &std::path::Path) -> Command {
@@ -305,6 +372,53 @@ async fn generated_cli_script_invokes_real_proxy_and_backend() {
         String::from_utf8_lossy(&output.stdout).trim(),
         "alpha:hello"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn generated_cli_request_runs_before_exec_hook_once() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let compressed = CompressedServer::connect_stdio(
+        common::max_config(Some("alpha")),
+        common::backend("alpha", "alpha_server.py"),
+    )
+    .await
+    .unwrap();
+    let hook_calls = Arc::new(AtomicUsize::new(0));
+    let hook_calls_for_request = Arc::clone(&hook_calls);
+    let before_exec: BeforeExecHook = Arc::new(move || {
+        let hook_calls = Arc::clone(&hook_calls_for_request);
+        Box::pin(async move {
+            hook_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        })
+    });
+    let proxy = ToolProxyServer::start_with_before_exec(compressed, before_exec)
+        .await
+        .unwrap();
+    let config = GeneratorConfig {
+        cli_name: "alpha".to_string(),
+        bridge_url: proxy.bridge_url().to_string(),
+        token: proxy.token_value().to_string(),
+        tools: real_backend_tools().await,
+        session_pid: std::process::id(),
+        output_dir: tempdir.path().to_path_buf(),
+        extra_cli_bridges: Vec::new(),
+    };
+    let paths = CliGenerator.generate(&config).unwrap();
+    let artifact_name = if cfg!(windows) { "alpha.cmd" } else { "alpha" };
+    let script = paths
+        .iter()
+        .find(|path| path.file_name().unwrap() == artifact_name)
+        .unwrap();
+
+    let output = generated_script_output(script, &["echo", "--message", "hooked"]);
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

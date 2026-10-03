@@ -30,6 +30,7 @@ export interface NativeCore {
     configJson: string,
     backendsJson: string,
     providersJson: string,
+    refreshProviders: () => Promise<string>,
   ): Promise<NativeCompressedSession>;
   startCompressedSessionFromMcpConfigJson(
     configJson: string,

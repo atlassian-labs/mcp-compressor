@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 
 use mcp_compressor_core::server::{BackendAuthMode, BackendServerConfig};
+use napi::bindgen_prelude::Promise;
+use napi::threadsafe_function::ThreadsafeFunction;
 use napi::Error as NapiError;
 use napi_derive::napi;
 use serde::Deserialize;
@@ -37,6 +39,10 @@ struct ProviderBackendConfig {
 }
 
 type HeaderStore = Arc<RwLock<BTreeMap<String, String>>>;
+/// Weak (`Weak = true`) so the refresh callback does not keep the Node event
+/// loop alive: a strong reference makes `node` hang forever after the caller
+/// is done with the session.
+type RefreshProviders = ThreadsafeFunction<(), Promise<String>, (), napi::Status, false, true>;
 
 fn headers_from_store(
     store: HeaderStore,
@@ -47,6 +53,10 @@ fn headers_from_store(
         .map_err(|error| {
             mcp_compressor_core::Error::Config(format!("auth header store poisoned: {error}"))
         })
+}
+
+fn auth_refresh_error() -> mcp_compressor_core::Error {
+    mcp_compressor_core::Error::Config("auth provider refresh failed".to_string())
 }
 
 #[napi]
@@ -238,6 +248,7 @@ pub async fn start_compressed_session_with_provider_backends_json(
     config_json: String,
     backends_json: String,
     providers_json: String,
+    refresh_providers: RefreshProviders,
 ) -> napi::Result<NativeCompressedSession> {
     let config = parse_json::<FfiCompressedSessionConfig>(&config_json)?;
     let backends = parse_json::<Vec<ProviderBackendConfig>>(&backends_json)?;
@@ -260,12 +271,41 @@ pub async fn start_compressed_session_with_provider_backends_json(
         }
         backend_configs.push(config);
     }
-    let inner = mcp_compressor_core::ffi::start_compressed_session_with_backend_configs(
-        config,
-        backend_configs,
-    )
-    .await
-    .map_err(napi_error)?;
+    let refresh_providers = Arc::new(refresh_providers);
+    let stores_for_refresh = providers.clone();
+    let before_exec: mcp_compressor_core::proxy::BeforeExecHook = Arc::new(move || {
+        let refresh_providers = Arc::clone(&refresh_providers);
+        let stores = stores_for_refresh.clone();
+        Box::pin(async move {
+            let refreshed_json = refresh_providers
+                .call_async(())
+                .await
+                .map_err(|_| auth_refresh_error())?
+                .await
+                .map_err(|_| auth_refresh_error())?;
+            let refreshed = serde_json::from_str::<Vec<BTreeMap<String, String>>>(&refreshed_json)
+                .map_err(|_| auth_refresh_error())?;
+            if refreshed.len() != stores.len() {
+                return Err(auth_refresh_error());
+            }
+            let mut guards = stores
+                .iter()
+                .map(|store| store.write().map_err(|_| auth_refresh_error()))
+                .collect::<Result<Vec<_>, _>>()?;
+            for (guard, headers) in guards.iter_mut().zip(refreshed) {
+                **guard = headers;
+            }
+            Ok(())
+        })
+    });
+    let inner =
+        mcp_compressor_core::ffi::start_compressed_session_with_backend_configs_and_before_exec(
+            config,
+            backend_configs,
+            Some(before_exec),
+        )
+        .await
+        .map_err(napi_error)?;
     Ok(NativeCompressedSession {
         inner,
         auth_header_stores: providers,

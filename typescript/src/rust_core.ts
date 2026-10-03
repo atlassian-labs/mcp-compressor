@@ -206,6 +206,19 @@ export interface ProviderBackendConfig extends BackendConfig {
   providerIndex?: number;
 }
 
+async function materializeAuthProviderHeaders(
+  providers: Array<() => Record<string, string> | Promise<Record<string, string>>>,
+): Promise<Array<Record<string, string>>> {
+  return Promise.all(
+    providers.map(async (provider) => {
+      const headers = await provider();
+      return Object.fromEntries(
+        Object.entries(headers).map(([key, value]) => [key, String(value)]),
+      );
+    }),
+  );
+}
+
 export async function startCompressedSessionWithAuthProviders(
   config: CompressedSessionConfig,
   backends: ProviderBackendConfig[],
@@ -215,11 +228,12 @@ export async function startCompressedSessionWithAuthProviders(
     ...toNativeBackendConfig(backend),
     provider_index: backend.providerIndex ?? null,
   }));
-  const initialHeaders = await Promise.all(providers.map((provider) => provider()));
+  const initialHeaders = await materializeAuthProviderHeaders(providers);
   const session = await loadNativeCore().startCompressedSessionWithProviderBackendsJson(
     stringify(toNativeSessionConfig(config)),
     stringify(nativeBackends),
     stringify(initialHeaders),
+    async () => stringify(await materializeAuthProviderHeaders(providers)),
   );
   return new CompressedSession(session);
 }

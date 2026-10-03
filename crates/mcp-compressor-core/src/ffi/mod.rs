@@ -36,5 +36,6 @@ pub use pure::{
 };
 pub use session::{
     normalize_sdk_servers, start_compressed_session, start_compressed_session_from_mcp_config,
-    start_compressed_session_with_backend_configs, FfiCompressedSession,
+    start_compressed_session_with_backend_configs,
+    start_compressed_session_with_backend_configs_and_before_exec, FfiCompressedSession,
 };
