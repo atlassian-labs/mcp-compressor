@@ -491,3 +491,19 @@ def test_atlassian_typescript_native_session() -> None:
     payload: dict[str, Any] = json.loads(result.stdout)
     assert payload["bridge"].startswith("http://127.0.0.1:")
     assert payload["tools"] == ["atlassian_atlassian_get_tool_schema", "atlassian_atlassian_invoke_tool"]
+
+
+@pytest.mark.asyncio
+async def test_zz_diag_dump_live_catalog() -> None:
+    """TEMPORARY: dump the live Atlassian MCP catalog (direct, no compressor)."""
+    from fastmcp.client.transports import StreamableHttpTransport
+
+    transport = StreamableHttpTransport(ATLASSIAN_URL, headers={"Authorization": f"Basic {_token()}"})
+    async with Client(transport) as client:
+        tools = await client.list_tools()
+        lines = []
+        for tool in tools:
+            schema = tool.inputSchema or {}
+            ann = tool.annotations.model_dump(exclude_none=True) if tool.annotations else {}
+            lines.append(f"{tool.name} | required={schema.get('required', [])} | ann={ann}")
+        raise AssertionError("LIVE CATALOG (" + str(len(tools)) + "):\n" + "\n".join(lines))
