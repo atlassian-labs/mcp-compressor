@@ -1,8 +1,24 @@
 mod common;
 
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+use std::time::Duration;
+
+use axum::{
+    Json, Router,
+    body::Body,
+    extract::State,
+    http::{Response, StatusCode},
+    response::IntoResponse,
+    routing::post,
+};
 use mcp_compressor_core::{
-    server::{registration::FrontendServer, CompressedServer},
     Error,
+    server::{
+        BackendAuthMode, BackendServerConfig, CompressedServer, registration::FrontendServer,
+    },
 };
 use rmcp::{
     model::{CallToolRequestParams, MetaObject, RequestMetaObject},
@@ -10,6 +26,108 @@ use rmcp::{
     ServiceExt,
 };
 use serde_json::json;
+use tokio::io::AsyncReadExt;
+use tokio::task::JoinSet;
+
+#[derive(Clone)]
+struct HangingHttpState {
+    call_started: Arc<AtomicBool>,
+    call_dropped: Arc<AtomicBool>,
+    call_cancelled: Arc<AtomicBool>,
+}
+
+struct MarkDropped(Arc<AtomicBool>);
+
+impl Drop for MarkDropped {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+async fn hanging_http_mcp(
+    State(state): State<HangingHttpState>,
+    Json(request): Json<serde_json::Value>,
+) -> Response<Body> {
+    let method = request["method"].as_str().unwrap_or_default();
+    let id = request.get("id").cloned().unwrap_or(json!(null));
+    match method {
+        "initialize" => Json(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "protocolVersion": request["params"]["protocolVersion"],
+                "capabilities": { "tools": {} },
+                "serverInfo": { "name": "hanging-http", "version": "1.0.0" }
+            }
+        }))
+        .into_response(),
+        "notifications/initialized" => StatusCode::ACCEPTED.into_response(),
+        "notifications/cancelled" => {
+            state.call_cancelled.store(true, Ordering::SeqCst);
+            StatusCode::ACCEPTED.into_response()
+        }
+        "tools/list" => Json(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "tools": [{
+                    "name": "hang",
+                    "description": "Never responds",
+                    "inputSchema": { "type": "object", "properties": {} }
+                }]
+            }
+        }))
+        .into_response(),
+        "tools/call" => {
+            state.call_started.store(true, Ordering::SeqCst);
+            let _mark_dropped = MarkDropped(state.call_dropped.clone());
+            std::future::pending().await
+        }
+        _ => Json(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "error": { "code": -32601, "message": "Method not found" }
+        }))
+        .into_response(),
+    }
+}
+
+fn assert_backend_timeout(error: &Error, backend: &str, operation: &str) {
+    let Error::Config(message) = error else {
+        panic!("expected a backend timeout configuration error, got: {error}");
+    };
+    assert_eq!(
+        message,
+        &format!(
+            "backend {backend:?} timed out during {operation} after {:?}",
+            Duration::from_millis(500)
+        )
+    );
+}
+
+#[cfg(unix)]
+fn process_exists(pid: u32) -> bool {
+    unsafe { libc::kill(pid as i32, 0) == 0 }
+}
+
+#[cfg(windows)]
+fn process_exists(pid: u32) -> bool {
+    use std::ffi::c_void;
+
+    unsafe extern "system" {
+        fn OpenProcess(access: u32, inherit_handle: i32, process_id: u32) -> *mut c_void;
+        fn CloseHandle(handle: *mut c_void) -> i32;
+    }
+
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if handle.is_null() {
+        false
+    } else {
+        unsafe { CloseHandle(handle) };
+        true
+    }
+}
 
 #[tokio::test]
 async fn mcp_frontend_preserves_complete_backend_tool_results() {
@@ -291,12 +409,16 @@ async fn single_stdio_backend_schema_listing_invocation_resources_and_prompts_wo
     assert_eq!(add, "7");
 
     let resources = server.list_resources().await.unwrap();
-    assert!(resources
-        .iter()
-        .any(|uri| uri == "fixture://alpha-resource"));
-    assert!(resources
-        .iter()
-        .any(|uri| uri == "compressor://alpha/uncompressed-tools"));
+    assert!(
+        resources
+            .iter()
+            .any(|uri| uri == "fixture://alpha-resource")
+    );
+    assert!(
+        resources
+            .iter()
+            .any(|uri| uri == "compressor://alpha/uncompressed-tools")
+    );
     assert_eq!(
         server
             .read_resource("fixture://alpha-resource")
@@ -410,4 +532,346 @@ async fn mcp_frontend_identifies_itself_as_mcp_compressor() {
 
     client.close().await.unwrap();
     server_task.await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn configured_timeout_bounds_connection_and_cleans_up_child() {
+    let temp = tempfile::tempdir().unwrap();
+    let pid_file = temp.path().join("hanging.pid");
+    let ready_file = temp.path().join("ready");
+    let timeout = Duration::from_millis(500);
+    let backend = common::backend("hanging", "hanging_server.py")
+        .with_env([
+            ("HANG_OPERATION", "connection"),
+            ("PID_FILE", pid_file.to_str().unwrap()),
+            ("READY_FILE", ready_file.to_str().unwrap()),
+            ("STARTUP_DELAY", "0.6"),
+        ])
+        .with_timeout(timeout);
+
+    let result = common::expire_after_fixture_ready(
+        CompressedServer::connect_stdio(common::max_config(Some("hanging")), backend),
+        &ready_file,
+        "connection",
+        timeout,
+    )
+    .await;
+    let error = result.unwrap_err();
+    assert_backend_timeout(&error, "hanging", "connection");
+
+    let pid = std::fs::read_to_string(pid_file)
+        .unwrap()
+        .parse::<u32>()
+        .unwrap();
+    common::drive_with_frozen_time(async {
+        while process_exists(pid) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn zero_backend_timeout_is_rejected_before_spawn() {
+    let backend = common::backend("hanging", "hanging_server.py").with_timeout(Duration::ZERO);
+
+    let error = CompressedServer::connect_stdio(common::max_config(Some("hanging")), backend)
+        .await
+        .unwrap_err();
+
+    let Error::Validation(message) = error else {
+        panic!("expected validation error, got {error:?}");
+    };
+    assert!(message.contains("hanging"), "got: {message}");
+    assert!(message.contains("greater than zero"), "got: {message}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn single_mcp_config_timeout_names_configured_backend() {
+    let temp = tempfile::tempdir().unwrap();
+    let ready_file = temp.path().join("ready");
+    let config = json!({
+        "mcpServers": {
+            "slow": {
+                "command": common::python_command(),
+                "args": [
+                    common::fixture_path("hanging_server.py"),
+                    "--timeout",
+                    "0.5"
+                ],
+                "env": {
+                    "HANG_OPERATION": "connection",
+                    "READY_FILE": ready_file
+                }
+            }
+        }
+    })
+    .to_string();
+
+    let result = common::expire_after_fixture_ready(
+        CompressedServer::connect_mcp_config_json(common::max_config(None), &config),
+        &ready_file,
+        "connection",
+        Duration::from_millis(500),
+    )
+    .await;
+    let error = result.unwrap_err();
+    assert_backend_timeout(&error, "slow", "connection");
+}
+
+#[tokio::test]
+async fn remote_http_connection_timeout_closes_in_flight_request() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let mut remote = JoinSet::new();
+    remote.spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = Vec::new();
+        stream.read_to_end(&mut request).await.unwrap();
+        request
+    });
+    let backend = BackendServerConfig::new(
+        "remote",
+        format!("http://{address}/mcp"),
+        Vec::<String>::new(),
+    )
+    .with_auth_mode(BackendAuthMode::ExplicitHeaders)
+    .with_timeout(Duration::from_millis(500));
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(5),
+        CompressedServer::connect_stdio(common::max_config(Some("remote")), backend),
+    )
+    .await
+    .expect("configured timeout did not bound remote connection");
+    let error = result.unwrap_err();
+    assert_backend_timeout(&error, "remote", "connection");
+
+    let request = tokio::time::timeout(Duration::from_secs(2), remote.join_next())
+        .await
+        .expect("timed-out HTTP request remained connected")
+        .unwrap()
+        .unwrap();
+    assert!(!request.is_empty());
+}
+
+#[tokio::test]
+async fn remote_http_tool_timeout_is_hard_and_releases_in_flight_request() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let state = HangingHttpState {
+        call_started: Arc::new(AtomicBool::new(false)),
+        call_dropped: Arc::new(AtomicBool::new(false)),
+        call_cancelled: Arc::new(AtomicBool::new(false)),
+    };
+    let app = Router::new()
+        .route("/mcp", post(hanging_http_mcp))
+        .with_state(state.clone());
+    let mut remote = JoinSet::new();
+    remote.spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let backend = BackendServerConfig::new(
+        "remote",
+        format!("http://{address}/mcp"),
+        Vec::<String>::new(),
+    )
+    .with_auth_mode(BackendAuthMode::ExplicitHeaders)
+    .with_timeout(Duration::from_millis(500));
+    let server = CompressedServer::connect_stdio(common::max_config(Some("remote")), backend)
+        .await
+        .unwrap();
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(2),
+        server.invoke_tool("remote_invoke_tool", "hang", json!({})),
+    )
+    .await
+    .expect("configured timeout did not hard-bound remote tool request");
+    let error = result.unwrap_err();
+    assert_backend_timeout(&error, "remote", "call tool `hang`");
+    assert!(state.call_started.load(Ordering::SeqCst));
+
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while !state.call_dropped.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("timed-out HTTP tool request remained active");
+    drop(server);
+    remote.shutdown().await;
+}
+
+#[tokio::test]
+async fn remote_http_tool_timeout_cancels_the_backend_request() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let state = HangingHttpState {
+        call_started: Arc::new(AtomicBool::new(false)),
+        call_dropped: Arc::new(AtomicBool::new(false)),
+        call_cancelled: Arc::new(AtomicBool::new(false)),
+    };
+    let app = Router::new()
+        .route("/mcp", post(hanging_http_mcp))
+        .with_state(state.clone());
+    let mut remote = JoinSet::new();
+    remote.spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let backend = BackendServerConfig::new(
+        "remote",
+        format!("http://{address}/mcp"),
+        Vec::<String>::new(),
+    )
+    .with_auth_mode(BackendAuthMode::ExplicitHeaders)
+    .with_timeout(Duration::from_millis(500));
+    let server = CompressedServer::connect_stdio(common::max_config(Some("remote")), backend)
+        .await
+        .unwrap();
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(2),
+        server.invoke_tool("remote_invoke_tool", "hang", json!({})),
+    )
+    .await
+    .expect("configured timeout did not hard-bound remote tool request");
+    let error = result.unwrap_err();
+    assert_backend_timeout(&error, "remote", "call tool `hang`");
+    assert!(state.call_started.load(Ordering::SeqCst));
+
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !state.call_cancelled.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("timed-out HTTP tool request never sent notifications/cancelled");
+    drop(server);
+    remote.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn configured_timeout_bounds_tool_discovery() {
+    let temp = tempfile::tempdir().unwrap();
+    let ready_file = temp.path().join("ready");
+    let timeout = Duration::from_millis(500);
+    let backend = common::backend("hanging", "hanging_server.py")
+        .with_env([
+            ("HANG_OPERATION", "discovery"),
+            ("READY_FILE", ready_file.to_str().unwrap()),
+        ])
+        .with_timeout(timeout);
+
+    let result = common::expire_after_fixture_ready(
+        CompressedServer::connect_stdio(common::max_config(Some("hanging")), backend),
+        &ready_file,
+        "discovery",
+        timeout,
+    )
+    .await;
+    let error = result.unwrap_err();
+    assert_backend_timeout(&error, "hanging", "list tools");
+}
+
+#[tokio::test(start_paused = true)]
+async fn configured_timeout_bounds_resource_discovery() {
+    let temp = tempfile::tempdir().unwrap();
+    let ready_file = temp.path().join("ready");
+    let timeout = Duration::from_millis(500);
+    let backend = common::backend("hanging", "hanging_server.py")
+        .with_env([
+            ("HANG_OPERATION", "resource-discovery"),
+            ("READY_FILE", ready_file.to_str().unwrap()),
+        ])
+        .with_timeout(timeout);
+
+    let result = common::expire_after_fixture_ready(
+        CompressedServer::connect_stdio(common::max_config(Some("hanging")), backend),
+        &ready_file,
+        "resource-discovery",
+        timeout,
+    )
+    .await;
+    let error = result.unwrap_err();
+    assert_backend_timeout(&error, "hanging", "list resources");
+}
+
+#[tokio::test(start_paused = true)]
+async fn configured_timeout_bounds_prompt_discovery() {
+    let temp = tempfile::tempdir().unwrap();
+    let ready_file = temp.path().join("ready");
+    let timeout = Duration::from_millis(500);
+    let backend = common::backend("hanging", "hanging_server.py")
+        .with_env([
+            ("HANG_OPERATION", "prompt-discovery"),
+            ("READY_FILE", ready_file.to_str().unwrap()),
+        ])
+        .with_timeout(timeout);
+
+    let result = common::expire_after_fixture_ready(
+        CompressedServer::connect_stdio(common::max_config(Some("hanging")), backend),
+        &ready_file,
+        "prompt-discovery",
+        timeout,
+    )
+    .await;
+    let error = result.unwrap_err();
+    assert_backend_timeout(&error, "hanging", "list prompts");
+}
+
+#[tokio::test(start_paused = true)]
+async fn configured_timeout_bounds_backend_tool_requests() {
+    let temp = tempfile::tempdir().unwrap();
+    let ready_file = temp.path().join("ready");
+    let timeout = Duration::from_millis(500);
+    let backend = common::backend("hanging", "hanging_server.py")
+        .with_env([("READY_FILE", ready_file.to_str().unwrap())])
+        .with_timeout(timeout);
+    let server = common::drive_with_frozen_time(CompressedServer::connect_stdio(
+        common::max_config(Some("hanging")),
+        backend,
+    ))
+    .await
+    .unwrap();
+
+    assert_eq!(
+        common::drive_with_frozen_time(server.invoke_tool(
+            "hanging_invoke_tool",
+            "fast",
+            json!({})
+        ))
+        .await
+        .unwrap(),
+        "fast"
+    );
+    let result = common::expire_after_fixture_ready(
+        server.invoke_tool("hanging_invoke_tool", "hang", json!({})),
+        &ready_file,
+        "tools/call",
+        timeout,
+    )
+    .await;
+    let error = result.unwrap_err();
+    assert_backend_timeout(&error, "hanging", "call tool `hang`");
+
+    let result = common::expire_after_fixture_ready(
+        server.read_resource("fixture://hanging-resource"),
+        &ready_file,
+        "resources/read",
+        timeout,
+    )
+    .await;
+    let error = result.unwrap_err();
+    assert_backend_timeout(
+        &error,
+        "hanging",
+        "read resource `fixture://hanging-resource`",
+    );
+
+    let result = common::expire_after_fixture_ready(
+        server.get_prompt("hanging_prompt", None),
+        &ready_file,
+        "prompts/get",
+        timeout,
+    )
+    .await;
+    let error = result.unwrap_err();
+    assert_backend_timeout(&error, "hanging", "get prompt `hanging_prompt`");
 }

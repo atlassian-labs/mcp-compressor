@@ -1293,6 +1293,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "tokio-util",
  "toon-format",
  "yaml_serde",
  "zip",

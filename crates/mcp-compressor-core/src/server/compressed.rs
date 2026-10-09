@@ -5,23 +5,26 @@
 //! language bindings, and the standalone Rust CLI.
 
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, ContentBlock, GetPromptRequestParams, GetPromptResult,
-    ReadResourceRequestParams, RequestMetaObject, ResourceContents,
+    CallToolRequest, CallToolRequestParams, CallToolResult, ClientRequest, ContentBlock,
+    GetPromptRequest, GetPromptRequestParams, GetPromptResult, ReadResourceRequest,
+    ReadResourceRequestParams, RequestMetaObject, ResourceContents, ServerResult,
 };
+use rmcp::service::PeerRequestOptions;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio::time::Instant;
 
 pub(crate) const INVOKE_TOOL_INPUT_SCHEMA_DESCRIPTION: &str = concat!(
     "JSON object matching the selected backend tool's input schema. ",
     "Use get_tool_schema for the selected tool_name before invoking if required fields are unknown."
 );
 
-use crate::compression::engine::{CompressionEngine, Tool};
+use crate::Error;
 use crate::compression::CompressionLevel;
+use crate::compression::engine::{CompressionEngine, Tool};
 use crate::config::topology::MCPConfig;
 use crate::server::backend::BackendServerConfig;
-use crate::server::connect::{connect_backend, ConnectedBackend};
-use crate::Error;
+use crate::server::connect::{ConnectedBackend, backend_operation, connect_backend, timeout_error};
 
 /// Frontend tool-surface mode exposed by the proxy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -371,11 +374,22 @@ impl CompressedServer {
             .iter()
             .find(|backend| backend.resources.iter().any(|resource| resource == uri))
             .ok_or_else(|| Error::ToolNotFound(uri.to_string()))?;
-        let result = backend
-            .client
-            .read_resource(ReadResourceRequestParams::new(uri))
-            .await
-            .map_err(|error| Error::Config(error.to_string()))?;
+        let result = match send_backend_request(
+            backend,
+            format!("read resource `{uri}`"),
+            ClientRequest::ReadResourceRequest(ReadResourceRequest::new(
+                ReadResourceRequestParams::new(uri),
+            )),
+        )
+        .await?
+        {
+            ServerResult::ReadResourceResult(result) => result,
+            _ => {
+                return Err(Error::Config(
+                    "unexpected read resource response".to_string(),
+                ));
+            }
+        };
         resource_contents_to_string(result.contents)
     }
 
@@ -403,11 +417,16 @@ impl CompressedServer {
         if let Some(arguments) = arguments {
             request = request.with_arguments(arguments);
         }
-        backend
-            .client
-            .get_prompt(request)
-            .await
-            .map_err(|error| Error::Config(error.to_string()))
+        match send_backend_request(
+            backend,
+            format!("get prompt `{name}`"),
+            ClientRequest::GetPromptRequest(GetPromptRequest::new(request)),
+        )
+        .await?
+        {
+            ServerResult::GetPromptResult(result) => Ok(result),
+            _ => Err(Error::Config("unexpected get prompt response".to_string())),
+        }
     }
 
     /// Return backend tools when the runtime has exactly one backend.
@@ -485,11 +504,16 @@ impl CompressedServer {
         if let Some(arguments) = arguments {
             params = params.with_arguments(arguments);
         }
-        backend
-            .client
-            .call_tool(params)
-            .await
-            .map_err(|error| Error::Config(error.to_string()))
+        match send_backend_request(
+            backend,
+            format!("call tool `{backend_tool_name}`"),
+            ClientRequest::CallToolRequest(CallToolRequest::new(params)),
+        )
+        .await?
+        {
+            ServerResult::CallToolResult(result) => Ok(result),
+            _ => Err(Error::Config("unexpected call tool response".to_string())),
+        }
     }
 
     /// Flatten a tool result for string transports (bridge `/exec`, in-process
@@ -575,6 +599,142 @@ fn backend_request_meta(mut meta: RequestMetaObject) -> RequestMetaObject {
     meta.remove("io.modelcontextprotocol/clientInfo");
     meta.remove("io.modelcontextprotocol/clientCapabilities");
     meta
+}
+
+#[cfg(test)]
+mod request_timeout_tests {
+    use super::*;
+    use futures::FutureExt;
+    use std::time::Duration;
+
+    enum QueueState {
+        FullBeforeSubmission,
+        FullAfterSubmission,
+        Available,
+    }
+
+    #[test]
+    fn stdio_timeout_bounds_submission_to_a_full_rmcp_queue() {
+        assert_request_deadline(QueueState::FullBeforeSubmission);
+    }
+
+    #[test]
+    fn timeout_bounds_cancellation_queue_wait() {
+        assert_request_deadline(QueueState::FullAfterSubmission);
+    }
+
+    #[test]
+    fn timeout_bounds_cancellation_transport_acknowledgement() {
+        assert_request_deadline(QueueState::Available);
+    }
+
+    fn fill_peer_queue(backend: &ConnectedBackend) {
+        loop {
+            let submitted = tokio::task::unconstrained(backend.client.send_cancellable_request(
+                ClientRequest::PingRequest(Default::default()),
+                PeerRequestOptions::default(),
+            ))
+            .now_or_never();
+            match submitted {
+                Some(Ok(_)) => {}
+                Some(Err(error)) => panic!("submission failed before saturation: {error}"),
+                None => break,
+            }
+        }
+    }
+
+    fn assert_request_deadline(queue_state: QueueState) {
+        let service_runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let caller_runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let (transport, _remote) = tokio::io::duplex(1024);
+        let client = {
+            let _entered = service_runtime.enter();
+            rmcp::service::serve_directly((), transport, None)
+        };
+        let backend =
+            ConnectedBackend::for_test("blocked", client, Some(Duration::from_millis(50)));
+        let result = caller_runtime.block_on(async {
+            // The service runtime stays paused to control queue and transport progress.
+            if matches!(queue_state, QueueState::FullBeforeSubmission) {
+                fill_peer_queue(&backend);
+            }
+            let request = send_backend_request(
+                &backend,
+                "ping".into(),
+                ClientRequest::PingRequest(Default::default()),
+            );
+            tokio::pin!(request);
+            assert!(
+                tokio::task::unconstrained(request.as_mut())
+                    .now_or_never()
+                    .is_none()
+            );
+            if matches!(queue_state, QueueState::FullAfterSubmission) {
+                fill_peer_queue(&backend);
+            }
+            tokio::time::timeout(Duration::from_millis(500), request).await
+        });
+        service_runtime.block_on(backend.shutdown_shared()).unwrap();
+        let error = result
+            .expect("request or cancellation ignored the configured deadline")
+            .unwrap_err();
+        assert!(matches!(error, Error::Config(_)), "{error}");
+    }
+}
+
+async fn send_backend_request(
+    backend: &ConnectedBackend,
+    operation: String,
+    request: ClientRequest,
+) -> Result<ServerResult, Error> {
+    // One deadline covers submission and response; cancellation has bounded cleanup grace.
+    let deadline = backend.timeout.map(|timeout| Instant::now() + timeout);
+    let submit = async {
+        let mut options = PeerRequestOptions::default();
+        options.timeout = backend.timeout;
+        backend
+            .client
+            .send_cancellable_request(request, options)
+            .await
+            .map_err(|error| Error::Config(error.to_string()))
+    };
+    let mut handle =
+        backend_operation(backend.timeout, &backend.backend_name, &operation, submit).await?;
+    let response = if let (Some(deadline), Some(timeout)) = (deadline, backend.timeout) {
+        handle.options.timeout = Some(
+            deadline
+                .saturating_duration_since(Instant::now())
+                .min(timeout),
+        );
+        let cancellation_deadline = deadline + std::time::Duration::from_millis(100);
+        match tokio::time::timeout_at(cancellation_deadline, handle.await_response()).await {
+            Ok(response) => response,
+            Err(_) => {
+                eprintln!(
+                    "timed-out backend {} request {operation}: cancellation exceeded 100ms cleanup grace",
+                    backend.backend_name
+                );
+                return Err(timeout_error(&backend.backend_name, &operation, timeout));
+            }
+        }
+    } else {
+        handle.await_response().await
+    };
+    match response {
+        Ok(response) => Ok(response),
+        Err(rmcp::service::ServiceError::Timeout { .. }) => Err(timeout_error(
+            &backend.backend_name,
+            &operation,
+            backend.timeout.unwrap_or_default(),
+        )),
+        Err(error) => Err(Error::Config(error.to_string())),
+    }
 }
 
 fn validate_required_tool_input(tool: &Tool, tool_input: &Value) -> Result<(), Error> {
