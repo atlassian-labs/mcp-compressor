@@ -127,6 +127,7 @@ pub fn config(
         include_tools: Vec::new(),
         exclude_tools: Vec::new(),
         toonify: false,
+        drop_duplicate_structured_content: false,
         transform_mode,
         config_source,
     }
@@ -158,6 +159,7 @@ pub fn mcp_config_json(backends: &[(&str, &str)]) -> String {
 pub fn toonify_config(server_name: impl Into<Option<&'static str>>) -> CompressedServerConfig {
     CompressedServerConfig {
         toonify: true,
+        drop_duplicate_structured_content: false,
         ..max_config(server_name)
     }
 }

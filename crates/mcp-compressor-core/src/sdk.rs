@@ -237,6 +237,7 @@ impl CompressorClient {
                 include_tools: self.builder.include_tools.clone(),
                 exclude_tools: self.builder.exclude_tools.clone(),
                 toonify: self.builder.toonify,
+                drop_duplicate_structured_content: false,
                 transform_mode: self.builder.mode.into(),
                 ..CompressedServerConfig::default()
             },

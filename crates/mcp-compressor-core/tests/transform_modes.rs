@@ -129,6 +129,7 @@ async fn just_bash_mode_exposes_bash_tool_and_per_server_help_tools() {
 async fn toonify_uses_official_toon_encoder_for_json_outputs() {
     let config = CompressedServerConfig {
         toonify: true,
+        drop_duplicate_structured_content: false,
         ..common::config(
             CompressionLevel::Low,
             Some("alpha"),

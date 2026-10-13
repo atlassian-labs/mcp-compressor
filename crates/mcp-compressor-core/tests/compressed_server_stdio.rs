@@ -875,3 +875,99 @@ async fn configured_timeout_bounds_backend_tool_requests() {
     let error = result.unwrap_err();
     assert_backend_timeout(&error, "hanging", "get prompt `hanging_prompt`");
 }
+
+#[tokio::test]
+async fn mcp_frontend_can_drop_structured_content_repeated_in_text() {
+    let mut config = common::max_config(Some("alpha"));
+    config.drop_duplicate_structured_content = true;
+    let server = CompressedServer::connect_stdio(
+        config,
+        common::backend("alpha", "alpha_server.py"),
+    )
+    .await
+    .unwrap();
+    let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);
+    let server_task = tokio::spawn(async move {
+        FrontendServer::new(server)
+            .serve(server_transport)
+            .await
+            .unwrap()
+            .waiting()
+            .await
+            .unwrap();
+    });
+    let mut client =
+        ().serve_with_lifecycle(client_transport, ClientLifecycleMode::Initialize)
+            .await
+            .unwrap();
+
+    // FastMCP returns this dict as structuredContent *and* as JSON text.
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("alpha_invoke_tool").with_arguments(
+                json!({"tool_name": "structured_data", "tool_input": {}})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+    let result = serde_json::to_value(result).unwrap();
+    assert!(result.get("structuredContent").is_none(), "{result}");
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(text).unwrap(),
+        json!({"server": "alpha", "values": [1, 2], "nested": {"ok": true}})
+    );
+
+    client.close().await.unwrap();
+    server_task.await.unwrap();
+}
+
+#[tokio::test]
+async fn mcp_frontend_keeps_repeated_structured_content_by_default() {
+    let server = CompressedServer::connect_stdio(
+        common::max_config(Some("alpha")),
+        common::backend("alpha", "alpha_server.py"),
+    )
+    .await
+    .unwrap();
+    let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);
+    let server_task = tokio::spawn(async move {
+        FrontendServer::new(server)
+            .serve(server_transport)
+            .await
+            .unwrap()
+            .waiting()
+            .await
+            .unwrap();
+    });
+    let mut client =
+        ().serve_with_lifecycle(client_transport, ClientLifecycleMode::Initialize)
+            .await
+            .unwrap();
+
+    // FastMCP returns this dict as structuredContent *and* as JSON text.
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("alpha_invoke_tool").with_arguments(
+                json!({"tool_name": "structured_data", "tool_input": {}})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+    let result = serde_json::to_value(result).unwrap();
+    assert!(result.get("structuredContent").is_some(), "{result}");
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(text).unwrap(),
+        json!({"server": "alpha", "values": [1, 2], "nested": {"ok": true}})
+    );
+
+    client.close().await.unwrap();
+    server_task.await.unwrap();
+}
