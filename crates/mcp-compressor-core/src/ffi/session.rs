@@ -255,6 +255,7 @@ pub async fn start_compressed_session_with_backend_configs_and_before_exec(
             include_tools: config.include_tools,
             exclude_tools: config.exclude_tools,
             toonify: config.toonify,
+            drop_duplicate_structured_content: false,
             transform_mode: parse_ffi_transform_mode(config.transform_mode.as_deref())?,
             ..CompressedServerConfig::default()
         },
@@ -276,6 +277,7 @@ pub async fn start_compressed_session_from_mcp_config(
             include_tools: config.include_tools,
             exclude_tools: config.exclude_tools,
             toonify: config.toonify,
+            drop_duplicate_structured_content: false,
             transform_mode: parse_ffi_transform_mode(config.transform_mode.as_deref())?,
             ..CompressedServerConfig::default()
         },

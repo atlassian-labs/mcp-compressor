@@ -72,6 +72,11 @@ pub struct CliOptions {
     #[arg(long, action = ArgAction::SetTrue)]
     pub toonify: bool,
 
+    /// Forward only the text copy of a tool result whose `structuredContent` a text
+    /// block already repeats verbatim (as FastMCP servers send), instead of both.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub drop_duplicate_structured_content: bool,
+
     /// Output directory for generated Python/TypeScript code clients.
     #[arg(long = "output-dir")]
     pub output_dir: Option<PathBuf>,

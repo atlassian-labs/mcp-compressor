@@ -64,9 +64,9 @@ independently, so modern clients can use legacy backends without sending
 frontend negotiation metadata to them. Backends must support legacy `initialize`;
 modern-only backends are not supported. Application tool-call metadata and tool
 result content, annotations, structured content, and error flags are preserved.
-When a result's `structuredContent` is also repeated verbatim as JSON in a text
-block (as FastMCP does), only the text block is forwarded, so the payload is not
-sent twice.
+Servers such as FastMCP send each structured result twice, as `structuredContent` and
+as the same JSON in a text block. `--drop-duplicate-structured-content` forwards only the
+text copy when the two match exactly; it is off by default.
 
 Modern catalog and resource-read responses use `ttlMs: 0` and private cache
 scope. Catalogs remain static for the connection; dynamic change subscriptions

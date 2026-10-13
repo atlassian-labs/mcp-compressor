@@ -56,6 +56,9 @@ pub struct CompressedServerConfig {
     pub include_tools: Vec<String>,
     pub exclude_tools: Vec<String>,
     pub toonify: bool,
+    /// Forward only the text copy of a result whose `structuredContent` a text
+    /// block repeats verbatim.
+    pub drop_duplicate_structured_content: bool,
     pub transform_mode: ProxyTransformMode,
     pub config_source: BackendConfigSource,
 }
@@ -68,6 +71,7 @@ impl Default for CompressedServerConfig {
             include_tools: Vec::new(),
             exclude_tools: Vec::new(),
             toonify: false,
+            drop_duplicate_structured_content: false,
             transform_mode: ProxyTransformMode::CompressedTools,
             config_source: BackendConfigSource::Command,
         }
@@ -345,7 +349,10 @@ impl CompressedServer {
         let result = self
             .invoke_backend_result(backend, backend_tool_name, tool_input, request_meta)
             .await?;
-        let result = drop_duplicate_structured_content(result);
+        let result = drop_duplicate_structured_content(
+            self.config.drop_duplicate_structured_content,
+            result,
+        );
         Ok(toonify_result(self.config.toonify, result))
     }
 
@@ -1065,27 +1072,31 @@ fn csv_cell(cell: &str) -> Value {
 /// Servers such as FastMCP return a result's `structuredContent` and, as the
 /// MCP spec recommends for backwards compatibility, the same JSON serialized in
 /// a text block. Forwarding both doubles the size of the result (and leaves
-/// `--toonify` re-encoding only one copy), so drop the structured copy when a
-/// text block already carries it. A structured payload with no matching text
-/// block is kept untouched.
-fn drop_duplicate_structured_content(mut result: CallToolResult) -> CallToolResult {
-    if result.is_error == Some(true) {
+/// `--toonify` re-encoding only one copy), so with
+/// `drop_duplicate_structured_content` the structured copy is dropped when a
+/// text block already carries exactly the same JSON value.
+///
+/// Matching is deliberately conservative: whole values must be equal, a text
+/// block restricted to the user audience does not count (the model might never
+/// see it), and error results are left alone.
+fn drop_duplicate_structured_content(enabled: bool, mut result: CallToolResult) -> CallToolResult {
+    if !enabled || result.is_error == Some(true) {
         return result;
     }
     let Some(structured) = result.structured_content.as_ref() else {
         return result;
     };
-    // Non-object returns are wrapped as `{"result": value}` in structuredContent
-    // while the text block holds the bare value.
-    let unwrapped = match structured {
-        Value::Object(map) if map.len() == 1 => map.get("result"),
-        _ => None,
-    };
     let duplicated = result.content.iter().any(|block| match block {
-        ContentBlock::Text(text) => match serde_json::from_str::<Value>(&text.text) {
-            Ok(parsed) => parsed == *structured || unwrapped.is_some_and(|inner| parsed == *inner),
-            Err(_) => unwrapped.and_then(Value::as_str).is_some_and(|inner| inner == text.text),
-        },
+        ContentBlock::Text(text) => {
+            let model_visible = text
+                .annotations
+                .as_ref()
+                .and_then(|a| a.audience.as_ref())
+                .is_none_or(|audience| audience.contains(&rmcp::model::Role::Assistant));
+            model_visible
+                && serde_json::from_str::<Value>(&text.text)
+                    .is_ok_and(|parsed| parsed == *structured)
+        }
         _ => false,
     });
     if duplicated {
@@ -1289,9 +1300,13 @@ mod duplicate_structured_content_tests {
         serde_json::json!([{"type": "text", "text": text}])
     }
 
+    fn dedupe(result: CallToolResult) -> CallToolResult {
+        drop_duplicate_structured_content(true, result)
+    }
+
     #[test]
     fn drops_structured_content_repeated_in_a_text_block() {
-        let out = drop_duplicate_structured_content(result(
+        let out = dedupe(result(
             text("{
   \"a\": [1, 2]
 }"),
@@ -1302,34 +1317,49 @@ mod duplicate_structured_content_tests {
     }
 
     #[test]
-    fn drops_the_result_wrapper_around_a_repeated_value() {
-        let list = drop_duplicate_structured_content(result(
-            text("[1,2,3]"),
-            Some(serde_json::json!({"result": [1, 2, 3]})),
-        ));
-        assert!(list.structured_content.is_none());
-        let string = drop_duplicate_structured_content(result(
-            text("hello"),
-            Some(serde_json::json!({"result": "hello"})),
-        ));
-        assert!(string.structured_content.is_none());
+    fn is_off_unless_enabled() {
+        let r = result(text("{\"a\":1}"), Some(serde_json::json!({"a": 1})));
+        assert!(drop_duplicate_structured_content(false, r).structured_content.is_some());
     }
 
     #[test]
-    fn keeps_structured_content_that_is_not_repeated() {
-        let structured = serde_json::json!({"ok": true});
-        let different = drop_duplicate_structured_content(result(text("rich text"), Some(structured.clone())));
-        assert_eq!(different.structured_content, Some(structured.clone()));
-        let alone = drop_duplicate_structured_content(result(serde_json::json!([]), Some(structured.clone())));
-        assert_eq!(alone.structured_content, Some(structured));
+    fn requires_the_whole_value_to_match() {
+        // A single `result` property is a real value, not a wrapper to peel.
+        let nested = dedupe(result(
+            text("{\"status\":\"ok\"}"),
+            Some(serde_json::json!({"result": {"status": "ok"}})),
+        ));
+        assert!(nested.structured_content.is_some());
+        let string = dedupe(result(text("hello"), Some(serde_json::json!({"result": "hello"}))));
+        assert!(string.structured_content.is_some());
+        let different = dedupe(result(text("rich text"), Some(serde_json::json!({"ok": true}))));
+        assert!(different.structured_content.is_some());
+        let alone = dedupe(result(serde_json::json!([]), Some(serde_json::json!({"ok": true}))));
+        assert!(alone.structured_content.is_some());
     }
 
     #[test]
-    fn leaves_errors_and_text_only_results_alone() {
+    fn keeps_structured_content_when_the_matching_text_is_not_for_the_model() {
+        let user_only = serde_json::json!([{
+            "type": "text",
+            "text": "{\"value\":42}",
+            "annotations": {"audience": ["user"]}
+        }]);
+        let kept = dedupe(result(user_only, Some(serde_json::json!({"value": 42}))));
+        assert!(kept.structured_content.is_some());
+        let both = serde_json::json!([{
+            "type": "text",
+            "text": "{\"value\":42}",
+            "annotations": {"audience": ["user", "assistant"]}
+        }]);
+        let dropped = dedupe(result(both, Some(serde_json::json!({"value": 42}))));
+        assert!(dropped.structured_content.is_none());
+    }
+
+    #[test]
+    fn leaves_errors_alone() {
         let mut error = result(text("{\"a\":1}"), Some(serde_json::json!({"a": 1})));
         error.is_error = Some(true);
-        assert!(drop_duplicate_structured_content(error).structured_content.is_some());
-        let plain = result(text("{\"a\":1}"), None);
-        assert!(drop_duplicate_structured_content(plain).structured_content.is_none());
+        assert!(dedupe(error).structured_content.is_some());
     }
 }
