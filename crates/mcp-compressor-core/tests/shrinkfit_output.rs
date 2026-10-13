@@ -89,8 +89,10 @@ async fn generated_cli_exposes_recovery_file() {
     let script = directory
         .path()
         .join(if cfg!(windows) { "alpha.cmd" } else { "alpha" });
-    let message = "full original ".repeat(1000);
+    // Exercise shrinking without exceeding cmd.exe's 8,191-character command line limit.
+    let message = "full original ".repeat(200);
     let expected = format!("alpha:{message}");
+    assert!(expected.chars().count() > 2000);
     let output = tokio::task::spawn_blocking(move || {
         std::process::Command::new(script)
             .args(["echo", "--message", &message])
