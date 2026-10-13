@@ -174,3 +174,17 @@ License: MIT
 Copyright © 2025 Jeremiah Lowin
 
 License: Apache-2.0
+
+---
+
+**shrinkfit (https://github.com/timesler/shrinkfit)**
+
+Copyright © shrinkfit contributors
+
+License: Apache-2.0
+
+**tempfile (https://github.com/Stebalien/tempfile)**
+
+Copyright © tempfile contributors
+
+License: MIT OR Apache-2.0

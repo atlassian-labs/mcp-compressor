@@ -112,6 +112,7 @@ export interface CompressedSessionConfig {
   includeTools?: string[];
   excludeTools?: string[];
   toonify?: boolean;
+  shrinkfit?: number;
   transformMode?: string | null;
 }
 
@@ -186,6 +187,7 @@ function toNativeSessionConfig(config: CompressedSessionConfig): Record<string, 
     include_tools: config.includeTools ?? [],
     exclude_tools: config.excludeTools ?? [],
     toonify: config.toonify ?? false,
+    shrinkfit: config.shrinkfit ?? null,
     transform_mode: config.transformMode ?? null,
   };
 }

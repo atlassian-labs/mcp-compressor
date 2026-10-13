@@ -585,3 +585,25 @@ def test_native_extension_preserves_remote_mcp_config_metadata() -> None:
             "oauth_app_name": "Test Agent",
         }
     ]
+
+
+def test_shrinkfit_sdk_retains_complete_response() -> None:
+    original: Path | None = None
+    try:
+        with CompressorClient(
+            servers={"alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]}},
+            mode="cli",
+            shrinkfit=2000,
+        ) as proxy:
+            message = "useful details " * 1000
+            output = proxy.invoke("echo", {"message": message})
+            result = json.loads(output)
+            assert len(output) <= 2000
+            original = Path(result["recovery"]["original_response_file"])
+            saved = json.loads(original.read_text())
+            assert saved["content"][0]["text"] == f"alpha:{message}"
+            assert proxy.invoke("echo", {"message": "small"}) == "alpha:small"
+        assert original.exists()
+    finally:
+        if original is not None:
+            original.unlink(missing_ok=True)

@@ -351,6 +351,7 @@ class CompressorClient:
         include_tools: list[str] | None = None,
         exclude_tools: list[str] | None = None,
         toonify: bool = False,
+        shrinkfit: int | None = None,
     ) -> None:
         self._servers = servers
         self._mode = mode
@@ -360,6 +361,7 @@ class CompressorClient:
             include_tools=include_tools,
             exclude_tools=exclude_tools,
             toonify=toonify,
+            shrinkfit=shrinkfit,
             transform_mode=_transform_mode(mode),
         )
         self._session: CompressedSession | None = None

@@ -315,6 +315,35 @@ async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
   });
 }
 
+it("returns recoverable condensed responses through Just Bash SDK commands", async () => {
+  const client = new CompressorClient({
+    servers: { alpha: { command: alphaBackend().commandOrUrl, args: alphaBackend().args } },
+    mode: "bash",
+    shrinkfit: 2000,
+  });
+  let original: string | undefined;
+  try {
+    const proxy = await client.connect();
+    const bash = new Bash();
+    installJustBashCommands(bash, proxy);
+    const message = "useful details ".repeat(1000);
+    const result = await bash.exec(`alpha echo --message '${message}'`);
+    expect(result.exitCode).toBe(0);
+    const envelope = JSON.parse(result.stdout);
+    original = envelope.recovery.original_response_file;
+    expect([...result.stdout.trimEnd()].length).toBeLessThanOrEqual(2000);
+    const saved = JSON.parse(readFileSync(original!, "utf-8"));
+    expect(saved.content[0].text).toBe(`alpha:${message}`);
+    expect((await bash.exec("alpha echo --message small")).stdout.trimEnd()).toBe("alpha:small");
+  } finally {
+    await client.close();
+    if (original) {
+      expect(existsSync(original)).toBe(true);
+      rmSync(original);
+    }
+  }
+});
+
 const sampleTool: ToolSpec = {
   name: "echo",
   description: "Echo a value.",

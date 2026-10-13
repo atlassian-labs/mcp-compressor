@@ -3,9 +3,9 @@ use std::sync::Arc;
 use serde_json::Value;
 use tokio::sync::Mutex;
 
-use crate::Error;
-use crate::proxy::{BeforeExecHook, RunningToolProxy, ToolProxyServer, dispatch_exec};
+use crate::proxy::{dispatch_exec, BeforeExecHook, RunningToolProxy, ToolProxyServer};
 use crate::server::{CompressedServer, CompressedServerConfig, ProxyTransformMode};
+use crate::Error;
 
 use super::dto::{
     FfiBackendConfig, FfiCompressedSessionConfig, FfiCompressedSessionInfo, FfiSdkServerConfig,
@@ -255,6 +255,7 @@ pub async fn start_compressed_session_with_backend_configs_and_before_exec(
             include_tools: config.include_tools,
             exclude_tools: config.exclude_tools,
             toonify: config.toonify,
+            shrinkfit: config.shrinkfit,
             transform_mode: parse_ffi_transform_mode(config.transform_mode.as_deref())?,
             ..CompressedServerConfig::default()
         },
@@ -276,6 +277,7 @@ pub async fn start_compressed_session_from_mcp_config(
             include_tools: config.include_tools,
             exclude_tools: config.exclude_tools,
             toonify: config.toonify,
+            shrinkfit: config.shrinkfit,
             transform_mode: parse_ffi_transform_mode(config.transform_mode.as_deref())?,
             ..CompressedServerConfig::default()
         },
@@ -317,6 +319,7 @@ mod before_exec_tests {
                 include_tools: Vec::new(),
                 exclude_tools: Vec::new(),
                 toonify: false,
+                shrinkfit: None,
                 transform_mode: None,
                 bridge,
             },
@@ -399,6 +402,7 @@ mod before_exec_tests {
                 include_tools: Vec::new(),
                 exclude_tools: Vec::new(),
                 toonify: false,
+                shrinkfit: None,
                 transform_mode: None,
                 bridge: false,
             },
@@ -457,6 +461,7 @@ mod before_exec_tests {
                 include_tools: Vec::new(),
                 exclude_tools: Vec::new(),
                 toonify: false,
+                shrinkfit: None,
                 transform_mode: None,
                 bridge: true,
             },
@@ -527,6 +532,7 @@ mod close_lifecycle_tests {
                 include_tools: Vec::new(),
                 exclude_tools: Vec::new(),
                 toonify: false,
+                shrinkfit: None,
                 transform_mode: None,
                 bridge: true,
             },

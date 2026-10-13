@@ -27,6 +27,11 @@ For example, large public MCP servers can spend thousands or tens of thousands o
 
 `mcp-compressor` changes the interaction pattern: the model sees a small compressed surface first, asks for the full schema only for the selected tool, and then invokes that tool.
 
+For CLI and Just Bash sessions, opt into bounded tool-response previews with
+`--shrinkfit` (20,000 characters) or `--shrinkfit=10000`. Complete original MCP
+results are retained in private temporary files for recovery. See
+[recoverable response shrinking](https://atlassian-labs.github.io/mcp-compressor/usage/shrinkfit/).
+
 ## Pattern 1: compressed MCP proxy
 
 Use this when you want any MCP client to see a smaller tool surface.

@@ -102,6 +102,8 @@ pub struct FfiCompressedSessionConfig {
     pub exclude_tools: Vec<String>,
     #[serde(default)]
     pub toonify: bool,
+    #[serde(default)]
+    pub shrinkfit: Option<usize>,
     pub transform_mode: Option<String>,
     /// Whether to start the local authenticated HTTP bridge.
     ///

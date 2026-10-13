@@ -127,6 +127,7 @@ pub fn config(
         include_tools: Vec::new(),
         exclude_tools: Vec::new(),
         toonify: false,
+        shrinkfit: None,
         transform_mode,
         config_source,
     }

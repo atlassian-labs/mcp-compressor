@@ -52,6 +52,10 @@ Use an explicit output directory:
 mcp-compressor --cli-mode --server-name alpha --output-dir ./bin -- python server.py
 ```
 
+Add `--shrinkfit` to condense responses to 20,000 characters while retaining
+complete originals in private temporary files. Use `--shrinkfit=10000` to change
+the budget. See [output and recovery semantics](shrinkfit.md).
+
 ## Code Mode
 
 Code Mode generates Python or TypeScript functions for backend MCP tools while keeping the local `mcp-compressor` session alive. By default, generated Code Mode files are written under `./dist` in the current working directory.

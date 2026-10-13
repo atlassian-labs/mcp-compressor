@@ -20,6 +20,7 @@ nav:
       - CLI: usage/cli.md
       - SDKs: usage/sdks.md
       - Generated clients: usage/generated-clients.md
+      - Recoverable response shrinking: usage/shrinkfit.md
       - Just Bash: usage/just-bash.md
       - Remote servers and auth: usage/auth-and-remote.md
   - Examples:

@@ -72,6 +72,12 @@ pub struct CliOptions {
     #[arg(long, action = ArgAction::SetTrue)]
     pub toonify: bool,
 
+    /// Condense oversized CLI/Just Bash responses; keep originals in private temp files.
+    #[arg(long, num_args = 0..=1, default_missing_value = "20000", require_equals = true,
+          value_name = "MAX_CHARS", conflicts_with = "toonify",
+          value_parser = clap::value_parser!(u32).range(1024..))]
+    pub shrinkfit: Option<u32>,
+
     /// Output directory for generated Python/TypeScript code clients.
     #[arg(long = "output-dir")]
     pub output_dir: Option<PathBuf>,
@@ -95,6 +101,10 @@ pub struct CliOptions {
 
 impl CliOptions {
     pub fn validate(&self) -> Result<(), String> {
+        if self.shrinkfit.is_some() && self.transform_mode() == ProxyTransformMode::CompressedTools
+        {
+            return Err("--shrinkfit requires --cli-mode or --just-bash-mode (or the corresponding --transform-mode)".to_string());
+        }
         if self.config_path.is_some() && self.server_name.is_some() {
             return Err("--server-name cannot be used with --config; MCP config server names come from the selected server-map keys".to_string());
         }
@@ -159,6 +169,62 @@ impl CliOptions {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod shrinkfit_tests {
+    use super::*;
+
+    #[test]
+    fn defaults_custom_limits_and_modes() {
+        for mode in ["--cli-mode", "--just-bash-mode"] {
+            let options =
+                CliOptions::try_parse_from(["mcp-compressor", mode, "--shrinkfit", "--", "server"])
+                    .unwrap();
+            assert_eq!(options.shrinkfit, Some(20_000));
+            assert!(options.validate().is_ok());
+            let options = CliOptions::try_parse_from([
+                "mcp-compressor",
+                mode,
+                "--shrinkfit=4000",
+                "--",
+                "server",
+            ])
+            .unwrap();
+            assert_eq!(options.shrinkfit, Some(4000));
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_budget_toonify_and_mcp_mode() {
+        for limit in [
+            "--shrinkfit=0",
+            "--shrinkfit=1023",
+            "--shrinkfit=-1",
+            "--shrinkfit=nope",
+        ] {
+            assert!(CliOptions::try_parse_from([
+                "mcp-compressor",
+                "--cli-mode",
+                limit,
+                "--",
+                "server"
+            ])
+            .is_err());
+        }
+        assert!(CliOptions::try_parse_from([
+            "mcp-compressor",
+            "--cli-mode",
+            "--shrinkfit",
+            "--toonify",
+            "--",
+            "server"
+        ])
+        .is_err());
+        let options =
+            CliOptions::try_parse_from(["mcp-compressor", "--shrinkfit", "--", "server"]).unwrap();
+        assert!(options.validate().unwrap_err().contains("requires"));
     }
 }
 

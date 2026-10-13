@@ -123,6 +123,7 @@ async fn build_server(cli: &CliOptions) -> Result<CompressedServer, CliError> {
         include_tools: cli.include_tools.clone(),
         exclude_tools: cli.exclude_tools.clone(),
         toonify: cli.toonify,
+        shrinkfit: cli.shrinkfit.map(|limit| limit as usize),
         transform_mode: cli.transform_mode(),
         config_source: BackendConfigSource::Command,
     };

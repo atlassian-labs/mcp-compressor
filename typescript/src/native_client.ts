@@ -29,6 +29,8 @@ export interface CompressorClientOptions {
   includeTools?: string[];
   excludeTools?: string[];
   toonify?: boolean;
+  /** CLI/bash response budget; full MCP originals are retained in private temp files. */
+  shrinkfit?: number;
 }
 
 export interface ProxyTool {
@@ -485,6 +487,7 @@ export class CompressorClient {
       includeTools: this.options.includeTools ?? [],
       excludeTools: this.options.excludeTools ?? [],
       toonify: this.options.toonify ?? false,
+      shrinkfit: this.options.shrinkfit,
       transformMode: transformMode(this.mode),
     };
     this.authProviders = typeof normalized === "string" ? [] : normalized.providers;

@@ -19,12 +19,12 @@ pub(crate) const INVOKE_TOOL_INPUT_SCHEMA_DESCRIPTION: &str = concat!(
     "Use get_tool_schema for the selected tool_name before invoking if required fields are unknown."
 );
 
-use crate::Error;
-use crate::compression::CompressionLevel;
 use crate::compression::engine::{CompressionEngine, Tool};
+use crate::compression::CompressionLevel;
 use crate::config::topology::MCPConfig;
 use crate::server::backend::BackendServerConfig;
-use crate::server::connect::{ConnectedBackend, backend_operation, connect_backend, timeout_error};
+use crate::server::connect::{backend_operation, connect_backend, timeout_error, ConnectedBackend};
+use crate::Error;
 
 /// Frontend tool-surface mode exposed by the proxy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,8 +56,29 @@ pub struct CompressedServerConfig {
     pub include_tools: Vec<String>,
     pub exclude_tools: Vec<String>,
     pub toonify: bool,
+    /// Opt-in response budget for CLI/Just Bash; originals are saved for recovery.
+    pub shrinkfit: Option<usize>,
     pub transform_mode: ProxyTransformMode,
     pub config_source: BackendConfigSource,
+}
+
+impl CompressedServerConfig {
+    fn validate(&self) -> Result<(), Error> {
+        if let Some(limit) = self.shrinkfit {
+            if limit < 1024 || limit > u32::MAX as usize {
+                return Err(Error::Config(
+                    "shrinkfit must be between 1024 and 4294967295 characters".to_string(),
+                ));
+            }
+            if self.toonify || self.transform_mode == ProxyTransformMode::CompressedTools {
+                return Err(Error::Config(
+                    "shrinkfit requires CLI/Just Bash mode and cannot be combined with toonify"
+                        .to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Default for CompressedServerConfig {
@@ -68,6 +89,7 @@ impl Default for CompressedServerConfig {
             include_tools: Vec::new(),
             exclude_tools: Vec::new(),
             toonify: false,
+            shrinkfit: None,
             transform_mode: ProxyTransformMode::CompressedTools,
             config_source: BackendConfigSource::Command,
         }
@@ -124,6 +146,7 @@ impl CompressedServer {
         config: CompressedServerConfig,
         backend: BackendServerConfig,
     ) -> Result<Self, Error> {
+        config.validate()?;
         let public_name = config
             .server_name
             .clone()
@@ -146,6 +169,7 @@ impl CompressedServer {
         config: CompressedServerConfig,
         backends: Vec<BackendServerConfig>,
     ) -> Result<Self, Error> {
+        config.validate()?;
         let suite_prefix = config.server_name.clone();
         let mut connected = Vec::with_capacity(backends.len());
         for backend in backends {
@@ -331,7 +355,7 @@ impl CompressedServer {
         let result = self
             .invoke_backend_result(backend, backend_tool_name, tool_input, None)
             .await?;
-        self.tool_result_to_output(result)
+        self.tool_result_to_output(result).await
     }
 
     pub(crate) async fn invoke_tool_result(
@@ -479,7 +503,7 @@ impl CompressedServer {
         let result = self
             .invoke_backend_result(backend, backend_tool_name, tool_input, None)
             .await?;
-        self.tool_result_to_output(result)
+        self.tool_result_to_output(result).await
     }
 
     async fn invoke_backend_result(
@@ -520,9 +544,40 @@ impl CompressedServer {
     /// sessions). A result the backend flagged with `isError` becomes
     /// [`Error::ToolExecution`] so callers exit non-zero or raise, instead of
     /// printing the failure as if it were output.
-    fn tool_result_to_output(&self, result: CallToolResult) -> Result<String, Error> {
+    async fn tool_result_to_output(&self, result: CallToolResult) -> Result<String, Error> {
         if result.is_error == Some(true) {
             return Err(Error::ToolExecution(call_tool_result_to_string(result)?));
+        }
+        if let Some(max_chars) = self.config.shrinkfit.filter(|_| {
+            matches!(
+                self.config.transform_mode,
+                ProxyTransformMode::Cli | ProxyTransformMode::JustBash
+            )
+        }) {
+            // Bound expensive synchronous pruning and file I/O away from Tokio workers.
+            static JOBS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+            let permit = JOBS
+                .acquire()
+                .await
+                .map_err(|e| Error::Config(e.to_string()))?;
+            let output = tokio::task::spawn_blocking(move || {
+                // Hold the slot even if the request future is cancelled mid-job.
+                let _permit = permit;
+                let output = call_tool_result_to_string(result.clone())?;
+                Ok::<_, Error>(
+                    super::output_shrinking::shrink_output(
+                        &result,
+                        &output,
+                        max_chars,
+                        &std::env::temp_dir(),
+                    )?
+                    .unwrap_or(output),
+                )
+            })
+            .await
+            .map_err(|e| Error::Config(format!("response shrinking failed: {e}")))??;
+            // Shrunk responses always use the documented JSON recovery envelope.
+            return Ok(output);
         }
         let output = call_tool_result_to_string(result)?;
         Ok(self.maybe_toonify_output(&output))
@@ -670,11 +725,9 @@ mod request_timeout_tests {
                 ClientRequest::PingRequest(Default::default()),
             );
             tokio::pin!(request);
-            assert!(
-                tokio::task::unconstrained(request.as_mut())
-                    .now_or_never()
-                    .is_none()
-            );
+            assert!(tokio::task::unconstrained(request.as_mut())
+                .now_or_never()
+                .is_none());
             if matches!(queue_state, QueueState::FullAfterSubmission) {
                 fill_peer_queue(&backend);
             }
