@@ -85,6 +85,11 @@ fn client_python_body(config: &GeneratorConfig) -> String {
     format!(
         r#"import base64, json, math, os, re, socket, sys, urllib.error, urllib.request
 
+# Redirected Windows streams otherwise use the active code page, corrupting
+# Unicode tool JSON (including shrinkfit omission markers) and diagnostics.
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
+
 CLI_NAME = {cli_name}
 
 TOP_HELP = {top_help}

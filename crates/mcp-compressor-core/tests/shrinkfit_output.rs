@@ -95,6 +95,8 @@ async fn generated_cli_exposes_recovery_file() {
     assert!(expected.chars().count() > 2000);
     let output = tokio::task::spawn_blocking(move || {
         std::process::Command::new(script)
+            // Exercise redirected Windows-style output encoding on every platform.
+            .env("PYTHONIOENCODING", "cp1252")
             .args(["echo", "--message", &message])
             .output()
             .unwrap()
