@@ -32,12 +32,12 @@ async fn cli_and_just_bash_return_recoverable_previews_and_keep_small_results() 
         };
         assert!(text.chars().count() <= 2000);
         let output: Value = serde_json::from_str(&text).unwrap();
-        let path = output["recovery"]["original_response_file"]
+        let path = output["_meta"]["truncation"]["original_response_file"]
             .as_str()
             .unwrap();
         let saved: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         assert_eq!(saved["content"][0]["text"], format!("alpha:{message}"));
-        assert_eq!(output["recovery"]["fits"], true);
+        assert_eq!(output["_meta"]["truncation"]["report"]["fits"], true);
         assert_eq!(
             server
                 .invoke_single_backend_tool("echo", json!({"message":"small"}))
@@ -107,7 +107,7 @@ async fn generated_cli_exposes_recovery_file() {
         String::from_utf8_lossy(&output.stderr)
     );
     let envelope: Value = serde_json::from_slice(&output.stdout).unwrap();
-    let path = envelope["recovery"]["original_response_file"]
+    let path = envelope["_meta"]["truncation"]["original_response_file"]
         .as_str()
         .unwrap();
     let saved: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
@@ -136,9 +136,9 @@ async fn disabled_mode_keeps_large_response_verbatim() {
 #[tokio::test]
 async fn invalid_sdk_config_fails_before_connecting() {
     let mut config = common::max_config(Some("alpha"));
-    config.shrinkfit = Some(2000);
+    config.shrinkfit = Some(1);
     let error = CompressedServer::connect_stdio(config, common::backend("alpha", "nonexistent.py"))
         .await
         .unwrap_err();
-    assert!(error.to_string().contains("requires CLI/Just Bash"));
+    assert!(error.to_string().contains("between 1024"));
 }

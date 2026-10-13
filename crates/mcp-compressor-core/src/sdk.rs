@@ -177,7 +177,7 @@ impl CompressorClientBuilder {
         self
     }
 
-    /// Enable recoverable response condensation for CLI/Just Bash transports.
+    /// Enable response condensation with file (CLI/bash) or cached full (MCP) recovery.
     pub fn shrinkfit(mut self, max_chars: usize) -> Self {
         self.shrinkfit = Some(max_chars);
         self
@@ -335,12 +335,22 @@ impl CompressorProxy {
         tool_name: &str,
         input: Value,
     ) -> Result<String, Error> {
+        self.invoke_with_full(server, tool_name, input, false).await
+    }
+
+    /// Request an unshrunk response only when required; a cache miss re-executes the tool.
+    pub async fn invoke_with_full(
+        &self,
+        server: Option<&str>,
+        tool_name: &str,
+        input: Value,
+        full: bool,
+    ) -> Result<String, Error> {
         let wrapper = self.invoke_wrapper(server)?;
         self.invoke_wrapper_tool(
             &wrapper,
             json!({
-                "tool_name": tool_name,
-                "tool_input": input,
+                "tool_name": tool_name, "tool_input": input, "full": full,
             }),
         )
         .await

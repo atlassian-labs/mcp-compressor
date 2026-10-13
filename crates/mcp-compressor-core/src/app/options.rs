@@ -72,9 +72,9 @@ pub struct CliOptions {
     #[arg(long, action = ArgAction::SetTrue)]
     pub toonify: bool,
 
-    /// Condense oversized CLI/Just Bash responses; keep originals in private temp files.
+    /// Condense responses in every mode; recover through files or full=true.
     #[arg(long, num_args = 0..=1, default_missing_value = "20000", require_equals = true,
-          value_name = "MAX_CHARS", conflicts_with = "toonify",
+          value_name = "MAX_CHARS",
           value_parser = clap::value_parser!(u32).range(1024..))]
     pub shrinkfit: Option<u32>,
 
@@ -101,10 +101,6 @@ pub struct CliOptions {
 
 impl CliOptions {
     pub fn validate(&self) -> Result<(), String> {
-        if self.shrinkfit.is_some() && self.transform_mode() == ProxyTransformMode::CompressedTools
-        {
-            return Err("--shrinkfit requires --cli-mode or --just-bash-mode (or the corresponding --transform-mode)".to_string());
-        }
         if self.config_path.is_some() && self.server_name.is_some() {
             return Err("--server-name cannot be used with --config; MCP config server names come from the selected server-map keys".to_string());
         }
@@ -197,7 +193,7 @@ mod shrinkfit_tests {
     }
 
     #[test]
-    fn rejects_invalid_budget_toonify_and_mcp_mode() {
+    fn rejects_invalid_budget_and_accepts_all_modes() {
         for limit in [
             "--shrinkfit=0",
             "--shrinkfit=1023",
@@ -221,10 +217,10 @@ mod shrinkfit_tests {
             "--",
             "server"
         ])
-        .is_err());
+        .is_ok());
         let options =
             CliOptions::try_parse_from(["mcp-compressor", "--shrinkfit", "--", "server"]).unwrap();
-        assert!(options.validate().unwrap_err().contains("requires"));
+        assert!(options.validate().is_ok());
     }
 }
 

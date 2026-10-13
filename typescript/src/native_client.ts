@@ -29,7 +29,7 @@ export interface CompressorClientOptions {
   includeTools?: string[];
   excludeTools?: string[];
   toonify?: boolean;
-  /** CLI/bash response budget; full MCP originals are retained in private temp files. */
+  /** Response budget in any mode; filesystem modes save originals, MCP mode supports full recall. */
   shrinkfit?: number;
 }
 
@@ -373,11 +373,17 @@ export class CompressorProxy {
   async invoke(
     tool: string,
     toolInput: Record<string, unknown> = {},
-    options: { server?: string } = {},
+    options: { server?: string; full?: boolean } = {},
   ): Promise<string> {
     const server = options.server ?? this.defaultServer;
     const wrapper = `${server ? `${server}_` : ""}invoke_tool`;
-    return (await this.invokeWrapper(wrapper, { tool_name: tool, tool_input: toolInput })).text;
+    return (
+      await this.invokeWrapper(wrapper, {
+        tool_name: tool,
+        tool_input: toolInput,
+        full: options.full ?? false,
+      })
+    ).text;
   }
 
   close(): Promise<void> {

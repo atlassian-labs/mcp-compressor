@@ -319,9 +319,11 @@ class CompressorProxy:
         msg = "Multiple backend tools matched; specify a server"
         raise RuntimeError(msg)
 
-    def invoke(self, tool: str, tool_input: dict[str, Any] | None = None, *, server: str | None = None) -> str:
+    def invoke(
+        self, tool: str, tool_input: dict[str, Any] | None = None, *, server: str | None = None, full: bool = False
+    ) -> str:
         wrapper = _wrapper_name(server or self._default_server, "invoke_tool")
-        return self.invoke_wrapper(wrapper, {"tool_name": tool, "tool_input": tool_input or {}}).text
+        return self.invoke_wrapper(wrapper, {"tool_name": tool, "tool_input": tool_input or {}, "full": full}).text
 
 
 def _wrapper_name(server: str | None, suffix: str) -> str:

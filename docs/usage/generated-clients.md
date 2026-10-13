@@ -248,7 +248,7 @@ Generated clients don't set a request timeout of their own. A call waits as long
 ### Bounded output with recovery
 
 CLI and Code Mode sessions can opt into `--shrinkfit` (default 20,000 characters).
-Only oversized supported results change to a JSON preview/recovery envelope.
+Oversized object results retain their shape and add a top-level `truncation` field.
 Original MCP results are persisted on the proxy host. See
 [recoverable response shrinking](shrinkfit.md) before consuming the changed shape.
 

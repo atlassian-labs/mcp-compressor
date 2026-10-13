@@ -52,8 +52,9 @@ Use an explicit output directory:
 mcp-compressor --cli-mode --server-name alpha --output-dir ./bin -- python server.py
 ```
 
-Add `--shrinkfit` to condense responses to 20,000 characters while retaining
-complete originals in private temporary files. Use `--shrinkfit=10000` to change
+Add `--shrinkfit` in any proxy mode to condense responses to 20,000 characters.
+CLI/Code/Just Bash modes retain complete originals in private temporary files;
+standard MCP uses cached `full=true` recall. Use `--shrinkfit=10000` to change
 the budget. See [output and recovery semantics](shrinkfit.md).
 
 ## Code Mode

@@ -1,79 +1,118 @@
 # Recoverable response shrinking
 
-Use `--shrinkfit` to condense oversized tool responses in **CLI Mode** or **Just Bash mode**. It defaults to **20,000 Unicode characters**; set a different budget with `--shrinkfit=10000` (minimum 1,024).
+Enable `--shrinkfit` in **any MCP proxy mode**: standard compressed MCP, CLI, Code Mode, or Just Bash. It defaults to **20,000 Unicode characters**; set `--shrinkfit=10000` for another limit (minimum 1,024). It is off by default.
 
 ```bash
+# MCP clients recover by calling the invocation wrapper again with full=true.
+mcp-compressor --shrinkfit -- 'https://mcp.atlassian.com/v2/mcp?tools=all'
+
+# CLI/Code/Just Bash clients recover through a local file.
 mcp-compressor --cli-mode --server-name atlassian --shrinkfit -- \
   'https://mcp.atlassian.com/v2/mcp?tools=all'
-
-mcp-compressor --just-bash-mode --shrinkfit=10000 -- python server.py
 ```
 
-This option is off by default and cannot be combined with `--toonify`. Standard compressed MCP pass-through is unchanged; use a CLI/Just Bash transform to enable shrinking. Code Mode uses the CLI transport and also supports it.
+The shared native implementation applies to stdio and streamable-HTTP frontends, generated clients, and SDK sessions. It does not change the TypeScript-only local-function `compressTools(...)` helpers. Shrinkfit takes precedence over `--toonify` for tool results while enabled, so recovery metadata stays JSON. Tool listings/help can still use their configured formats.
 
-## Output and recovery
+## Existing object shape plus `truncation`
 
-Small successful responses retain their existing output exactly. For a supported response over the budget, the proxy:
-
-1. Writes the **complete original MCP `CallToolResult`**, including all text/typed blocks, `structuredContent` and metadata, to a randomly named private temporary JSON file.
-2. Uses shrinkfit's **condense** array strategy to produce a preview. JSON is parsed strictly; non-JSON text is treated as a string, not guessed to be YAML. Mixed/binary content without structured content bypasses shrinking.
-3. Returns a JSON envelope containing `preview` and `recovery`. The character budget includes that entire envelope (not the shell's trailing newline or any outer protocol encoding).
+Object results keep their existing top-level fields. There is **no `preview` wrapper**. Fields inside the object may be removed or shortened by shrinkfit's `condense` strategy.
 
 ```json
 {
-  "preview": {"items": [{"id": "example", "title": "Short preview"}]},
-  "recovery": {
-    "original_response_file": "/tmp/mcp-compressor-response-EXAMPLE.json",
-    "original_format": "mcp-call-tool-result",
-    "max_chars": 20000,
-    "fits": true,
-    "pruned": true,
-    "notice": "Lossy preview; read original_response_file for the complete MCP result. Delete that private file when finished."
+  "data": {
+    "issues": [{"key": "PROJ-123", "summary": "Fix authentication"}],
+    "nextPageToken": "opaque-token"
+  },
+  "truncation": {
+    "message": "This tool response has been automatically shrunk to limit token consumption. An attempt has been made to retain important information. If the fully hydrated response is required, it can be read from /tmp/mcp-compressor-response-a7b3c9.json",
+    "report": {
+      "pruned": true,
+      "fits": true,
+      "items_omitted": 0,
+      "keys_omitted": 4,
+      "strings_truncated": 2
+    },
+    "original_response_file": "/tmp/mcp-compressor-response-a7b3c9.json"
   }
 }
 ```
 
-Always check for `recovery` before assuming the original tool schema. `condense` can drop fields, shorten strings, or fall back to sampling. A preview is **not an exhaustive or schema-preserving result**. The original is saved even if shrinking only changes formatting, so nothing from the original result is lost.
+The small report consists of shrinkfit's actual counters, not model-generated claims. The unbounded per-field path list is intentionally omitted so report metadata cannot overwhelm the budget. The budget includes the output and truncation instructions. Characters are not bytes or tokens.
 
-For a generated command:
+Small outputs and backend errors remain unchanged. JSON is parsed strictly; malformed JSON/prose is treated as text, not guessed to be YAML. Arrays/scalars cannot accept a sibling key: their value type is retained, with recovery in MCP `_meta.truncation`. Standard MCP additionally gets a text notice for clients that don't display `_meta`; string transports serialize the MCP result envelope for these cases. A backend-owned `truncation` field is never overwritten; recovery uses the same metadata fallback. Media without structured content bypasses condensation.
+
+If `structuredContent` exists, it and the primary text output are updated consistently. The complete original envelope is retained for recovery. Condensed output is explicitly lossy and is **not guaranteed to satisfy the backend's original output schema** or preserve every identity.
+
+## CLI, Code Mode and Just Bash: read the original file
+
+When shrinking is triggered in filesystem-oriented modes, a complete original MCP `CallToolResult` is written to a randomly named private JSON temp file. This includes typed content blocks, structured content and metadata—not only the flattened response body. Small outputs/errors do not create files.
+
+Read `truncation.original_response_file` (or `_meta.truncation.original_response_file` for a non-object payload). The message also contains the path so an agent can recover without special parsing logic.
 
 ```bash
-atlassian search-jira-issues-using-jql --json '{"cloudId":"YOUR_CLOUD_ID","jql":"assignee = currentUser()","maxResults":100}' > response.json
-original=$(jq -r '.recovery.original_response_file // empty' response.json)
-# When recovery is present, inspect structured content or the complete text blocks:
+original=$(jq -r '.truncation.original_response_file // ._meta.truncation.original_response_file // empty' response.json)
 if [ -n "$original" ]; then
   jq '.structuredContent // .content' "$original"
 fi
 ```
 
-Files are on the **proxy host**, not necessarily the agent host or a Just Bash virtual filesystem. Give the consuming agent a filesystem read capability or explicitly mount the recovery location into its sandbox. This option does not grant Just Bash access to the host filesystem or expose a remote arbitrary-file endpoint. Never assume `cat` inside an isolated virtual filesystem can see a host path.
+Files reside on the **proxy host**, survive shutdown, and require explicit cleanup or OS retention policy. Unix permissions are 0600. They may contain sensitive data. Sandboxed Just Bash hosts need an explicit mount or host read capability; this option does not grant arbitrary filesystem access or introduce a remote file-read API.
 
-## SDK sessions
+## Non-CLI MCP: recall with `full`
 
-The same native implementation is available to generated-client and Just Bash hosts:
+With shrinking enabled, the compressor's `*_invoke_tool` schema adds an optional boolean **`full`**, default false. Its description discourages use unless the condensed response lacks information needed for the task. The argument belongs to the compressor wrapper, **outside `tool_input`**:
+
+```json
+{
+  "tool_name": "searchJiraIssuesUsingJql",
+  "tool_input": {"cloudId": "YOUR_CLOUD_ID", "jql": "assignee = currentUser()", "maxResults": 100},
+  "full": true
+}
+```
+
+The `truncation.message` explains this recovery route instead of referring to a filesystem path. Keep the same tool name, arguments and request context:
+
+- A cache hit returns the complete original MCP result **without calling the backend again** and without shrinkfit/TOON transformation.
+- A cache miss executes the backend with the original arguments and **bypasses shrinking for that call**, including a first-ever `full=true` call.
+- Ordinary `full=false` invocations always call the backend. This is a recovery cache, not general request memoization.
+- A tool's own `full` parameter remains inside `tool_input` and is forwarded unchanged. The compressor boolean is never forwarded.
+- Invalid non-boolean `full` values fail validation.
+
+**Cache misses can repeat side effects.** Only request full when needed; do not retry a write unless repeating it is safe. There is no guarantee a cached entry will remain available.
+
+### Cache limits and isolation
+
+The cache is in-memory per compressor session, with a five-minute TTL, at most 32 entries and 32 MiB of serialized results/keys. Keys include backend, tool, canonical arguments and effective request metadata. Oversized entries are not retained. Changing relevant metadata or arguments misses the cache. Results expire/evict and are cleared on shutdown.
+
+Sessions with dynamic credential refresh disable cached recovery before the first refresh hook runs, preventing reuse across a potentially changed identity (including concurrent requests). Their full=true requests always re-execute without shrinking. Session users must not share credentials/proxy tokens across unrelated principals; this cache does not introduce a multi-tenant identity system.
+
+## SDKs
+
+Python:
+
+```python
+client = CompressorClient(servers={"atlassian": "https://mcp.atlassian.com/v2/mcp?tools=all"}, shrinkfit=20000)
+# proxy obtained from the client context/session:
+preview = proxy.invoke("some_tool", args)
+original = proxy.invoke("some_tool", args, full=True)  # only when necessary
+```
+
+TypeScript:
 
 ```typescript
 const client = new CompressorClient({
   servers: { atlassian: "https://mcp.atlassian.com/v2/mcp?tools=all" },
-  mode: "bash",
   shrinkfit: 20000,
 });
+const proxy = await client.connect();
+const preview = await proxy.invoke("some_tool", args);
+const original = await proxy.invoke("some_tool", args, { full: true });
 ```
 
-```python
-client = CompressorClient(
-    servers={"atlassian": "https://mcp.atlassian.com/v2/mcp?tools=all"},
-    mode="bash",
-    shrinkfit=20000,
-)
-```
+Rust client builders support `.shrinkfit(20000)`; the proxy exposes `invoke_with_full(server, tool, input, true)`. CLI/Just Bash settings still choose filesystem recovery; normal MCP mode chooses cached recall.
 
-The Rust client builder exposes `.shrinkfit(20000)` with a CLI or Just Bash mode. These settings control native MCP sessions; they do not change local-tool transformation helpers.
+## Failure and performance
 
-## Failure behavior and retention
+Backend errors retain their existing semantics and are not shrunk/cached. File-write or impossible-budget failures fail rather than returning an unrecoverable preview; temporary unsuccessful files are removed. A backend write may have already succeeded before output processing fails—do not retry blindly.
 
-- Backend errors retain their existing nonzero/error semantics and are not shrunk or persisted. Help and schema listings are not shrunk.
-- If recovery storage fails or the envelope cannot fit, the call fails rather than returning an unrecoverable preview. A failed write/fit attempt cleans up its temporary file. The backend tool may already have run: **do not automatically retry writes** because output processing failed.
-- Pruning and file I/O run in a bounded blocking pool (four concurrent jobs), not on async executor workers.
-- Recovery files use unpredictable names, exclusive creation and owner-only permissions on Unix. They survive proxy shutdown and are **not automatically deleted**; remove them when finished, or apply an OS/temp-directory retention policy. They may contain sensitive tenant data. Do not publish them or point the process temp directory at an untrusted/shared location.
-- The limit is characters, not bytes or model tokens. Media bypasses and errors are not covered by the preview size limit. Large upstream responses are still downloaded and materialized before pruning.
+Pruning and file I/O run in a bounded blocking pool (four jobs) rather than async executor workers. Upstream results are still fully fetched and materialized. Cache bounds count serialized bytes, not exact allocator overhead. Large media bypasses and errors are not subject to the preview size cap. Full responses intentionally bypass that cap.

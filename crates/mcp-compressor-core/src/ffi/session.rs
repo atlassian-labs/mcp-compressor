@@ -116,6 +116,7 @@ impl FfiCompressedSession {
     pub async fn invoke(&self, tool: &str, input: Value) -> Result<String, Error> {
         if let Some(before_exec) = &self.before_exec {
             let _refresh = self.before_exec_lock.lock().await;
+            self.server.disable_recovery_cache();
             before_exec().await?;
         }
         dispatch_exec(&self.server, tool.to_string(), input).await
@@ -293,6 +294,56 @@ mod before_exec_tests {
     use crate::ffi::dto::FfiCompressedSessionConfig;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
+
+    #[tokio::test]
+    async fn dynamic_auth_disables_cached_recovery() {
+        let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/recovery_server.py");
+        let python = std::env::var("PYTHON").unwrap_or_else(|_| "python3".into());
+        let hook: BeforeExecHook = Arc::new(|| Box::pin(async { Ok(()) }));
+        let session = start_compressed_session_with_backend_configs_and_before_exec(
+            FfiCompressedSessionConfig {
+                compression_level: "max".into(),
+                server_name: Some("recovery".into()),
+                include_tools: vec![],
+                exclude_tools: vec![],
+                toonify: false,
+                shrinkfit: Some(4000),
+                transform_mode: None,
+                bridge: false,
+            },
+            vec![crate::server::BackendServerConfig::new(
+                "recovery",
+                python,
+                [fixture.to_string_lossy().into_owned()],
+            )],
+            Some(hook),
+        )
+        .await
+        .unwrap();
+        let tool = session
+            .list_frontend_tools()
+            .into_iter()
+            .find(|t| t.name.ends_with("invoke_tool"))
+            .unwrap()
+            .name;
+        session
+            .invoke(
+                &tool,
+                serde_json::json!({"tool_name":"records", "tool_input":{}}),
+            )
+            .await
+            .unwrap();
+        let full = session
+            .invoke(
+                &tool,
+                serde_json::json!({"tool_name":"records", "tool_input":{}, "full":true}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&full).unwrap()["calls"], 2);
+        session.close().await.unwrap();
+    }
 
     /// Invoke one tool through a session built with the given bridge setting and
     /// report how many times the auth-refresh hook ran.
