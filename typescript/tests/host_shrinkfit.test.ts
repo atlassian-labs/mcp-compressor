@@ -229,11 +229,11 @@ describe("host-owned shrinkfit recovery", () => {
         async function call(tool: string, id?: string) {
           if (kind === "cli")
             return (
-              await exec("bash", [
-                join(dir, "fixture"),
-                tool.replaceAll("_", "-"),
-                ...(id ? ["--response-id", id] : []),
-              ])
+              await exec(
+                join(dir, process.platform === "win32" ? "fixture.cmd" : "fixture"),
+                [tool.replaceAll("_", "-"), ...(id ? ["--response-id", id] : [])],
+                { shell: process.platform === "win32" },
+              )
             ).stdout.trimEnd();
           if (kind === "python")
             return (
