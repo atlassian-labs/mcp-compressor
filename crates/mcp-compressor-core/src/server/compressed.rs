@@ -984,7 +984,7 @@ pub(crate) fn list_wrapper_tool(name: String, description: &str) -> Tool {
     )
 }
 
-pub(super) fn call_tool_result_to_string(
+pub(crate) fn call_tool_result_to_string(
     result: rmcp::model::CallToolResult,
 ) -> Result<String, Error> {
     if let Some(structured) = result.structured_content {

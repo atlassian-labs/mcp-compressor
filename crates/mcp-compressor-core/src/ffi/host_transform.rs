@@ -623,3 +623,26 @@ List accessible resources for the user."
         );
     }
 }
+
+/// Condense normalized host output without writing files. The host owns the recovery
+/// cache and supplies instructions pointing to an actual available recovery tool.
+pub fn shrink_host_output(
+    output: &str,
+    max_chars: usize,
+    recovery_message: &str,
+) -> Result<Option<String>, Error> {
+    if max_chars == 0 {
+        return Err(Error::Config("shrinkfit must be a positive integer".into()));
+    }
+    let result =
+        rmcp::model::CallToolResult::success(vec![rmcp::model::ContentBlock::text(output)]);
+    crate::server::output_shrinking::shrink_result_with_recovery(
+        &result,
+        output,
+        max_chars,
+        None,
+        Some(recovery_message),
+    )?
+    .map(|result| crate::server::compressed::call_tool_result_to_string(result))
+    .transpose()
+}

@@ -7,6 +7,11 @@ export interface NativeToolSpec {
 }
 
 export interface NativeCore {
+  shrinkHostOutput(
+    output: string,
+    maxChars: number,
+    recoveryMessage: string,
+  ): Promise<string | null>;
   compressToolListingJson(level: string, toolsJson: string): string;
   formatToolSchemaResponseJson(toolJson: string): string;
   maybeToonifyOutputJson(output: string): string;

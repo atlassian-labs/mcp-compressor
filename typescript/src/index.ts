@@ -40,3 +40,5 @@ export {
   type ProxyTool,
   normalizeServers,
 } from "./native_client.js";
+
+export * from "./host_shrinkfit.js";

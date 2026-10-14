@@ -366,3 +366,37 @@ pub async fn start_compressed_session_from_mcp_config_json(
         auth_header_stores: Vec::new(),
     })
 }
+
+/// Run CPU-intensive shrinking on the worker pool, never the JS event loop.
+pub struct ShrinkHostOutputTask {
+    output: String,
+    max_chars: u32,
+    recovery_message: String,
+}
+impl napi::Task for ShrinkHostOutputTask {
+    type Output = Option<String>;
+    type JsValue = Option<String>;
+    fn compute(&mut self) -> napi::Result<Self::Output> {
+        mcp_compressor_core::ffi::host_transform::shrink_host_output(
+            &self.output,
+            self.max_chars as usize,
+            &self.recovery_message,
+        )
+        .map_err(napi_error)
+    }
+    fn resolve(&mut self, _: napi::Env, output: Self::Output) -> napi::Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+#[napi]
+pub fn shrink_host_output(
+    output: String,
+    max_chars: u32,
+    recovery_message: String,
+) -> napi::bindgen_prelude::AsyncTask<ShrinkHostOutputTask> {
+    napi::bindgen_prelude::AsyncTask::new(ShrinkHostOutputTask {
+        output,
+        max_chars,
+        recovery_message,
+    })
+}

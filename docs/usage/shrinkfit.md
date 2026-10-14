@@ -116,3 +116,60 @@ Rust client builders support `.shrinkfit(20000)`; the proxy exposes `invoke_with
 Backend errors retain their existing semantics and are not shrunk/cached. File-write or impossible-budget failures fail rather than returning an unrecoverable preview; temporary unsuccessful files are removed. A backend write may have already succeeded before output processing fails—do not retry blindly.
 
 Pruning and file I/O run in a bounded blocking pool (four jobs) rather than async executor workers. Upstream results are still fully fetched and materialized. Cache bounds count serialized bytes, not exact allocator overhead. Large media bypasses and errors are not subject to the preview size cap. Full responses intentionally bypass that cap.
+
+## Host-owned TypeScript tools
+
+Alta and other hosts that own their MCP connections can opt in without moving
+connection management into the compressor:
+
+```typescript
+const transformed = await transformToolsForCliMode(tools, {
+  serverName: "inventory",
+  shrinkfit: 6000,
+});
+```
+
+`shrinkfit` is also accepted by `compressTools`, `planToolsForJustBash`,
+`transformToolsForJustBash`, `transformToolsForCodeMode`, and
+`createExecutableToolBridge`. It is a positive integer character budget, not a
+byte or token budget. Omit it to retain existing behavior.
+
+These APIs use the same Rust shrinker, on a native worker thread. Host APIs do
+not write response files: consumers may be running in a remote sandbox or an
+in-memory filesystem. Instead, the toolset gains `compressor_recover_response`
+(with a collision-safe suffix if necessary). It is exposed through the same
+surface as the other tools: a generated CLI/Just Bash subcommand, Python or
+TypeScript function, or the compressed `invoke_tool` wrapper. Recovery details
+are included in each shortened response and the recovery tool's help/schema.
+For example:
+
+```sh
+inventory compressor-recover-response --response-id <id-from-truncation-notice>
+```
+
+For generated TypeScript, use `compressorRecoverResponse(responseId)`; generated
+Python uses `compressor_recover_response(response_id=...)`. Check generated help
+if an upstream tool collided with that name.
+
+Recovery returns the exact original **normalized string**, not the upstream MCP
+transport envelope. It never re-executes a tool, even on a cache miss. Originals
+are scoped to the transformed toolset and bounded to 128 entries / 64 MiB, with
+a five-minute lifetime. Expired/evicted/unknown IDs fail explicitly. Call
+`close()` on bridge/generated/Just Bash transform results to clear their caches
+and release their existing resources. `compressTools` follows its existing
+closure lifetime; discard the toolset to release its bounded cache.
+
+For hosts that need to compose transformations or route tool calls through their
+own sandbox callback bridge, `shrinkfitTools(tools, { shrinkfit: 6000 })` returns
+`{ tools, close }`. Transform and advertise **that complete tool map**, including
+its recovery tool, and use the same map for callback dispatch. Do not shrink the
+same tools twice or apply TOON afterward: the recovery metadata is JSON and the
+recovered string must remain unchanged. Convenience APIs disable their TOON
+option when shrinkfit is active.
+
+Error and multimodal envelopes bypass shrinking. If a budget cannot accommodate
+a meaningful preview plus recovery notice, shrinking fails rather than returning
+an over-budget result or dropping recovery instructions. Such failures occur
+**after** the upstream invocation: never blindly retry writes. A single original
+larger than the recovery cache capacity similarly fails rather than advertising
+an unavailable original. No defaults or upstream tool schemas are changed.

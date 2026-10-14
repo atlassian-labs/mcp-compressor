@@ -1,3 +1,4 @@
+import { shrinkfitTools, type HostShrinkfitOptions } from "./host_shrinkfit.js";
 import {
   compressToolListing,
   formatToolSchemaResponse,
@@ -14,7 +15,7 @@ export interface LocalTool<TInput = Record<string, unknown>, TResult = unknown> 
   execute: (input: TInput) => TResult | Promise<TResult>;
 }
 
-export interface CompressToolsOptions {
+export interface CompressToolsOptions extends HostShrinkfitOptions {
   compressionLevel?: CompressionLevel;
   namePrefix?: string;
   toonify?: boolean;
@@ -85,6 +86,26 @@ export function compressTools(
     description: tool.description,
     inputSchema: asJsonSchema(tool.inputSchema, options.schemaAdapter),
   }));
+  if (options.shrinkfit !== undefined) {
+    const executable = Object.fromEntries(
+      specs.map((spec) => [
+        spec.name,
+        {
+          ...tools[spec.name]!,
+          name: spec.name,
+          execute: async (input: Record<string, unknown>) => tools[spec.name]!.execute(input),
+          inputSchema: spec.inputSchema,
+        },
+      ]),
+    );
+    const shrunk = shrinkfitTools(executable, options);
+    return compressTools(shrunk.tools, {
+      ...options,
+      shrinkfit: undefined,
+      toonify: false,
+      schemaAdapter: undefined,
+    });
+  }
   const specByName = new Map(specs.map((spec) => [spec.name, spec]));
   const toolByName = new Map(Object.entries(tools));
   const listing = compressToolListing(compressionLevel, specs);

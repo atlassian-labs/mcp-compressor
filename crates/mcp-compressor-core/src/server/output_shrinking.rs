@@ -14,6 +14,17 @@ pub(super) fn shrink_result(
     max_chars: usize,
     directory: Option<&Path>,
 ) -> Result<Option<CallToolResult>, Error> {
+    shrink_result_with_recovery(result, output, max_chars, directory, None)
+}
+
+/// Hosts supply recovery instructions because their consumers may not share a filesystem.
+pub(crate) fn shrink_result_with_recovery(
+    result: &CallToolResult,
+    output: &str,
+    max_chars: usize,
+    directory: Option<&Path>,
+    recovery_message: Option<&str>,
+) -> Result<Option<CallToolResult>, Error> {
     if result.is_error == Some(true)
         || output.chars().count() <= max_chars
         || (result.structured_content.is_none()
@@ -43,10 +54,10 @@ pub(super) fn shrink_result(
                 .ok_or_else(|| Error::Config("recovery path must be UTF-8".into()))
         })
         .transpose()?;
-    let message = match path {
+    let message = recovery_message.map(str::to_owned).unwrap_or_else(|| match path {
         Some(path) => format!("This tool response has been automatically shrunk to limit token consumption. An attempt has been made to retain important information. If the fully hydrated response is required, it can be read from {path}"),
         None => "This tool response has been automatically shrunk to limit token consumption. An attempt has been made to retain important information. Only if the fully hydrated response is required, recall this compressor invocation with the same tool_name and tool_input and full=true (outside tool_input). A cached original is used when available; otherwise the backend runs again without shrinking. Do not repeat a write unless safe.".into(),
-    };
+    });
     let input = shrinkfit::json::parse(output)
         .unwrap_or_else(|_| shrinkfit::Value::String(output.to_owned()));
     let original_object = matches!(&input, shrinkfit::Value::Object(_));
