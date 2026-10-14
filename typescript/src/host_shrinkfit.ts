@@ -46,7 +46,14 @@ export function shrinkfitTools(
         const value = await tool.execute(input);
         // Error and multimodal envelopes must retain their original semantics.
         if (preserveEnvelope(value)) return value;
-        const output = normalizeHostToolResult(value, false);
+        // execute() returns under-budget objects unchanged. Budget their complete
+        // JSON representation too: text normalization would discard sibling
+        // structuredContent, metadata, or a legitimate upstream `result` key.
+        // Cache the same representation so recovery includes every omitted field.
+        const output =
+          value !== null && typeof value === "object" && !Array.isArray(value)
+            ? JSON.stringify(value)
+            : normalizeHostToolResult(value, false);
         if (output.length <= limit || withinLimit(output, limit)) return value;
         const id = randomUUID();
         const message = `This response was automatically shrunk to limit token consumption. Only if more detail is required, call ${recoveryName} with response_id=${id} (CLI: --response-id ${id}). Recovery returns the cached original without repeating the upstream call. Cache expires after 5 minutes and may be evicted earlier.`;

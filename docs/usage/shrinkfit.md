@@ -151,8 +151,13 @@ For generated TypeScript, use `compressorRecoverResponse(responseId)`; generated
 Python uses `compressor_recover_response(response_id=...)`. Check generated help
 if an upstream tool collided with that name.
 
-Recovery returns the exact original **normalized string**, not the upstream MCP
-transport envelope. It never re-executes a tool, even on a cache miss. Originals
+Recovery returns the original budgeted string. Object-valued host results are
+budgeted and cached as their **complete JSON serialization**, including MCP
+`content`, `structuredContent`, metadata, and any outer `result` property. A
+short text summary cannot hide a large structured payload from the budget.
+Parsing the recovered string restores the complete JSON object. Other values
+use the existing host string normalization. Under-budget results remain unchanged.
+Recovery never re-executes a tool, even on a cache miss. Originals
 are scoped to the transformed toolset and bounded to 128 entries / 64 MiB, with
 a five-minute lifetime. Expired/evicted/unknown IDs fail explicitly. Call
 `close()` on bridge/generated/Just Bash transform results to clear their caches
