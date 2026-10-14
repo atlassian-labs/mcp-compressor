@@ -128,11 +128,12 @@ async fn mcp_transport_preserves_structured_output_and_recovers_complete_result(
         .as_ref()
         .unwrap()
         .get("truncation")
-        .is_some());
+        .is_none());
     let text = serde_json::to_value(&shrunk).unwrap();
     let text: Value = serde_json::from_str(text["content"][0]["text"].as_str().unwrap()).unwrap();
-    assert_eq!(shrunk.structured_content, Some(text));
+    assert!(text.get("truncation").is_some());
     let full = client.call_tool(invoke(true)).await.unwrap();
+    assert_eq!(shrunk.structured_content, full.structured_content);
     assert_eq!(full.structured_content.as_ref().unwrap()["calls"], 1);
     assert!(full
         .structured_content

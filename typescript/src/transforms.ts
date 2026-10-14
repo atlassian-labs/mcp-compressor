@@ -1,3 +1,4 @@
+import { shrinkfitTools, type HostShrinkfitOptions } from "./host_shrinkfit.js";
 import type { ExecutableTool } from "./adapters.js";
 import {
   createJustBashCommandRegistrations,
@@ -13,7 +14,7 @@ import {
 } from "./rust_core.js";
 import { executableToolToSpec, executableToolsToSpecs, normalizeServerName } from "./tool_specs.js";
 
-export interface TransformToolOptions {
+export interface TransformToolOptions extends HostShrinkfitOptions {
   serverName?: string;
 }
 
@@ -31,6 +32,7 @@ export interface TransformToolsForJustBashOptions extends PlanToolsForJustBashOp
 }
 
 export interface JustBashTransformResult {
+  close(): void;
   tools: Record<string, ExecutableTool>;
   registrations: JustBashCommandRegistration[];
 }
@@ -61,6 +63,8 @@ export function planToolsForJustBash(
   options: PlanToolsForJustBashOptions = {},
 ): JustBashTransformResult {
   const serverName = normalizeServerName(options.serverName);
+  const shrinking = shrinkfitTools(tools, options);
+  tools = shrinking.tools;
   const toolSpecs = executableToolsToSpecs(tools);
   const plan = buildHostTransformPlan({ kind: "just-bash", serverName, tools: toolSpecs });
   const registrations = createJustBashCommandRegistrations(
@@ -70,12 +74,13 @@ export function planToolsForJustBash(
         command.commandName,
         command.backendToolName,
         tools,
-        options.toonify ?? false,
+        options.shrinkfit === undefined && (options.toonify ?? false),
       ),
     ),
   );
   return {
     registrations,
+    close: () => shrinking.close(),
     tools: helpTools({
       name: plan.helpToolName,
       description: plan.helpDescription,
@@ -99,6 +104,7 @@ export async function transformToolsForCodeMode(
 ): Promise<GeneratedToolTransformResult> {
   const serverName = normalizeServerName(options.serverName);
   return generatedTransform(tools, {
+    shrinkfit: options.shrinkfit,
     kind: options.language,
     serverName,
     outputDir: options.outputDir ?? "./dist",
@@ -111,6 +117,7 @@ export async function transformToolsForCliMode(
 ): Promise<GeneratedToolTransformResult> {
   const serverName = normalizeServerName(options.serverName);
   return generatedTransform(tools, {
+    shrinkfit: options.shrinkfit,
     kind: "cli",
     serverName,
     outputDir: options.outputDir,
@@ -142,12 +149,15 @@ function justBashSource(
 async function generatedTransform(
   tools: Record<string, ExecutableTool<unknown>>,
   options: {
+    shrinkfit?: number;
     kind: ClientArtifactKind;
     serverName: string;
     outputDir?: string;
     commandName?: string;
   },
 ): Promise<GeneratedToolTransformResult> {
+  const shrinking = shrinkfitTools(tools, options);
+  tools = shrinking.tools;
   const bridge = await startLocalToolBridge(tools);
   const plan = buildHostTransformPlan({
     kind: options.kind,
@@ -169,7 +179,10 @@ async function generatedTransform(
       description: plan.helpDescription,
       output: plan.helpDescription,
     }),
-    close: () => bridge.close(),
+    close: () => {
+      shrinking.close();
+      bridge.close();
+    },
   };
 }
 

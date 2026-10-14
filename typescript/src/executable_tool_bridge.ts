@@ -1,3 +1,4 @@
+import { shrinkfitTools, type HostShrinkfitOptions } from "./host_shrinkfit.js";
 import type { ExecutableTool } from "./adapters.js";
 import { startLocalToolBridge } from "./local_tool_bridge.js";
 import type { ToolSpec } from "./rust_core.js";
@@ -21,7 +22,7 @@ export interface ExecutableToolBridge extends ExecutableToolBridgeRuntime {
   close(): void;
 }
 
-export interface CreateExecutableToolBridgeOptions {
+export interface CreateExecutableToolBridgeOptions extends HostShrinkfitOptions {
   serverName: string;
 }
 
@@ -29,6 +30,8 @@ export async function createExecutableToolBridge(
   tools: Record<string, ExecutableTool<unknown>>,
   options: CreateExecutableToolBridgeOptions,
 ): Promise<ExecutableToolBridge> {
+  const shrinking = shrinkfitTools(tools, options);
+  tools = shrinking.tools;
   const bridge = await startLocalToolBridge(tools);
   const server: ExecutableToolBridgeServer = {
     name: options.serverName,
@@ -41,7 +44,10 @@ export async function createExecutableToolBridge(
     server,
     bridgeUrl: bridge.bridgeUrl,
     token: bridge.token,
-    close: bridge.close,
+    close: () => {
+      shrinking.close();
+      bridge.close();
+    },
     invokeTool: async (toolName, input = {}) =>
       invokeBridgeTool(bridge.bridgeUrl, bridge.token, toolName, input),
   };

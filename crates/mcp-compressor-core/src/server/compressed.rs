@@ -448,7 +448,16 @@ impl CompressedServer {
             .map_err(|e| Error::Config(e.to_string()))?;
         let (original, condensed) = tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            let output = call_tool_result_to_string(original.clone())?;
+            // Never shrink schema-bearing structuredContent, even without text.
+            let output = original
+                .content
+                .iter()
+                .filter_map(|block| match block {
+                    ContentBlock::Text(text) => Some(text.text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
             let directory = filesystem.then(std::env::temp_dir);
             let condensed = super::output_shrinking::shrink_result(
                 &original,
@@ -667,7 +676,18 @@ impl CompressedServer {
         if result.is_error == Some(true) {
             return Err(Error::ToolExecution(call_tool_result_to_string(result)?));
         }
-        let output = super::output_shrinking::string_output(&result)?;
+        // String-only consumers select the content presentation when shrinking
+        // is enabled; protocol consumers keep the complete unchanged structure.
+        let mut presentation = result;
+        if self.config.shrinkfit.is_some()
+            && presentation
+                .content
+                .iter()
+                .any(|c| matches!(c, ContentBlock::Text(_)))
+        {
+            presentation.structured_content = None;
+        }
+        let output = super::output_shrinking::string_output(&presentation)?;
         Ok(if self.config.shrinkfit.is_none() {
             toonify_output(self.config.toonify, &output)
         } else {
@@ -984,7 +1004,7 @@ pub(crate) fn list_wrapper_tool(name: String, description: &str) -> Tool {
     )
 }
 
-pub(super) fn call_tool_result_to_string(
+pub(crate) fn call_tool_result_to_string(
     result: rmcp::model::CallToolResult,
 ) -> Result<String, Error> {
     if let Some(structured) = result.structured_content {

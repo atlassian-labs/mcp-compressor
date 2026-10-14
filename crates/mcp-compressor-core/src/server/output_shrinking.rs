@@ -14,13 +14,23 @@ pub(super) fn shrink_result(
     max_chars: usize,
     directory: Option<&Path>,
 ) -> Result<Option<CallToolResult>, Error> {
+    shrink_result_with_recovery(result, output, max_chars, directory, None)
+}
+
+/// Hosts supply recovery instructions because their consumers may not share a filesystem.
+pub(crate) fn shrink_result_with_recovery(
+    result: &CallToolResult,
+    output: &str,
+    max_chars: usize,
+    directory: Option<&Path>,
+    recovery_message: Option<&str>,
+) -> Result<Option<CallToolResult>, Error> {
     if result.is_error == Some(true)
         || output.chars().count() <= max_chars
-        || (result.structured_content.is_none()
-            && result
-                .content
-                .iter()
-                .any(|c| !matches!(c, ContentBlock::Text(_))))
+        || result
+            .content
+            .iter()
+            .any(|c| !matches!(c, ContentBlock::Text(_)))
     {
         return Ok(None);
     }
@@ -43,10 +53,10 @@ pub(super) fn shrink_result(
                 .ok_or_else(|| Error::Config("recovery path must be UTF-8".into()))
         })
         .transpose()?;
-    let message = match path {
+    let message = recovery_message.map(str::to_owned).unwrap_or_else(|| match path {
         Some(path) => format!("This tool response has been automatically shrunk to limit token consumption. An attempt has been made to retain important information. If the fully hydrated response is required, it can be read from {path}"),
         None => "This tool response has been automatically shrunk to limit token consumption. An attempt has been made to retain important information. Only if the fully hydrated response is required, recall this compressor invocation with the same tool_name and tool_input and full=true (outside tool_input). A cached original is used when available; otherwise the backend runs again without shrinking. Do not repeat a write unless safe.".into(),
-    };
+    });
     let input = shrinkfit::json::parse(output)
         .unwrap_or_else(|_| shrinkfit::Value::String(output.to_owned()));
     let original_object = matches!(&input, shrinkfit::Value::Object(_));
@@ -87,9 +97,6 @@ pub(super) fn shrink_result(
                 serde_json::to_string(&truncation)?
             );
             output_result.content = vec![ContentBlock::text(&text)];
-            if result.structured_content.is_some() {
-                output_result.structured_content = Some(serde_json::from_str(&text)?);
-            }
         } else {
             // Arrays/scalars cannot accept sibling fields. Preserve their value type,
             // and use MCP metadata plus a text notice visible to protocol clients.
@@ -100,9 +107,6 @@ pub(super) fn shrink_result(
                     .push(ContentBlock::text(serde_json::to_string(
                         &json!({"truncation":truncation}),
                     )?));
-            }
-            if result.structured_content.is_some() {
-                output_result.structured_content = Some(serde_json::from_str(&shrunk.text)?);
             }
             let mut encoded = serde_json::to_value(&output_result)?;
             let meta = encoded
@@ -123,7 +127,10 @@ pub(super) fn shrink_result(
             }
             output_result = serde_json::from_value(encoded)?;
         }
-        let text = string_output(&output_result)?;
+        // Structured output is schema-bearing and never part of the text budget.
+        let mut text_result = output_result.clone();
+        text_result.structured_content = None;
+        let text = string_output(&text_result)?;
         let excess = text.chars().count().saturating_sub(max_chars);
         if excess == 0 && shrunk.report.fits {
             final_result = Some(output_result);
@@ -153,7 +160,7 @@ pub(super) fn shrink_result(
     Ok(Some(result))
 }
 
-pub(super) fn string_output(result: &CallToolResult) -> Result<String, Error> {
+pub(crate) fn string_output(result: &CallToolResult) -> Result<String, Error> {
     let encoded = serde_json::to_value(result)?;
     if encoded
         .get("_meta")
@@ -177,7 +184,9 @@ mod tests {
         let result = shrink_result(&original, &text, 4000, Some(dir.path()))
             .unwrap()
             .unwrap();
-        let output = string_output(&result).unwrap();
+        let mut text_result = result.clone();
+        text_result.structured_content = None;
+        let output = string_output(&text_result).unwrap();
         let value: Value = serde_json::from_str(&output).unwrap();
         assert!(value.get("data").is_some());
         assert!(value.get("preview").is_none());
@@ -187,7 +196,7 @@ mod tests {
             .unwrap();
         let saved: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         assert_eq!(saved, serde_json::to_value(&original).unwrap());
-        assert_eq!(result.structured_content, Some(value.clone()));
+        assert_eq!(result.structured_content, original.structured_content);
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -197,6 +206,41 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn preserves_structured_schema_for_object_array_and_scalar_text() {
+        for text in [
+            json!({"records": vec![json!({"id": 1, "body": "x".repeat(2000)}); 100]}).to_string(),
+            json!(vec!["x".repeat(2000); 100]).to_string(),
+            "prose ".repeat(10000),
+        ] {
+            let structured = json!({"required_id": 42, "records": vec!["x".repeat(2000); 100]});
+            let mut original = CallToolResult::success(vec![ContentBlock::text(&text)]);
+            original.structured_content = Some(structured.clone());
+            let result = shrink_result(&original, &text, 4000, None)
+                .unwrap()
+                .unwrap();
+            assert_eq!(result.structured_content, Some(structured));
+            let mut presentation = result;
+            presentation.structured_content = None;
+            assert!(string_output(&presentation).unwrap().chars().count() <= 4000);
+        }
+    }
+
+    #[test]
+    fn short_text_and_structured_only_results_do_not_shrink() {
+        for text in ["", "Found 100 records"] {
+            let mut original = CallToolResult::success(if text.is_empty() {
+                vec![]
+            } else {
+                vec![ContentBlock::text(text)]
+            });
+            original.structured_content = Some(json!({"records": vec!["x".repeat(2000); 100]}));
+            assert!(shrink_result(&original, text, 4000, None)
+                .unwrap()
+                .is_none());
+        }
+    }
+
     #[test]
     fn non_filesystem_message_requests_full_without_local_path() {
         let text = json!({"items":vec!["x".repeat(2000);20]}).to_string();
