@@ -77,63 +77,108 @@ describe("host-owned shrinkfit recovery", () => {
     }
   });
   it.each([false, true])(
-    "budgets the entire structured envelope and recovers omitted data (wrapped=%s)",
+    "leaves large structuredContent unchanged when text is short (wrapped=%s)",
     async (wrapped) => {
       const envelope = {
         content: [{ type: "text", text: "Found 100 records" }],
         structuredContent: {
           records: Array.from({ length: 100 }, (_, id) => ({ id, body: "x".repeat(2000) })),
         },
-        _meta: { source: "upstream", cursor: "next-page" },
-        isError: false,
+      };
+      const response = wrapped ? { result: envelope } : envelope;
+      const t = shrinkfitTools(
+        { tool: { name: "tool", inputSchema: {}, execute: async () => response } },
+        { shrinkfit: 20_000 },
+      );
+      try {
+        expect(await t.tools.tool!.execute({})).toBe(response);
+      } finally {
+        t.close();
+      }
+    },
+  );
+  it.each([false, true])(
+    "shrinks duplicate text only and recovers the original envelope (wrapped=%s)",
+    async (wrapped) => {
+      const structuredContent = {
+        records: Array.from({ length: 100 }, (_, id) => ({ id, body: "x".repeat(2000) })),
+      };
+      const envelope = {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(structuredContent),
+            annotations: { audience: ["assistant"] },
+          },
+        ],
+        structuredContent,
+        _meta: { cursor: "next-page" },
       };
       const response = wrapped ? { result: envelope } : envelope;
       const execute = vi.fn(async () => response);
       const t = shrinkfitTools(
-        { records: { name: "records", inputSchema: {}, execute } },
+        { tool: { name: "tool", inputSchema: {}, execute } },
         { shrinkfit: 20_000 },
       );
       try {
-        expect(JSON.stringify(response).length).toBeGreaterThan(200_000);
-        const preview = await t.tools.records!.execute({});
-        expect(typeof preview).toBe("string");
-        expect(Array.from(preview as string).length).toBeLessThanOrEqual(20_000);
-        const parsed = JSON.parse(preview as string);
-        const id = parsed.truncation.message.match(/response_id=([a-f0-9-]+)/)?.[1];
-        expect(id).toBeTruthy();
-        const recovered = await t.tools.compressor_recover_response!.execute({ response_id: id });
-        expect(recovered).toBe(JSON.stringify(response));
-        expect(JSON.parse(recovered as string)).toEqual(response);
+        const out = (await t.tools.tool!.execute({})) as typeof response;
+        const result = (
+          wrapped ? (out as { result: typeof envelope }).result : out
+        ) as typeof envelope;
+        expect(result.structuredContent).toBe(structuredContent);
+        expect(result.structuredContent).toEqual(structuredContent);
+        expect(result._meta).toEqual(envelope._meta);
+        expect(result.content[0]!.annotations).toEqual(envelope.content[0]!.annotations);
+        expect(Array.from(result.content[0]!.text).length).toBeLessThanOrEqual(20_000);
+        expect(result.content[0]!.text).not.toBe(envelope.content[0]!.text);
+        const id = JSON.parse(result.content[0]!.text).truncation.message.match(
+          /response_id=([a-f0-9-]+)/,
+        )?.[1];
+        expect(await t.tools.compressor_recover_response!.execute({ response_id: id })).toBe(
+          JSON.stringify(response),
+        );
         expect(execute).toHaveBeenCalledTimes(1);
       } finally {
         t.close();
       }
     },
   );
-  it("retains small envelopes unchanged and includes text envelope overhead in the budget", async () => {
-    const small = { content: [{ type: "text", text: "summary" }], structuredContent: { count: 1 } };
-    const large = {
-      content: [{ type: "text", text: "summary" }],
-      _meta: { details: "x".repeat(10_000) },
+  it("preserves structured-only results and metadata regardless of their size", async () => {
+    for (const response of [
+      { structuredContent: value },
+      { content: [], structuredContent: value },
+      { content: [{ type: "text", text: "summary" }], _meta: { large: "x".repeat(20_000) } },
+    ]) {
+      const t = shrinkfitTools(
+        { tool: { name: "tool", inputSchema: {}, execute: async () => response } },
+        { shrinkfit: 1800 },
+      );
+      try {
+        expect(await t.tools.tool!.execute({})).toBe(response);
+      } finally {
+        t.close();
+      }
+    }
+  });
+  it("budgets multiple text blocks without losing their annotations or structure", async () => {
+    const response = {
+      content: [
+        { type: "text", text: "summary", annotations: { audience: ["user"] } },
+        { type: "text", text: original },
+      ],
+      structuredContent: value,
     };
     const t = shrinkfitTools(
-      {
-        small: { name: "small", inputSchema: {}, execute: async () => small },
-        large: { name: "large", inputSchema: {}, execute: async () => large },
-      },
+      { tool: { name: "tool", inputSchema: {}, execute: async () => response } },
       { shrinkfit: 1800 },
     );
     try {
-      expect(await t.tools.small!.execute({})).toBe(small);
-      const preview = await t.tools.large!.execute({});
-      expect(typeof preview).toBe("string");
-      expect(Array.from(preview as string).length).toBeLessThanOrEqual(1800);
-      const id = JSON.parse(preview as string).truncation.message.match(
-        /response_id=([a-f0-9-]+)/,
-      )?.[1];
-      expect(id).toBeTruthy();
-      expect(await t.tools.compressor_recover_response!.execute({ response_id: id })).toBe(
-        JSON.stringify(large),
+      const out = (await t.tools.tool!.execute({})) as typeof response;
+      expect(out.structuredContent).toBe(value);
+      expect(out.content[0]).toEqual(response.content[0]);
+      expect(out.content).toHaveLength(2);
+      expect(Array.from(out.content.map((b) => b.text).join("\n")).length).toBeLessThanOrEqual(
+        1800,
       );
     } finally {
       t.close();
@@ -246,7 +291,7 @@ describe("host-owned shrinkfit recovery", () => {
   });
   it("Just Bash preserves complete envelope recovery through downstream normalization", async () => {
     const envelope = {
-      content: [{ type: "text", text: "Found 100 records" }],
+      content: [{ type: "text", text: original }],
       structuredContent: {
         records: Array.from({ length: 100 }, (_, id) => ({ id, body: "x".repeat(2000) })),
       },
@@ -255,12 +300,12 @@ describe("host-owned shrinkfit recovery", () => {
     const bash = new Bash();
     const t = transformToolsForJustBash(
       { records: { name: "records", inputSchema: {}, execute } },
-      { serverName: "fixture", bash, shrinkfit: 20_000 },
+      { serverName: "fixture", bash, shrinkfit: 1800 },
     );
     try {
       const preview = await bash.exec("fixture records");
       expect(preview.exitCode).toBe(0);
-      expect(Array.from(preview.stdout.trimEnd()).length).toBeLessThanOrEqual(20_000);
+      expect(Array.from(preview.stdout.trimEnd()).length).toBeLessThanOrEqual(1800);
       const id = JSON.parse(preview.stdout).truncation.message.match(
         /response_id=([a-f0-9-]+)/,
       )?.[1];

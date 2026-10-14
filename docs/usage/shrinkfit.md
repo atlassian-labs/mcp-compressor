@@ -37,11 +37,21 @@ Object results keep their existing top-level fields. There is **no `preview` wra
 }
 ```
 
-The small report consists of shrinkfit's actual counters, not model-generated claims. The unbounded per-field path list is intentionally omitted so report metadata cannot overwhelm the budget. The budget includes the output and truncation instructions. Characters are not bytes or tokens.
+The small report consists of shrinkfit's actual counters, not model-generated claims. The unbounded per-field path list is intentionally omitted so report metadata cannot overwhelm the budget. The budget includes the text presentation and truncation instructions, not structured output. Characters are not bytes or tokens.
 
 Small outputs and backend errors remain unchanged. JSON is parsed strictly; malformed JSON/prose is treated as text, not guessed to be YAML. Arrays/scalars cannot accept a sibling key: their value type is retained, with recovery in MCP `_meta.truncation`. Standard MCP additionally gets a text notice for clients that don't display `_meta`; string transports serialize the MCP result envelope for these cases. A backend-owned `truncation` field is never overwritten; recovery uses the same metadata fallback. Media without structured content bypasses condensation.
 
-If `structuredContent` exists, it and the primary text output are updated consistently. The complete original envelope is retained for recovery. Condensed output is explicitly lossy and is **not guaranteed to satisfy the backend's original output schema** or preserve every identity.
+Shrinkfit modifies **text in `content` only**, never `structuredContent`. Structured
+output remains exactly as supplied by the upstream tool, so shrinking cannot
+invalidate its output schema. Even when a text block duplicates the structured
+payload, only that text is condensed. The complete original envelope is retained
+for recovery. Condensed text is lossy; structured data is not.
+
+The character budget applies to the text presentation and its recovery notice,
+**not the whole MCP response**. A large structured payload (including a
+structured-only result) may exceed the budget and is deliberately left intact.
+Use text output when token reduction is needed; do not treat shrinkfit as a
+whole-envelope size limit.
 
 ## CLI, Code Mode and Just Bash: read the original file
 
@@ -151,12 +161,12 @@ For generated TypeScript, use `compressorRecoverResponse(responseId)`; generated
 Python uses `compressor_recover_response(response_id=...)`. Check generated help
 if an upstream tool collided with that name.
 
-Recovery returns the original budgeted string. Object-valued host results are
-budgeted and cached as their **complete JSON serialization**, including MCP
-`content`, `structuredContent`, metadata, and any outer `result` property. A
-short text summary cannot hide a large structured payload from the budget.
-Parsing the recovered string restores the complete JSON object. Other values
-use the existing host string normalization. Under-budget results remain unchanged.
+For MCP envelopes, recovery returns the complete original envelope serialized as
+JSON, including untouched structured output and metadata. Plain host values use
+the existing string normalization. Only text blocks of MCP envelopes are shrunk;
+block annotations and other envelope fields are preserved. Multiple text blocks
+share the text budget. Short text plus large structured output is returned
+unchanged, by design. No shrinking is applied to structured-only results.
 Recovery never re-executes a tool, even on a cache miss. Originals
 are scoped to the transformed toolset and bounded to 128 entries / 64 MiB, with
 a five-minute lifetime. Expired/evicted/unknown IDs fail explicitly. Call
