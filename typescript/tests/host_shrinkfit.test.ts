@@ -243,7 +243,12 @@ describe("host-owned shrinkfit recovery", () => {
                   "-c",
                   `import fixture; print(fixture.${tool}(${id ? `response_id=${JSON.stringify(id)}` : ""}))`,
                 ],
-                { cwd: dir },
+                {
+                  cwd: dir,
+                  // Piped Python stdout defaults to the Windows ANSI code page.
+                  // Match Node's UTF-8 decoding without losing Unicode coverage.
+                  env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+                },
               )
             ).stdout.trimEnd();
           return (
