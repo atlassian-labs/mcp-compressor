@@ -674,6 +674,25 @@ mod tests {
 
     use super::*;
 
+    // /proc can disappear before open (ENOENT) or while reading an already
+    // opened stat file (ESRCH). Both mean the process has gone away.
+    #[cfg(unix)]
+    fn proc_entry_is_gone(error: &std::io::Error) -> bool {
+        error.kind() == std::io::ErrorKind::NotFound
+            || error.raw_os_error() == Some(libc::ESRCH)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn proc_entry_gone_accepts_only_missing_process_errors() {
+        for errno in [libc::ENOENT, libc::ESRCH] {
+            assert!(proc_entry_is_gone(&std::io::Error::from_raw_os_error(errno)));
+        }
+        for errno in [libc::EACCES, libc::EPERM, libc::EIO, libc::EINTR] {
+            assert!(!proc_entry_is_gone(&std::io::Error::from_raw_os_error(errno)));
+        }
+    }
+
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn shutdown_reaps_backend_before_returning() {
@@ -707,14 +726,14 @@ mod tests {
         backend.shutdown_shared().await.unwrap();
 
         assert!(
-            matches!(&state_after_close, Err(error) if error.kind() == std::io::ErrorKind::NotFound),
+            matches!(&state_after_close, Err(error) if proc_entry_is_gone(error)),
             "backend still existed immediately after shutdown: {state_after_close:?}"
         );
         // The grandchild is orphaned once the backend dies and is reaped by
         // whichever process inherits it (PID 1 in CI containers), so a zombie
         // counts as terminated; only the direct backend is ours to reap.
         let child_terminated = match &child_state_after_close {
-            Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+            Err(error) => proc_entry_is_gone(error),
             Ok(stat) => stat
                 .rsplit_once(") ")
                 .is_some_and(|(_, fields)| fields.starts_with('Z')),
