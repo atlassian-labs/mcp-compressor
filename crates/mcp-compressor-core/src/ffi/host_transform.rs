@@ -613,6 +613,55 @@ List accessible resources for the user."
         assert_eq!(normalize_host_tool_result(value, false), "{\"ok\":true}");
     }
 
+    #[test]
+    fn shrinks_host_objects_with_sibling_truncation_without_wrapping() {
+        let original =
+            json!({"data":{"description":"detail ".repeat(2000)},"nextPageToken":"opaque"});
+        let preview = shrink_host_output(&original.to_string(), 4000, "Recover response abc")
+            .unwrap()
+            .unwrap();
+        let parsed: Value = serde_json::from_str(&preview).unwrap();
+        assert!(preview.chars().count() <= 4000);
+        assert!(parsed["data"].is_object());
+        assert_eq!(parsed["nextPageToken"], "opaque");
+        assert_eq!(parsed["truncation"]["message"], "Recover response abc");
+        assert_eq!(parsed["truncation"]["report"]["fits"], true);
+        assert!(parsed.get("content").is_none());
+        assert!(parsed.get("_meta").is_none());
+    }
+
+    #[test]
+    fn shrinks_host_fallbacks_as_single_json_documents_with_recovery_metadata() {
+        let array = json!((0..100)
+            .map(|id| json!({"id":id,"text":"detail ".repeat(100)}))
+            .collect::<Vec<_>>());
+        let scalar = json!("long string ".repeat(2000));
+        let collision =
+            json!({"truncation":{"upstream":true},"description":"detail ".repeat(2000)});
+        for original in [array, scalar, collision] {
+            let preview = shrink_host_output(&original.to_string(), 4000, "Recover response abc")
+                .unwrap()
+                .unwrap();
+            let parsed: Value = serde_json::from_str(&preview).unwrap();
+            assert!(preview.chars().count() <= 4000);
+            assert_eq!(
+                parsed["_meta"]["truncation"]["message"],
+                "Recover response abc"
+            );
+            let content = parsed["content"].as_array().unwrap();
+            assert_eq!(content.len(), 2);
+            let payload: Value =
+                serde_json::from_str(content[0]["text"].as_str().unwrap()).unwrap();
+            assert_eq!(payload.is_array(), original.is_array());
+            assert_eq!(payload.is_string(), original.is_string());
+            if original.is_object() {
+                assert_eq!(payload["truncation"], original["truncation"]);
+            }
+            let notice: Value = serde_json::from_str(content[1]["text"].as_str().unwrap()).unwrap();
+            assert_eq!(notice["truncation"], parsed["_meta"]["truncation"]);
+        }
+    }
+
     /// The napi path shares the core conversion, so CSV must toonify here too.
     #[test]
     fn toonifies_csv_text_content_results() {
@@ -643,6 +692,6 @@ pub fn shrink_host_output(
         None,
         Some(recovery_message),
     )?
-    .map(|result| crate::server::compressed::call_tool_result_to_string(result))
+    .map(|result| crate::server::output_shrinking::string_output(&result))
     .transpose()
 }

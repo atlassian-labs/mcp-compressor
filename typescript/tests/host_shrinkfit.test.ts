@@ -104,7 +104,13 @@ describe("host-owned shrinkfit recovery", () => {
       try {
         const preview = (await t.tools.tool!.execute({})) as string;
         expect(Array.from(preview).length).toBeLessThanOrEqual(1800);
-        const id = preview.match(/response_id=([a-f0-9-]+)/)?.[1];
+        const parsed = JSON.parse(preview);
+        const payload = JSON.parse(parsed.content[0].text);
+        expect(Array.isArray(payload)).toBe(Array.isArray(response));
+        expect(typeof payload).toBe(typeof response);
+        const notice = JSON.parse(parsed.content[1].text);
+        expect(notice.truncation).toEqual(parsed._meta.truncation);
+        const id = parsed._meta.truncation.message.match(/response_id=([a-f0-9-]+)/)?.[1];
         expect(id).toBeTruthy();
         expect(await t.tools.compressor_recover_response!.execute({ response_id: id })).toBe(
           typeof response === "string" ? response : JSON.stringify(response),

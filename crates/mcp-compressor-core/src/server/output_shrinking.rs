@@ -164,7 +164,7 @@ pub(crate) fn shrink_result_with_recovery(
     Ok(Some(result))
 }
 
-pub(super) fn string_output(result: &CallToolResult) -> Result<String, Error> {
+pub(crate) fn string_output(result: &CallToolResult) -> Result<String, Error> {
     let encoded = serde_json::to_value(result)?;
     if encoded
         .get("_meta")
