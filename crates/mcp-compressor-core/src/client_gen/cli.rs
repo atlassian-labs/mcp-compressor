@@ -558,12 +558,15 @@ fn render_unix_script(config: &GeneratorConfig) -> String {
 /// by Python, the first line (`@echo off`) is skipped by `python -x`, and the batch
 /// launcher lines sit inside a Python string, so Python ignores them and runs the
 /// shared program. Uses `python`, since Windows usually has no `python3`.
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 fn render_windows_cmd(config: &GeneratorConfig) -> String {
-    format!(
+    let script = format!(
         "@echo off\nREM = r'''\npython -x \"%~f0\" %*\nexit /b %errorlevel%\n'''\n{body}",
         body = client_python_body(config),
-    )
+    );
+    // cmd.exe requires CRLF for reliable batch parsing. The Python body may
+    // already contain CRLF from Git autocrlf; normalize before converting.
+    script.replace("\r\n", "\n").replace('\n', "\r\n")
 }
 
 pub fn read_live_bridge_entries(script: &str) -> Vec<CliBridgeEntry> {
@@ -871,6 +874,41 @@ mod tests {
     // ------------------------------------------------------------------
     // Windows .cmd content
     // ------------------------------------------------------------------
+
+    #[test]
+    fn windows_polyglot_has_crlf_and_executes_as_python_with_unicode() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = make_config(dir.path());
+        config.tools[0].description = Some("Résumé … 漢字 😀".to_string());
+        let contents = render_windows_cmd(&config);
+        assert!(contents.starts_with("@echo off\r\nREM = r'''\r\n"));
+        for (index, byte) in contents.bytes().enumerate() {
+            if byte == b'\n' {
+                assert!(index > 0 && contents.as_bytes()[index - 1] == b'\r');
+            }
+            if byte == b'\r' {
+                assert_eq!(contents.as_bytes().get(index + 1), Some(&b'\n'));
+            }
+        }
+        let path = dir.path().join("unicode.cmd");
+        fs::write(&path, contents).unwrap();
+        let python = std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_string());
+        let output = std::process::Command::new(python)
+            .args(["-x"])
+            .arg(path)
+            .args(["fetch", "--help"])
+            .env("PYTHONIOENCODING", "cp1252")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("Résumé … 漢字 😀"));
+    }
 
     /// On Windows a `.cmd` file is generated.
     #[test]
