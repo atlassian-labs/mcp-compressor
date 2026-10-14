@@ -315,6 +315,60 @@ async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
   });
 }
 
+it("returns recoverable condensed responses through Just Bash SDK commands", async () => {
+  const client = new CompressorClient({
+    servers: { alpha: { command: alphaBackend().commandOrUrl, args: alphaBackend().args } },
+    mode: "bash",
+    shrinkfit: 2000,
+  });
+  let original: string | undefined;
+  try {
+    const proxy = await client.connect();
+    const bash = new Bash();
+    installJustBashCommands(bash, proxy);
+    const message = "useful details ".repeat(1000);
+    const result = await bash.exec(`alpha echo --message '${message}'`);
+    expect(result.exitCode).toBe(0);
+    const envelope = JSON.parse(result.stdout);
+    original = envelope._meta.truncation.original_response_file;
+    expect([...result.stdout.trimEnd()].length).toBeLessThanOrEqual(2000);
+    const saved = JSON.parse(readFileSync(original!, "utf-8"));
+    expect(saved.content[0].text).toBe(`alpha:${message}`);
+    expect((await bash.exec("alpha echo --message small")).stdout.trimEnd()).toBe("alpha:small");
+  } finally {
+    await client.close();
+    if (original) {
+      expect(existsSync(original)).toBe(true);
+      rmSync(original);
+    }
+  }
+});
+
+it("recovers an MCP-mode original through the full option without repeating the backend", async () => {
+  const client = new CompressorClient({
+    servers: {
+      recovery: {
+        command: alphaBackend().commandOrUrl,
+        args: [fixturePath("recovery_server.py")],
+      },
+    },
+    shrinkfit: 4000,
+  });
+  try {
+    const proxy = await client.connect();
+    const args = { marker: "typescript", full: true };
+    const preview = JSON.parse(await proxy.invoke("records", args));
+    expect(preview.truncation.message).toContain("full=true");
+    expect(preview.preview).toBeUndefined();
+    const original = JSON.parse(await proxy.invoke("records", args, { full: true }));
+    expect(original.calls).toBe(1);
+    expect(original.backend_full).toBe(true);
+    expect(original.truncation).toBeUndefined();
+  } finally {
+    await client.close();
+  }
+});
+
 const sampleTool: ToolSpec = {
   name: "echo",
   description: "Echo a value.",

@@ -127,6 +127,7 @@ pub struct CompressorClientBuilder {
     include_tools: Vec<String>,
     exclude_tools: Vec<String>,
     toonify: bool,
+    shrinkfit: Option<usize>,
     mode: CompressorMode,
 }
 
@@ -139,6 +140,7 @@ impl Default for CompressorClientBuilder {
             include_tools: Vec::new(),
             exclude_tools: Vec::new(),
             toonify: false,
+            shrinkfit: None,
             mode: CompressorMode::CompressedTools,
         }
     }
@@ -172,6 +174,12 @@ impl CompressorClientBuilder {
 
     pub fn toonify(mut self, enabled: bool) -> Self {
         self.toonify = enabled;
+        self
+    }
+
+    /// Enable response condensation with file (CLI/bash) or cached full (MCP) recovery.
+    pub fn shrinkfit(mut self, max_chars: usize) -> Self {
+        self.shrinkfit = Some(max_chars);
         self
     }
 
@@ -237,6 +245,7 @@ impl CompressorClient {
                 include_tools: self.builder.include_tools.clone(),
                 exclude_tools: self.builder.exclude_tools.clone(),
                 toonify: self.builder.toonify,
+                shrinkfit: self.builder.shrinkfit,
                 transform_mode: self.builder.mode.into(),
                 ..CompressedServerConfig::default()
             },
@@ -326,12 +335,22 @@ impl CompressorProxy {
         tool_name: &str,
         input: Value,
     ) -> Result<String, Error> {
+        self.invoke_with_full(server, tool_name, input, false).await
+    }
+
+    /// Request an unshrunk response only when required; a cache miss re-executes the tool.
+    pub async fn invoke_with_full(
+        &self,
+        server: Option<&str>,
+        tool_name: &str,
+        input: Value,
+        full: bool,
+    ) -> Result<String, Error> {
         let wrapper = self.invoke_wrapper(server)?;
         self.invoke_wrapper_tool(
             &wrapper,
             json!({
-                "tool_name": tool_name,
-                "tool_input": input,
+                "tool_name": tool_name, "tool_input": input, "full": full,
             }),
         )
         .await

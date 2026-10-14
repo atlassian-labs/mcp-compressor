@@ -585,3 +585,40 @@ def test_native_extension_preserves_remote_mcp_config_metadata() -> None:
             "oauth_app_name": "Test Agent",
         }
     ]
+
+
+def test_shrinkfit_sdk_retains_complete_response() -> None:
+    original: Path | None = None
+    try:
+        with CompressorClient(
+            servers={"alpha": {"command": PYTHON, "args": [str(FIXTURES / "alpha_server.py")]}},
+            mode="cli",
+            shrinkfit=2000,
+        ) as proxy:
+            message = "useful details " * 1000
+            output = proxy.invoke("echo", {"message": message})
+            result = json.loads(output)
+            assert len(output) <= 2000
+            original = Path(result["_meta"]["truncation"]["original_response_file"])
+            saved = json.loads(original.read_text())
+            assert saved["content"][0]["text"] == f"alpha:{message}"
+            assert proxy.invoke("echo", {"message": "small"}) == "alpha:small"
+        assert original.exists()
+    finally:
+        if original is not None:
+            original.unlink(missing_ok=True)
+
+
+def test_full_option_recovers_cached_mcp_response_without_reexecution() -> None:
+    with CompressorClient(
+        servers={"recovery": {"command": PYTHON, "args": [str(FIXTURES / "recovery_server.py")]}},
+        shrinkfit=4000,
+    ) as proxy:
+        args = {"marker": "python", "full": True}
+        preview = json.loads(proxy.invoke("records", args))
+        assert "full=true" in preview["truncation"]["message"]
+        assert "preview" not in preview
+        original = json.loads(proxy.invoke("records", args, full=True))
+        assert original["calls"] == 1
+        assert original["backend_full"] is True
+        assert "truncation" not in original

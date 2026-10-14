@@ -19,12 +19,12 @@ pub(crate) const INVOKE_TOOL_INPUT_SCHEMA_DESCRIPTION: &str = concat!(
     "Use get_tool_schema for the selected tool_name before invoking if required fields are unknown."
 );
 
-use crate::Error;
-use crate::compression::CompressionLevel;
 use crate::compression::engine::{CompressionEngine, Tool};
+use crate::compression::CompressionLevel;
 use crate::config::topology::MCPConfig;
 use crate::server::backend::BackendServerConfig;
-use crate::server::connect::{ConnectedBackend, backend_operation, connect_backend, timeout_error};
+use crate::server::connect::{backend_operation, connect_backend, timeout_error, ConnectedBackend};
+use crate::Error;
 
 /// Frontend tool-surface mode exposed by the proxy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,8 +56,23 @@ pub struct CompressedServerConfig {
     pub include_tools: Vec<String>,
     pub exclude_tools: Vec<String>,
     pub toonify: bool,
+    /// Opt-in response budget for all modes, with file or cached full recovery.
+    pub shrinkfit: Option<usize>,
     pub transform_mode: ProxyTransformMode,
     pub config_source: BackendConfigSource,
+}
+
+impl CompressedServerConfig {
+    fn validate(&self) -> Result<(), Error> {
+        if let Some(limit) = self.shrinkfit {
+            if limit < 1024 || limit > u32::MAX as usize {
+                return Err(Error::Config(
+                    "shrinkfit must be between 1024 and 4294967295 characters".to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Default for CompressedServerConfig {
@@ -68,6 +83,7 @@ impl Default for CompressedServerConfig {
             include_tools: Vec::new(),
             exclude_tools: Vec::new(),
             toonify: false,
+            shrinkfit: None,
             transform_mode: ProxyTransformMode::CompressedTools,
             config_source: BackendConfigSource::Command,
         }
@@ -95,6 +111,8 @@ pub struct JustBashCommandSpec {
 pub struct CompressedServer {
     config: CompressedServerConfig,
     backends: Vec<ConnectedBackend>,
+    recovery_cache: std::sync::Mutex<super::response_cache::ResponseCache>,
+    recovery_cache_enabled: std::sync::atomic::AtomicBool,
 }
 
 impl CompressedServer {
@@ -107,6 +125,7 @@ impl CompressedServer {
     /// SDK sessions are held behind an `Arc` that a draining HTTP bridge can
     /// still share, so shutdown must not require exclusive ownership.
     pub async fn shutdown_shared(&self) -> Result<(), Error> {
+        self.clear_recovery_cache();
         let mut first_error = None;
         for backend in &self.backends {
             if let Err(error) = backend.shutdown_shared().await {
@@ -124,6 +143,7 @@ impl CompressedServer {
         config: CompressedServerConfig,
         backend: BackendServerConfig,
     ) -> Result<Self, Error> {
+        config.validate()?;
         let public_name = config
             .server_name
             .clone()
@@ -138,6 +158,8 @@ impl CompressedServer {
         Ok(Self {
             config,
             backends: vec![backend],
+            recovery_cache: Default::default(),
+            recovery_cache_enabled: std::sync::atomic::AtomicBool::new(true),
         })
     }
 
@@ -146,6 +168,7 @@ impl CompressedServer {
         config: CompressedServerConfig,
         backends: Vec<BackendServerConfig>,
     ) -> Result<Self, Error> {
+        config.validate()?;
         let suite_prefix = config.server_name.clone();
         let mut connected = Vec::with_capacity(backends.len());
         for backend in backends {
@@ -166,6 +189,8 @@ impl CompressedServer {
         Ok(Self {
             config,
             backends: connected,
+            recovery_cache: Default::default(),
+            recovery_cache_enabled: std::sync::atomic::AtomicBool::new(true),
         })
     }
 
@@ -189,6 +214,8 @@ impl CompressedServer {
             Ok(Self {
                 config,
                 backends: vec![backend],
+                recovery_cache: Default::default(),
+                recovery_cache_enabled: std::sync::atomic::AtomicBool::new(true),
             })
         } else {
             Self::connect_multi_stdio(config, backends).await
@@ -210,10 +237,17 @@ impl CompressedServer {
                 format!("{prefix}get_tool_schema"),
                 &self.get_tool_schema_description(backend),
             ));
-            tools.push(invoke_wrapper_tool(
+            let mut invoke = invoke_wrapper_tool(
                 format!("{prefix}invoke_tool"),
                 &self.invoke_tool_description(backend),
-            ));
+            );
+            if self.config.shrinkfit.is_some() {
+                invoke.input_schema["properties"]["full"] = serde_json::json!({
+                    "type": "boolean", "default": false,
+                    "description": super::output_shrinking::FULL_DESCRIPTION
+                });
+            }
+            tools.push(invoke);
             if self.config.level == CompressionLevel::Max {
                 tools.push(list_wrapper_tool(
                     format!("{prefix}list_tools"),
@@ -323,13 +357,24 @@ impl CompressedServer {
     /// Invoke a backend tool via the compressed wrapper API.
     pub async fn invoke_tool(
         &self,
-        _wrapper_tool_name: &str,
+        wrapper_tool_name: &str,
         backend_tool_name: &str,
         tool_input: Value,
     ) -> Result<String, Error> {
-        let backend = self.backend_for_wrapper(_wrapper_tool_name)?;
+        self.invoke_tool_full(wrapper_tool_name, backend_tool_name, tool_input, false)
+            .await
+    }
+
+    /// `full` is compressor-owned, never injected into backend arguments.
+    pub async fn invoke_tool_full(
+        &self,
+        wrapper_tool_name: &str,
+        backend_tool_name: &str,
+        tool_input: Value,
+        full: bool,
+    ) -> Result<String, Error> {
         let result = self
-            .invoke_backend_result(backend, backend_tool_name, tool_input, None)
+            .invoke_tool_result(wrapper_tool_name, backend_tool_name, tool_input, None, full)
             .await?;
         self.tool_result_to_output(result)
     }
@@ -340,12 +385,110 @@ impl CompressedServer {
         backend_tool_name: &str,
         tool_input: Value,
         request_meta: Option<RequestMetaObject>,
+        full: bool,
     ) -> Result<CallToolResult, Error> {
         let backend = self.backend_for_wrapper(wrapper_tool_name)?;
-        let result = self
-            .invoke_backend_result(backend, backend_tool_name, tool_input, request_meta)
+        self.invoke_with_recovery(backend, backend_tool_name, tool_input, request_meta, full)
+            .await
+    }
+
+    async fn invoke_with_recovery(
+        &self,
+        backend: &ConnectedBackend,
+        tool_name: &str,
+        input: Value,
+        request_meta: Option<RequestMetaObject>,
+        full: bool,
+    ) -> Result<CallToolResult, Error> {
+        let context = request_meta
+            .as_ref()
+            .map(|m| serde_json::to_value(backend_request_meta(m.clone())))
+            .transpose()?
+            .unwrap_or(Value::Null);
+        let cache_key =
+            super::response_cache::key(&backend.public_name, tool_name, &input, &context);
+        if full
+            && self.config.shrinkfit.is_some()
+            && self
+                .recovery_cache_enabled
+                .load(std::sync::atomic::Ordering::Acquire)
+        {
+            if let Some(original) = self
+                .recovery_cache
+                .lock()
+                .map_err(|_| Error::Config("recovery cache lock poisoned".into()))?
+                .get(&cache_key)
+            {
+                return Ok(original);
+            }
+        }
+        if self.config.shrinkfit.is_some() {
+            self.recovery_cache
+                .lock()
+                .map_err(|_| Error::Config("recovery cache lock poisoned".into()))?
+                .remove(&cache_key);
+        }
+        let original = self
+            .invoke_backend_result(backend, tool_name, input, request_meta)
             .await?;
-        Ok(toonify_result(self.config.toonify, result))
+        if full || original.is_error == Some(true) {
+            return Ok(original);
+        }
+        let Some(limit) = self.config.shrinkfit else {
+            return Ok(toonify_result(self.config.toonify, original));
+        };
+        let filesystem = matches!(
+            self.config.transform_mode,
+            ProxyTransformMode::Cli | ProxyTransformMode::JustBash
+        );
+        static JOBS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+        let permit = JOBS
+            .acquire()
+            .await
+            .map_err(|e| Error::Config(e.to_string()))?;
+        let (original, condensed) = tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            let output = call_tool_result_to_string(original.clone())?;
+            let directory = filesystem.then(std::env::temp_dir);
+            let condensed = super::output_shrinking::shrink_result(
+                &original,
+                &output,
+                limit,
+                directory.as_deref(),
+            )?;
+            Ok::<_, Error>((original, condensed))
+        })
+        .await
+        .map_err(|e| Error::Config(format!("response shrinking failed: {e}")))??;
+        if let Some(condensed) = condensed {
+            if !filesystem
+                && self
+                    .recovery_cache_enabled
+                    .load(std::sync::atomic::Ordering::Acquire)
+            {
+                self.recovery_cache
+                    .lock()
+                    .map_err(|_| Error::Config("recovery cache lock poisoned".into()))?
+                    .insert(cache_key, original);
+            }
+            Ok(condensed)
+        } else {
+            Ok(original)
+        }
+    }
+
+    /// Identity can change in a dynamic-auth session; disable cached recovery.
+    pub(crate) fn disable_recovery_cache(&self) {
+        self.recovery_cache_enabled
+            .store(false, std::sync::atomic::Ordering::Release);
+        self.clear_recovery_cache();
+    }
+
+    /// Remove recovery payloads at shutdown or credential boundaries.
+    pub(crate) fn clear_recovery_cache(&self) {
+        if let Ok(mut cache) = self.recovery_cache.lock() {
+            cache.clear();
+        }
     }
 
     /// List frontend resources, including pass-through backend resources and
@@ -477,7 +620,7 @@ impl CompressedServer {
             .filter(|_| self.backends.len() == 1)
             .ok_or_else(|| Error::ToolNotFound(backend_tool_name.to_string()))?;
         let result = self
-            .invoke_backend_result(backend, backend_tool_name, tool_input, None)
+            .invoke_with_recovery(backend, backend_tool_name, tool_input, None, false)
             .await?;
         self.tool_result_to_output(result)
     }
@@ -524,12 +667,12 @@ impl CompressedServer {
         if result.is_error == Some(true) {
             return Err(Error::ToolExecution(call_tool_result_to_string(result)?));
         }
-        let output = call_tool_result_to_string(result)?;
-        Ok(self.maybe_toonify_output(&output))
-    }
-
-    fn maybe_toonify_output(&self, output: &str) -> String {
-        toonify_output(self.config.toonify, output)
+        let output = super::output_shrinking::string_output(&result)?;
+        Ok(if self.config.shrinkfit.is_none() {
+            toonify_output(self.config.toonify, &output)
+        } else {
+            output
+        })
     }
 
     fn cli_help_tools(&self) -> Vec<Tool> {
@@ -670,11 +813,9 @@ mod request_timeout_tests {
                 ClientRequest::PingRequest(Default::default()),
             );
             tokio::pin!(request);
-            assert!(
-                tokio::task::unconstrained(request.as_mut())
-                    .now_or_never()
-                    .is_none()
-            );
+            assert!(tokio::task::unconstrained(request.as_mut())
+                .now_or_never()
+                .is_none());
             if matches!(queue_state, QueueState::FullAfterSubmission) {
                 fill_peer_queue(&backend);
             }
@@ -843,7 +984,9 @@ pub(crate) fn list_wrapper_tool(name: String, description: &str) -> Tool {
     )
 }
 
-fn call_tool_result_to_string(result: rmcp::model::CallToolResult) -> Result<String, Error> {
+pub(super) fn call_tool_result_to_string(
+    result: rmcp::model::CallToolResult,
+) -> Result<String, Error> {
     if let Some(structured) = result.structured_content {
         return Ok(value_to_string(&structured));
     }

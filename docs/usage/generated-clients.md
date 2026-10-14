@@ -245,6 +245,13 @@ In Code Mode, a tool failure raises `RuntimeError` in Python and rejects with an
 
 Generated clients don't set a request timeout of their own. A call waits as long as the proxy does, and the proxy applies the backend `--timeout` you configured. To cap a single client's wait, set `MCP_COMPRESSOR_REQUEST_TIMEOUT` to a number of seconds in its environment. When the cap is hit, the CLI exits `1`, Python raises `TimeoutError`, and TypeScript rejects with an `Error`. The message is `timed out after <n>s waiting for the tool result`.
 
+### Bounded output with recovery
+
+CLI and Code Mode sessions can opt into `--shrinkfit` (default 20,000 characters).
+Oversized object results retain their shape and add a top-level `truncation` field.
+Original MCP results are persisted on the proxy host. See
+[recoverable response shrinking](shrinkfit.md) before consuming the changed shape.
+
 ## How an agent might use Code Mode
 
 A Python-capable agent can inspect the generated module or use normal autocomplete/static analysis:

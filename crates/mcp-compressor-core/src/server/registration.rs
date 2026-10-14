@@ -175,9 +175,26 @@ impl FrontendServer {
                 .get("tool_input")
                 .cloned()
                 .unwrap_or_else(|| Value::Object(Map::new()));
+            let full = match arguments.get("full") {
+                None | Some(Value::Bool(false)) => false,
+                Some(Value::Bool(true)) => true,
+                _ => {
+                    return Err(McpError::new(
+                        ErrorCode::INVALID_PARAMS,
+                        "full must be a boolean",
+                        None,
+                    ))
+                }
+            };
             return self
                 .compressed
-                .invoke_tool_result(&wrapper_name, &tool_name, tool_input, Some(context.meta))
+                .invoke_tool_result(
+                    &wrapper_name,
+                    &tool_name,
+                    tool_input,
+                    Some(context.meta),
+                    full,
+                )
                 .await
                 .map_err(mcp_error);
         }

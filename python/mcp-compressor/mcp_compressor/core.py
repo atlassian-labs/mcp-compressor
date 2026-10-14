@@ -51,6 +51,8 @@ class CompressedSessionConfig:
     HTTP listener, token, or background task.
     """
 
+    shrinkfit: int | None = None
+
     def to_json_dict(self) -> dict[str, Any]:
         return {
             "compression_level": self.compression_level,
@@ -58,6 +60,7 @@ class CompressedSessionConfig:
             "include_tools": self.include_tools or [],
             "exclude_tools": self.exclude_tools or [],
             "toonify": self.toonify,
+            "shrinkfit": self.shrinkfit,
             "transform_mode": self.transform_mode,
             "bridge": self.bridge,
         }

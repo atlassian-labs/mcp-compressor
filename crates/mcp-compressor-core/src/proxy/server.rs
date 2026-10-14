@@ -60,6 +60,8 @@ struct WrapperInvokeInput {
     tool_name: String,
     #[serde(default)]
     tool_input: Value,
+    #[serde(default)]
+    full: bool,
 }
 
 impl ToolProxyServer {
@@ -163,6 +165,7 @@ async fn exec(
             // across dispatch would serialize every bridge request, so
             // concurrent generated-client calls would queue behind each other.
             let _refresh_guard = before_exec.request_lock.lock().await;
+            state.server.disable_recovery_cache();
             if (before_exec.hook)().await.is_err() {
                 // Redacted: the provider error may carry credentials.
                 return error_response(&Error::Auth("auth provider refresh failed".to_string()));
@@ -218,7 +221,12 @@ pub async fn dispatch_exec(
     if tool.ends_with("_invoke_tool") || tool == "invoke_tool" {
         let wrapper_input: WrapperInvokeInput = serde_json::from_value(input)?;
         server
-            .invoke_tool(&tool, &wrapper_input.tool_name, wrapper_input.tool_input)
+            .invoke_tool_full(
+                &tool,
+                &wrapper_input.tool_name,
+                wrapper_input.tool_input,
+                wrapper_input.full,
+            )
             .await
     } else {
         server.invoke_single_backend_tool(&tool, input).await

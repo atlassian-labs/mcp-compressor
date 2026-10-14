@@ -143,6 +143,51 @@ fn generated_script_command(script: &std::path::Path) -> Command {
 }
 
 #[test]
+fn generated_cli_emits_utf8_help_and_errors_under_legacy_python_encoding() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let config = GeneratorConfig {
+        cli_name: "unicode".to_string(),
+        bridge_url: "http://127.0.0.1:1".to_string(),
+        token: "token".to_string(),
+        tools: vec![mcp_compressor_core::compression::engine::Tool::new(
+            "echo",
+            Some("Résumé … 漢字 😀".to_string()),
+            serde_json::json!({"type":"object", "properties": {"mode":{"type":"string", "enum":["…"]}}}),
+        )],
+        session_pid: std::process::id(),
+        output_dir: tempdir.path().to_path_buf(),
+        extra_cli_bridges: Vec::new(),
+    };
+    CliGenerator.generate(&config).unwrap();
+    let script = tempdir.path().join("unicode");
+    for encoding in ["cp1252", "ascii"] {
+        let output = generated_script_command(&script)
+            .env("PYTHONIOENCODING", encoding)
+            .args(["echo", "--help"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(stdout.contains("Résumé … 漢字 😀"));
+        // The schema contributes Unicode to stderr; argv stays ASCII on Windows.
+        let output = generated_script_command(&script)
+            .env("PYTHONIOENCODING", encoding)
+            .args(["echo", "--mode", "invalid"])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains("…"), "{stderr}");
+        assert!(!stderr.contains("UnicodeEncodeError"));
+        assert!(output.stdout.is_empty());
+    }
+}
+
+#[test]
 fn generated_cli_help_renders_camel_case_properties_as_kebab_case_flags() {
     let tempdir = tempfile::tempdir().unwrap();
     let config = GeneratorConfig {
