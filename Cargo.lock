@@ -2271,9 +2271,9 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "shrinkfit"
-version = "0.2.2"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8b5064330405e4fb3ebd25c2531a76d43a8f6707023d00b46c60a40a68f7ea5"
+checksum = "6dd2fddb6e46eb688caf74921ce0ab8e071235111e88f0afba39388936e59da2"
 
 [[package]]
 name = "signal-hook-registry"
