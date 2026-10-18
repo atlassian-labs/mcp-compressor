@@ -13,7 +13,7 @@ publish       = true
 [dependencies]
 serde      = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "raw_value"] }
-shrinkfit = "0.2.2"
+shrinkfit = "0.4.0"
 tempfile = "3"
 base64    = "0.22"
 thiserror  = "1"
