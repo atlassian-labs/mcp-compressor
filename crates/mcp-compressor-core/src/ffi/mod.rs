@@ -25,6 +25,7 @@ pub use dto::{
 pub use host_transform::{
     build_host_transform_plan, normalize_host_tool_result, FfiHostJustBashCommandPlan,
     FfiHostJustBashPlan, FfiHostTransformConfig, FfiHostTransformKind, FfiHostTransformPlan,
+    FfiShellHelpMode,
 };
 pub use oauth::{
     clear_oauth_credentials, list_oauth_credentials, oauth_store_path, remember_oauth_backend,

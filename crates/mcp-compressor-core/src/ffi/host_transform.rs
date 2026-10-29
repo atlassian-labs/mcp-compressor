@@ -24,10 +24,25 @@ pub enum FfiHostTransformKind {
     TypeScript,
 }
 
+/// Detail included in a shell transform's model-visible help description.
+/// This does not change commands, generated artifacts or full help output.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum FfiShellHelpMode {
+    #[default]
+    Full,
+    Summary,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct FfiHostTransformConfig {
     pub kind: FfiHostTransformKind,
+    #[serde(default)]
+    pub help_mode: FfiShellHelpMode,
+    /// Optional toolset capability summary; used only in summary mode.
+    #[serde(default)]
+    pub help_summary: Option<String>,
     pub server_name: String,
     pub tools: Vec<FfiTool>,
     pub output_dir: Option<PathBuf>,
@@ -42,6 +57,8 @@ pub struct FfiHostTransformConfig {
 pub struct FfiHostTransformPlan {
     pub help_tool_name: String,
     pub help_description: String,
+    /// Full discoverable help, even when the model-visible description is brief.
+    pub help_text: String,
     pub output_dir: Option<PathBuf>,
     pub files: BTreeMap<String, String>,
     pub paths: Vec<PathBuf>,
@@ -70,6 +87,16 @@ pub struct FfiHostJustBashCommandPlan {
 pub fn build_host_transform_plan(
     config: FfiHostTransformConfig,
 ) -> Result<FfiHostTransformPlan, Error> {
+    if config.help_mode == FfiShellHelpMode::Summary
+        && !matches!(
+            config.kind,
+            FfiHostTransformKind::Cli | FfiHostTransformKind::JustBash
+        )
+    {
+        return Err(Error::Config(
+            "summary help is supported only for cli and just-bash transforms".into(),
+        ));
+    }
     let server_name = normalize_server_name(Some(config.server_name));
     let help_tool_name = format!("{server_name}_help");
     match config.kind {
@@ -88,7 +115,14 @@ pub fn build_host_transform_plan(
                 .collect();
             Ok(FfiHostTransformPlan {
                 help_tool_name: help_tool_name.clone(),
-                help_description,
+                help_text: help_description.clone(),
+                help_description: shell_help_description(
+                    &server_name,
+                    &server_name,
+                    &config.help_mode,
+                    config.help_summary.as_deref(),
+                    help_description,
+                ),
                 output_dir: None,
                 files: BTreeMap::new(),
                 paths: Vec::new(),
@@ -119,7 +153,14 @@ pub fn build_host_transform_plan(
                 shell_tool_help_description(&command_name, &server_name, &config.tools);
             Ok(FfiHostTransformPlan {
                 help_tool_name,
-                help_description,
+                help_text: help_description.clone(),
+                help_description: shell_help_description(
+                    &command_name,
+                    &server_name,
+                    &config.help_mode,
+                    config.help_summary.as_deref(),
+                    help_description,
+                ),
                 output_dir: Some(output_dir.clone()),
                 files,
                 paths,
@@ -166,6 +207,7 @@ pub fn build_host_transform_plan(
             };
             Ok(FfiHostTransformPlan {
                 help_tool_name,
+                help_text: help_description.clone(),
                 help_description,
                 output_dir: Some(output_dir),
                 files,
@@ -210,6 +252,24 @@ fn artifact_paths(artifacts: &[GeneratedArtifact], output_dir: &std::path::Path)
         .iter()
         .map(|artifact| output_dir.join(&artifact.file_name))
         .collect()
+}
+
+fn shell_help_description(
+    command: &str,
+    server_name: &str,
+    mode: &FfiShellHelpMode,
+    summary: Option<&str>,
+    full: String,
+) -> String {
+    if *mode == FfiShellHelpMode::Full {
+        return full;
+    }
+    let mut lines = vec![format!("Functionality associated with the {server_name} toolset is provided via the `{command}` CLI.")];
+    if let Some(summary) = summary.map(str::trim).filter(|s| !s.is_empty()) {
+        lines.push(summary.to_string());
+    }
+    lines.push(format!("Run '{command} --help' or call this help tool to discover available commands. Run '{command} <subcommand> --help' for arguments; execute commands through the shell."));
+    lines.join("\n")
 }
 
 fn shell_tool_help_description(command: &str, cli_name: &str, tools: &[FfiTool]) -> String {
@@ -443,6 +503,8 @@ mod tests {
     #[test]
     fn cli_plan_contains_subcommand_help() {
         let plan = build_host_transform_plan(FfiHostTransformConfig {
+            help_mode: FfiShellHelpMode::Full,
+            help_summary: None,
             kind: FfiHostTransformKind::Cli,
             server_name: "alpha".to_string(),
             tools: vec![tool("echo_message", "Echo a message.")],
@@ -463,8 +525,61 @@ mod tests {
     }
 
     #[test]
+    fn summary_help_changes_only_model_description() {
+        for kind in ["cli", "just-bash"] {
+            let base = serde_json::json!({
+                "kind": kind, "serverName": "alpha", "commandName": "alpha-alias",
+                "tools": [{"name":"echo_message", "description":"Echo a message.",
+                    "input_schema":{"type":"object","properties":{}}}],
+                "outputDir":"./target/summary-test", "bridgeUrl":"http://127.0.0.1:1",
+                "token":"test-token", "sessionPid":1
+            });
+            let full =
+                build_host_transform_plan(serde_json::from_value(base.clone()).unwrap()).unwrap();
+            assert_eq!(full.help_description, full.help_text);
+            for summary in [None, Some("  Search and manage records.  "), Some(" ")] {
+                let mut input = base.clone();
+                input["helpMode"] = serde_json::json!("summary");
+                input["helpSummary"] = serde_json::json!(summary);
+                let plan =
+                    build_host_transform_plan(serde_json::from_value(input).unwrap()).unwrap();
+                assert!(!plan.help_description.contains("SUBCOMMANDS:"));
+                assert!(!plan.help_description.contains("echo-message"));
+                assert!(plan.help_description.contains("--help"));
+                assert_eq!(plan.help_text, full.help_text);
+                assert!(plan.help_text.contains("echo-message"));
+                assert_eq!(plan.files, full.files);
+                assert_eq!(plan.paths, full.paths);
+                assert_eq!(plan.environment, full.environment);
+                assert_eq!(plan.just_bash, full.just_bash);
+                if summary.is_some_and(|s| !s.trim().is_empty()) {
+                    assert!(plan.help_description.contains("Search and manage records."));
+                }
+                if kind == "cli" {
+                    assert!(plan.help_description.contains("`alpha-alias`"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn summary_mode_is_explicit_and_shell_only() {
+        let input = serde_json::json!({"kind":"python", "serverName":"alpha", "tools":[], "helpMode":"summary"});
+        assert!(build_host_transform_plan(serde_json::from_value(input).unwrap()).is_err());
+        let invalid =
+            serde_json::json!({"kind":"cli", "serverName":"alpha", "tools":[], "helpMode":"typo"});
+        assert!(serde_json::from_value::<FfiHostTransformConfig>(invalid).is_err());
+        let empty = serde_json::json!({"kind":"cli", "serverName":"alpha", "tools":[], "helpMode":"summary"});
+        let plan = build_host_transform_plan(serde_json::from_value(empty).unwrap()).unwrap();
+        assert!(!plan.help_description.contains("SUBCOMMANDS:"));
+        assert!(plan.help_text.contains("SUBCOMMANDS:"));
+    }
+
+    #[test]
     fn help_summaries_use_first_sentence_and_trim_whitespace() {
         let plan = build_host_transform_plan(FfiHostTransformConfig {
+            help_mode: FfiShellHelpMode::Full,
+            help_summary: None,
             kind: FfiHostTransformKind::Cli,
             server_name: "alpha".to_string(),
             tools: vec![tool(
@@ -514,6 +629,8 @@ List accessible resources for the user."
     #[test]
     fn cli_plan_uses_kebab_case_for_camel_case_tool_names() {
         let plan = build_host_transform_plan(FfiHostTransformConfig {
+            help_mode: FfiShellHelpMode::Full,
+            help_summary: None,
             kind: FfiHostTransformKind::Cli,
             server_name: "atlassian".to_string(),
             tools: vec![
@@ -546,6 +663,8 @@ List accessible resources for the user."
         let previous_cwd = std::env::current_dir().unwrap();
         std::env::set_current_dir(temp.path()).unwrap();
         let plan = build_host_transform_plan(FfiHostTransformConfig {
+            help_mode: FfiShellHelpMode::Full,
+            help_summary: None,
             kind: FfiHostTransformKind::Cli,
             server_name: "alpha".to_string(),
             tools: vec![tool("echo", "Echo a message.")],
@@ -591,6 +710,8 @@ List accessible resources for the user."
     fn host_python_plan_returns_artifacts_without_writing_files() {
         let output_dir = tempfile::tempdir().unwrap().path().join("python-out");
         let plan = build_host_transform_plan(FfiHostTransformConfig {
+            help_mode: FfiShellHelpMode::Full,
+            help_summary: None,
             kind: FfiHostTransformKind::Python,
             server_name: "alpha".to_string(),
             tools: vec![tool("echo", "Echo a message.")],

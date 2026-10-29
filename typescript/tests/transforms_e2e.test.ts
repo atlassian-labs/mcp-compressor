@@ -82,6 +82,49 @@ describe("host-owned transform e2e", () => {
     }
   });
 
+  it("CLI summary exposes capabilities without catalog and retains full help on demand", async () => {
+    const outputDir = mkdtempSync(join(tmpdir(), "mcp-cli-summary-"));
+    const transform = await transformToolsForCliMode(alphaTools, {
+      serverName: "alpha",
+      outputDir,
+      helpMode: "summary",
+      helpSummary: "Echo and summarize records.",
+    });
+    try {
+      const help = transform.tools.alpha_help!;
+      expect(help.description).toContain("Echo and summarize records.");
+      expect(help.description).not.toContain("SUBCOMMANDS:");
+      expect(help.description).not.toContain("summarize-payload");
+      expect(help.description).toContain("alpha --help");
+      expect(await help.execute({})).toContain("summarize-payload");
+      expect(transform.files.alpha).toContain("summarize-payload");
+      expect(help.inputSchema).toEqual({ type: "object", properties: {} });
+    } finally {
+      transform.close();
+    }
+  });
+
+  it("Just Bash summary preserves full discovery and executable commands", async () => {
+    const bash = new Bash({ customCommands: [] });
+    const transform = transformToolsForJustBash(alphaTools, {
+      serverName: "alpha",
+      bash,
+      helpMode: "summary",
+    });
+    try {
+      const help = transform.tools.alpha_help!;
+      expect(help.description).not.toContain("SUBCOMMANDS:");
+      expect(await help.execute({})).toContain("summarize-payload");
+      expect((await bash.exec("alpha --help")).stdout).toContain("summarize-payload");
+      expect((await bash.exec("alpha summarize-payload --help")).stdout).toContain("--items");
+      const result = await bash.exec("alpha echo --message hello");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("alpha:hello");
+    } finally {
+      transform.close();
+    }
+  });
+
   it("Just Bash transform uses the same top-level command and structured args", async () => {
     const bash = new Bash({ customCommands: [] });
     const transform = transformToolsForJustBash(alphaTools, { serverName: "alpha", bash });

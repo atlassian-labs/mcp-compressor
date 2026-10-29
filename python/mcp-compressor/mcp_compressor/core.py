@@ -187,9 +187,17 @@ def render_cli_subcommand_help(command: str, tool: ToolSpec) -> str:
     return str(_native.render_cli_subcommand_help_json(command, _json_dumps(tool.to_json_dict())))
 
 
-def build_host_transform_plan(kind: str, server_name: str, tools: list[ToolSpec]) -> dict[str, Any]:
+def build_host_transform_plan(
+    kind: str, server_name: str, tools: list[ToolSpec], *, help_mode: str = "full", help_summary: str | None = None
+) -> dict[str, Any]:
     """Plan a host-side transform (help tool text, Just Bash command names) in the Rust core."""
-    config = {"kind": kind, "serverName": server_name, "tools": [tool.to_json_dict() for tool in tools]}
+    config = {
+        "kind": kind,
+        "serverName": server_name,
+        "tools": [tool.to_json_dict() for tool in tools],
+        "helpMode": help_mode,
+        "helpSummary": help_summary,
+    }
     plan = json.loads(_native.build_host_transform_plan_json(_json_dumps(config)))
     if not isinstance(plan, dict):
         msg = "Rust core build_host_transform_plan_json returned non-object JSON"
