@@ -317,3 +317,31 @@ def test_public_python_sdk_schema_lookup_supports_multi_server() -> None:
             assert "Multiple backend tools" in str(error)
         else:  # pragma: no cover - defensive assertion
             raise AssertionError("expected ambiguous schema lookup to fail")
+
+
+def test_summary_help_preserves_discovery_and_execution() -> None:
+    class BashHost:
+        def __init__(self) -> None:
+            self.custom_commands = {}
+
+    tools = {
+        "echo": ExecutableTool(
+            name="echo",
+            description="Echo a message.",
+            input_schema={"type": "object", "properties": {"message": {"type": "string"}}, "required": ["message"]},
+            execute=lambda input=None: f"summary:{(input or {})['message']}",
+        )
+    }
+    bash = BashHost()
+    result = transform_tools_for_just_bash(
+        tools, bash=bash, server_name="alpha", help_mode="summary", help_summary="Work with messages."
+    )
+    help_tool = result.tools["alpha_help"]
+    assert help_tool.description is not None
+    assert "Work with messages." in help_tool.description
+    assert "SUBCOMMANDS:" not in help_tool.description
+    assert "SUBCOMMANDS:" in help_tool.execute(None)
+    command = bash.custom_commands["alpha"]
+    assert "echo" in command(["--help"]).stdout
+    assert "--message" in command(["echo", "--help"]).stdout
+    assert command(["echo", "--message", "hello"]).stdout == "summary:hello\n"

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from mcp_compressor.client import ExecutableTool
 from mcp_compressor.core import ToolSpec, build_host_transform_plan
@@ -19,6 +19,8 @@ def transform_tools_for_just_bash(
     *,
     bash: Any,
     server_name: str = "tools",
+    help_mode: Literal["full", "summary"] = "full",
+    help_summary: str | None = None,
 ) -> JustBashTransformResult:
     """Install executable tools as one Just Bash command and return its help tool.
 
@@ -31,7 +33,7 @@ def transform_tools_for_just_bash(
         ToolSpec(name=name, description=tool.description, input_schema=tool.input_schema)
         for name, tool in tools.items()
     ]
-    plan = build_host_transform_plan("just-bash", normalized, specs)
+    plan = build_host_transform_plan("just-bash", normalized, specs, help_mode=help_mode, help_summary=help_summary)
     just_bash = plan["justBash"]
 
     def invoke(tool_name: str, tool_input: dict[str, Any]) -> str:
@@ -56,12 +58,12 @@ def transform_tools_for_just_bash(
         invoke=invoke,
     )
     install_commands(bash, [command])
-    help_text = str(plan["helpDescription"])
+    help_text = str(plan["helpText"])
     return JustBashTransformResult(
         tools={
             command.help_tool_name: ExecutableTool(
                 name=command.help_tool_name,
-                description=help_text,
+                description=str(plan["helpDescription"]),
                 input_schema={"type": "object", "properties": {}},
                 execute=lambda _input=None: help_text,
             )

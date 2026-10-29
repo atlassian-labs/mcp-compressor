@@ -310,6 +310,10 @@ export function clearOAuthCredentials(target?: string | null): string[] {
 }
 
 export interface HostTransformPlanConfig {
+  /** Model-visible shell help only; commands and full help are unchanged. */
+  helpMode?: "full" | "summary";
+  /** Optional toolset capability description for summary mode. */
+  helpSummary?: string;
   kind: ClientArtifactKind | "just-bash";
   serverName: string;
   tools: ToolSpec[];
@@ -321,6 +325,8 @@ export interface HostTransformPlanConfig {
 }
 
 export interface HostTransformPlan {
+  /** Full on-demand help, independent of the model-visible description. */
+  helpText: string;
   helpToolName: string;
   helpDescription: string;
   outputDir?: string;
@@ -345,6 +351,8 @@ export function buildHostTransformPlan(config: HostTransformPlanConfig): HostTra
     loadNativeCore().buildHostTransformPlanJson(
       stringify({
         kind: config.kind,
+        helpMode: config.helpMode,
+        helpSummary: config.helpSummary,
         serverName: config.serverName,
         tools: config.tools.map(toNativeTool),
         outputDir: config.outputDir,

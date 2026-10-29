@@ -391,3 +391,32 @@ import { CompressorRuntime } from "@atlassian/mcp-compressor";
 // light: ~zero runtime deps
 import { interpolateString } from "@atlassian/mcp-compressor/config";
 ```
+
+### Summary-only CLI discovery
+
+Host-owned CLI and Just Bash transforms can retain their complete command surface
+while advertising only a short toolset description to the model:
+
+```typescript
+const transformed = await transformToolsForCliMode(tools, {
+  serverName: "records",
+  helpMode: "summary",
+  helpSummary: "Search, read and manage enterprise records.",
+});
+```
+
+`helpMode` defaults to `"full"` (the existing subcommand catalog). With `"summary"`,
+the model-visible `records_help` description omits that catalog. `helpSummary` is
+optional caller-authored capability text, not an inferred or permission-checked
+capability promise. Missing/blank summaries fall back to a generic CLI description.
+Both `records --help` and calling `records_help` still return full discovery;
+`records <subcommand> --help` and all invocations are unchanged. The same options
+are available on `planToolsForJustBash` / `transformToolsForJustBash`.
+
+Hosts using `buildHostTransformPlan` directly can pass the same options. Use
+`plan.helpDescription` for the model-visible description and `plan.helpText` for
+the help tool's execution result. Do **not** use the shortened description as the
+on-demand help response. Artifacts, command registrations, auth and schemas do
+not change. Python/TypeScript code-generation transforms do not support summary
+mode. This is independent of MCP proxy `compressionLevel`; it does not add a new
+standalone CLI flag or change the high-level `CompressorClient` session modes.

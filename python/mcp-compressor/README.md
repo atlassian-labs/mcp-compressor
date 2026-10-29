@@ -93,3 +93,15 @@ CI runs the same kind of wheel smoke test before uploading the built wheel as an
 ## Advanced helpers
 
 Low-level helpers such as `compress_tool_listing`, `parse_tool_argv`, and `ToolSpec` remain available for tests and advanced integrations, but the primary SDK entry point is `CompressorClient`.
+
+### Summary-only host tool discovery
+
+For host-owned Just Bash tools, use
+`transform_tools_for_just_bash(tools, bash=bash, server_name="records", help_mode="summary", help_summary="Search and manage records.")`
+to omit the subcommand catalog from the model-visible help description. Defaults
+remain `help_mode="full"`; the optional summary is caller-supplied capability
+text. Calling the help tool or `records --help` still returns the full catalog;
+per-command help and execution are unchanged. The low-level
+`build_host_transform_plan` helper accepts the same keyword options and returns
+separate `helpDescription` and `helpText` fields. This does not change MCP proxy
+compression levels or high-level client session configuration.

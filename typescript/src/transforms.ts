@@ -18,7 +18,14 @@ export interface TransformToolOptions extends HostShrinkfitOptions {
   serverName?: string;
 }
 
-export interface PlanToolsForJustBashOptions extends TransformToolOptions {
+export interface ShellHelpOptions {
+  /** Defaults to full; summary omits the upfront subcommand catalog. */
+  helpMode?: "full" | "summary";
+  /** Toolset capability summary, used only with helpMode: "summary". */
+  helpSummary?: string;
+}
+
+export interface PlanToolsForJustBashOptions extends TransformToolOptions, ShellHelpOptions {
   /**
    * Convert JSON/CSV/YAML tool results to TOON before writing them to stdout.
    * Defaults to ``false`` so Just Bash output matches the generated CLI byte for
@@ -44,7 +51,7 @@ export interface TransformToolsForCodeModeOptions extends TransformToolOptions {
   outputDir?: string;
 }
 
-export interface TransformToolsForCliModeOptions extends TransformToolOptions {
+export interface TransformToolsForCliModeOptions extends TransformToolOptions, ShellHelpOptions {
   outputDir?: string;
 }
 
@@ -66,7 +73,13 @@ export function planToolsForJustBash(
   const shrinking = shrinkfitTools(tools, options);
   tools = shrinking.tools;
   const toolSpecs = executableToolsToSpecs(tools);
-  const plan = buildHostTransformPlan({ kind: "just-bash", serverName, tools: toolSpecs });
+  const plan = buildHostTransformPlan({
+    kind: "just-bash",
+    serverName,
+    tools: toolSpecs,
+    helpMode: options.helpMode,
+    helpSummary: options.helpSummary,
+  });
   const registrations = createJustBashCommandRegistrations(
     (plan.justBash?.commands ?? []).map((command) =>
       justBashSource(
@@ -84,7 +97,7 @@ export function planToolsForJustBash(
     tools: helpTools({
       name: plan.helpToolName,
       description: plan.helpDescription,
-      output: plan.helpDescription,
+      output: plan.helpText,
     }),
   };
 }
@@ -119,6 +132,8 @@ export async function transformToolsForCliMode(
   return generatedTransform(tools, {
     shrinkfit: options.shrinkfit,
     kind: "cli",
+    helpMode: options.helpMode,
+    helpSummary: options.helpSummary,
     serverName,
     outputDir: options.outputDir,
     commandName: serverName,
@@ -150,6 +165,8 @@ async function generatedTransform(
   tools: Record<string, ExecutableTool<unknown>>,
   options: {
     shrinkfit?: number;
+    helpMode?: "full" | "summary";
+    helpSummary?: string;
     kind: ClientArtifactKind;
     serverName: string;
     outputDir?: string;
@@ -161,6 +178,8 @@ async function generatedTransform(
   const bridge = await startLocalToolBridge(tools);
   const plan = buildHostTransformPlan({
     kind: options.kind,
+    helpMode: options.helpMode,
+    helpSummary: options.helpSummary,
     serverName: options.serverName,
     tools: executableToolsToSpecs(tools),
     outputDir: options.outputDir,
@@ -177,7 +196,7 @@ async function generatedTransform(
     tools: helpTools({
       name: plan.helpToolName,
       description: plan.helpDescription,
-      output: plan.helpDescription,
+      output: plan.helpText,
     }),
     close: () => {
       shrinking.close();
