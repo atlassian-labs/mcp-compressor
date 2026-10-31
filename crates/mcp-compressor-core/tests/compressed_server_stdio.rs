@@ -163,6 +163,8 @@ async fn mcp_frontend_preserves_complete_backend_tool_results() {
     )));
     let result = client.call_tool(request).await.unwrap();
     let mut result = serde_json::to_value(result).unwrap();
+    let display = result["_meta"].as_object_mut().unwrap().remove("atlassian.com/mcp-compressor/tool").unwrap();
+    assert_eq!(display["name"], "rich_result");
     let progress_token = result
         .pointer_mut("/_meta/request/progressToken")
         .expect("request metadata should reach the backend tool");
@@ -888,7 +890,7 @@ async fn schema_lookup_preserves_display_metadata_over_mcp_at_every_level() {
     ] {
         let server = CompressedServer::connect_stdio(
             common::config(
-                level,
+                level.clone(),
                 Some("alpha"),
                 ProxyTransformMode::CompressedTools,
                 BackendConfigSource::Command,
@@ -911,14 +913,24 @@ async fn schema_lookup_preserves_display_metadata_over_mcp_at_every_level() {
             ().serve_with_lifecycle(client_transport, ClientLifecycleMode::Initialize)
                 .await
                 .unwrap();
+        let listing = serde_json::to_string(&client.list_all_tools().await.unwrap()).unwrap();
+        assert!(!listing.contains("UI_ONLY_ECHO_TITLE"));
+        assert!(!listing.contains("Legacy echo title"));
+        if level == CompressionLevel::Max {
+            let listing = client.call_tool(CallToolRequestParams::new("alpha_list_tools")).await.unwrap();
+            let model_text = serde_json::to_string(&listing).unwrap();
+            assert!(!model_text.contains("UI_ONLY_ECHO_TITLE"));
+            assert!(!model_text.contains("Legacy echo title"));
+        }
         let call = |name: &str| {
             CallToolRequestParams::new("alpha_get_tool_schema")
                 .with_arguments(json!({"tool_name": name}).as_object().unwrap().clone())
         };
         let result = client.call_tool(call("echo")).await.unwrap();
-        let metadata = result.structured_content.as_ref().unwrap();
+        let wire = serde_json::to_value(&result).unwrap();
+        let metadata = &wire["_meta"]["atlassian.com/mcp-compressor/tool"];
         assert_eq!(metadata["name"], "echo");
-        assert_eq!(metadata["title"], "Echo a message");
+        assert_eq!(metadata["title"], "UI_ONLY_ECHO_TITLE");
         assert_eq!(metadata["annotations"]["title"], "Legacy echo title");
         assert_eq!(metadata["annotations"]["readOnlyHint"], true);
         assert_eq!(metadata["annotations"]["destructiveHint"], false);
@@ -926,13 +938,27 @@ async fn schema_lookup_preserves_display_metadata_over_mcp_at_every_level() {
             metadata["inputSchema"]["properties"]["message"]["type"],
             "string"
         );
-        let wire = serde_json::to_value(&result).unwrap();
         let text = wire["content"][0]["text"].as_str().unwrap();
-        assert!(text.contains("Title: Echo a message"));
+        assert!(!text.contains("UI_ONLY_ECHO_TITLE"));
+        assert!(!text.contains("Legacy echo title"));
+        assert!(result.structured_content.is_none());
+        let mut model_result = wire.clone();
+        model_result.as_object_mut().unwrap().remove("_meta");
+        let model_json = serde_json::to_string(&model_result).unwrap();
+        assert!(!model_json.contains("UI_ONLY_ECHO_TITLE"));
+        assert!(!model_json.contains("Legacy echo title"));
         assert!(text.contains("<tool>echo(message)"));
+        let invoked = client.call_tool(CallToolRequestParams::new("alpha_invoke_tool")
+            .with_arguments(json!({"tool_name":"echo","tool_input":{"message":"hello"}}).as_object().unwrap().clone())).await.unwrap();
+        let mut invoke_wire = serde_json::to_value(&invoked).unwrap();
+        assert_eq!(invoke_wire["_meta"]["atlassian.com/mcp-compressor/tool"]["title"], "UI_ONLY_ECHO_TITLE");
+        invoke_wire.as_object_mut().unwrap().remove("_meta");
+        assert!(!invoke_wire.to_string().contains("UI_ONLY_ECHO_TITLE"));
+        assert!(!invoke_wire.to_string().contains("Legacy echo title"));
+        assert!(invoke_wire.to_string().contains("alpha:hello"));
         let untitled = client.call_tool(call("add")).await.unwrap();
         assert_eq!(
-            untitled.structured_content.as_ref().unwrap()["title"],
+            serde_json::to_value(&untitled).unwrap()["_meta"]["atlassian.com/mcp-compressor/tool"]["title"],
             "add"
         );
         assert!(client.call_tool(call("missing_tool")).await.is_err());

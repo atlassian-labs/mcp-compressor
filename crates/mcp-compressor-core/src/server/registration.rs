@@ -186,7 +186,7 @@ impl FrontendServer {
                     ))
                 }
             };
-            return self
+            let mut result = self
                 .compressed
                 .invoke_tool_result(
                     &wrapper_name,
@@ -196,7 +196,9 @@ impl FrontendServer {
                     full,
                 )
                 .await
-                .map_err(mcp_error);
+                .map_err(mcp_error)?;
+            self.compressed.attach_invocation_display_metadata(&mut result, &wrapper_name, &tool_name).map_err(mcp_error)?;
+            return Ok(result);
         }
 
         let output = if wrapper_name.ends_with("get_tool_schema") {

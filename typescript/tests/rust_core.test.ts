@@ -1968,7 +1968,7 @@ describe("Rust native core wrapper", () => {
   });
 });
 
-it("preserves display title precedence through native schema formatting", async () => {
+it("keeps display titles out of model-facing native schema responses", async () => {
   const tool = {
     title: "Friendly tool",
     annotations: { title: "Legacy title", readOnlyHint: true },
@@ -1978,11 +1978,11 @@ it("preserves display title precedence through native schema formatting", async 
   };
   for (const compressionLevel of ["low", "medium", "high", "max"] as const) {
     const schema = compressTools({ technical_name: tool }, { compressionLevel }).get_tool_schema!;
-    await expect(schema.execute({ tool_name: "technical_name" })).resolves.toContain(
-      "Title: Friendly tool",
+    await expect(schema.execute({ tool_name: "technical_name" })).resolves.not.toContain(
+      "Friendly tool",
     );
   }
-  expect(formatToolSchemaResponse({ ...tool, name: "technical_name", title: "" })).toContain(
-    "Title: Legacy title",
+  expect(formatToolSchemaResponse({ ...tool, name: "technical_name", title: "" })).not.toContain(
+    "Legacy title",
   );
 });

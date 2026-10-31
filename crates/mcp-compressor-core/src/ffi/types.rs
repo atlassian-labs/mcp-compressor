@@ -465,10 +465,12 @@ mod tests {
     #[test]
     fn ffi_roundtrip_preserves_display_and_policy_metadata() {
         let mut tool = sample_tool();
-        tool.title = Some("Echo a message".into());
+        tool.title = Some("UI_ONLY_ECHO_TITLE".into());
         tool.annotations = Some(json!({"title": "Legacy echo", "readOnlyHint": true}));
         let roundtrip = FfiTool::from(crate::compression::engine::Tool::from(tool.clone()));
         assert_eq!(tool, roundtrip);
-        assert!(format_tool_schema_response(tool).contains("Title: Echo a message"));
+        let text = format_tool_schema_response(tool);
+        assert!(!text.contains("UI_ONLY_ECHO_TITLE"));
+        assert!(!text.contains("Legacy echo"));
     }
 }

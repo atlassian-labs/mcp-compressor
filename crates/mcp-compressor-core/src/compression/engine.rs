@@ -68,7 +68,7 @@ impl Tool {
             .unwrap_or(&self.name)
     }
 
-    /// Standard MCP Tool-shaped data for schema lookup structuredContent.
+    /// Client-only Tool metadata, carried in result _meta, never model content.
     pub fn schema_metadata(&self) -> serde_json::Value {
         let mut result = serde_json::json!({
             "name": self.name,
@@ -158,14 +158,7 @@ impl CompressionEngine {
         let tool_description = format_tool_at_level(tool, &CompressionLevel::Low);
         let schema = serde_json::to_string_pretty(&tool.input_schema)
             .unwrap_or_else(|_| tool.input_schema.to_string());
-        if tool.display_title() == tool.name {
-            format!("{tool_description}\n\n{schema}")
-        } else {
-            format!(
-                "{tool_description}\nTitle: {}\n\n{schema}",
-                tool.display_title()
-            )
-        }
+        format!("{tool_description}\n\n{schema}")
     }
 }
 
@@ -504,7 +497,14 @@ mod tests {
         assert_eq!(metadata["title"], "Fetch a page");
         assert_eq!(metadata["annotations"], tool.annotations.clone().unwrap());
         assert_eq!(metadata["inputSchema"], tool.input_schema);
-        assert!(CompressionEngine::format_schema_response(&tool).contains("Title: Fetch a page"));
+        let mut without_metadata = tool.clone();
+        without_metadata.title = None;
+        without_metadata.annotations = None;
+        assert_eq!(CompressionEngine::format_schema_response(&tool), CompressionEngine::format_schema_response(&without_metadata));
+        for level in [CompressionLevel::Low, CompressionLevel::Medium, CompressionLevel::High, CompressionLevel::Max] {
+            let engine = CompressionEngine::new(level);
+            assert_eq!(engine.format_listing(&[tool.clone()]), engine.format_listing(&[without_metadata.clone()]));
+        }
         tool.title = Some("  ".into());
         assert_eq!(tool.schema_metadata()["title"], "Legacy title");
         tool.annotations = Some(serde_json::json!({"title": "", "readOnlyHint": false}));

@@ -624,7 +624,7 @@ def test_full_option_recovers_cached_mcp_response_without_reexecution() -> None:
         assert "truncation" not in original
 
 
-def test_schema_preserves_configured_display_title():
+def test_schema_keeps_configured_display_titles_out_of_model_text():
     tool = ToolSpec(
         name="technical_name",
         description="Description stays separate.",
@@ -632,7 +632,8 @@ def test_schema_preserves_configured_display_title():
         title="Friendly tool",
         annotations={"title": "Legacy title", "readOnlyHint": True},
     )
-    assert "Title: Friendly tool" in format_tool_schema_response(tool)
+    assert "Friendly tool" not in format_tool_schema_response(tool)
+    assert "Legacy title" not in format_tool_schema_response(tool)
     assert tool.to_json_dict()["annotations"]["readOnlyHint"] is True
     legacy = ToolSpec("technical_name", None, {}, annotations={"title": "Legacy title"})
-    assert "Title: Legacy title" in format_tool_schema_response(legacy)
+    assert "Legacy title" not in format_tool_schema_response(legacy)
