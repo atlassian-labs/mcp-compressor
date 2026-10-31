@@ -201,9 +201,11 @@ impl FrontendServer {
 
         let output = if wrapper_name.ends_with("get_tool_schema") {
             let tool_name = required_string(&arguments, "tool_name")?;
-            self.compressed
-                .get_tool_schema(&wrapper_name, &tool_name)
+            return self
+                .compressed
+                .get_tool_schema_result(&wrapper_name, &tool_name)
                 .await
+                .map_err(mcp_error);
         } else if wrapper_name.ends_with("list_tools") {
             self.compressed.list_backend_tools(&wrapper_name).await
         } else {
@@ -226,11 +228,16 @@ fn convert_tool(tool: crate::compression::engine::Tool) -> Tool {
         Value::Object(map) => map,
         _ => Map::new(),
     };
-    Tool::new(
+    let mut converted = Tool::new(
         tool.name,
         tool.description.unwrap_or_default(),
         Arc::new(input_schema),
-    )
+    );
+    converted.title = tool.title;
+    converted.annotations = tool
+        .annotations
+        .and_then(|value| serde_json::from_value(value).ok());
+    converted
 }
 
 fn convert_resource(uri: String) -> Resource {

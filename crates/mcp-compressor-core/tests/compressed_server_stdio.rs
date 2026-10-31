@@ -875,3 +875,68 @@ async fn configured_timeout_bounds_backend_tool_requests() {
     let error = result.unwrap_err();
     assert_backend_timeout(&error, "hanging", "get prompt `hanging_prompt`");
 }
+
+#[tokio::test]
+async fn schema_lookup_preserves_display_metadata_over_mcp_at_every_level() {
+    use mcp_compressor_core::compression::CompressionLevel;
+    use mcp_compressor_core::server::{BackendConfigSource, ProxyTransformMode};
+    for level in [
+        CompressionLevel::Low,
+        CompressionLevel::Medium,
+        CompressionLevel::High,
+        CompressionLevel::Max,
+    ] {
+        let server = CompressedServer::connect_stdio(
+            common::config(
+                level,
+                Some("alpha"),
+                ProxyTransformMode::CompressedTools,
+                BackendConfigSource::Command,
+            ),
+            common::backend("alpha", "alpha_server.py"),
+        )
+        .await
+        .unwrap();
+        let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);
+        let server_task = tokio::spawn(async move {
+            FrontendServer::new(server)
+                .serve(server_transport)
+                .await
+                .unwrap()
+                .waiting()
+                .await
+                .unwrap();
+        });
+        let mut client =
+            ().serve_with_lifecycle(client_transport, ClientLifecycleMode::Initialize)
+                .await
+                .unwrap();
+        let call = |name: &str| {
+            CallToolRequestParams::new("alpha_get_tool_schema")
+                .with_arguments(json!({"tool_name": name}).as_object().unwrap().clone())
+        };
+        let result = client.call_tool(call("echo")).await.unwrap();
+        let metadata = result.structured_content.as_ref().unwrap();
+        assert_eq!(metadata["name"], "echo");
+        assert_eq!(metadata["title"], "Echo a message");
+        assert_eq!(metadata["annotations"]["title"], "Legacy echo title");
+        assert_eq!(metadata["annotations"]["readOnlyHint"], true);
+        assert_eq!(metadata["annotations"]["destructiveHint"], false);
+        assert_eq!(
+            metadata["inputSchema"]["properties"]["message"]["type"],
+            "string"
+        );
+        let wire = serde_json::to_value(&result).unwrap();
+        let text = wire["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("Title: Echo a message"));
+        assert!(text.contains("<tool>echo(message)"));
+        let untitled = client.call_tool(call("add")).await.unwrap();
+        assert_eq!(
+            untitled.structured_content.as_ref().unwrap()["title"],
+            "add"
+        );
+        assert!(client.call_tool(call("missing_tool")).await.is_err());
+        client.cancel().await.unwrap();
+        server_task.await.unwrap();
+    }
+}

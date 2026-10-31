@@ -2,6 +2,8 @@ import { createRequire } from "node:module";
 
 export interface NativeToolSpec {
   name: string;
+  title?: string | null;
+  annotations?: Record<string, unknown> | null;
   description?: string | null;
   input_schema: Record<string, unknown>;
 }

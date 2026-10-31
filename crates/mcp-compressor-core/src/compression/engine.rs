@@ -24,6 +24,12 @@ use crate::compression::CompressionLevel;
 pub struct Tool {
     /// Canonical tool name (e.g. `"get_confluence_page"`).
     pub name: String,
+    /// Optional display title supplied by the backend (never a routing identifier).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Original MCP annotations, including legacy display titles and policy hints.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<serde_json::Value>,
     /// Human-readable description.  May be absent for tools without docs.
     pub description: Option<String>,
     /// JSON Schema object describing the accepted input (the `properties` key
@@ -40,9 +46,42 @@ impl Tool {
     ) -> Self {
         Self {
             name: name.into(),
+            title: None,
+            annotations: None,
             description: description.into(),
             input_schema,
         }
+    }
+
+    /// MCP display precedence: title, annotations.title, then canonical name.
+    pub fn display_title(&self) -> &str {
+        self.title
+            .as_deref()
+            .filter(|title| !title.trim().is_empty())
+            .or_else(|| {
+                self.annotations
+                    .as_ref()?
+                    .get("title")?
+                    .as_str()
+                    .filter(|title| !title.trim().is_empty())
+            })
+            .unwrap_or(&self.name)
+    }
+
+    /// Standard MCP Tool-shaped data for schema lookup structuredContent.
+    pub fn schema_metadata(&self) -> serde_json::Value {
+        let mut result = serde_json::json!({
+            "name": self.name,
+            "title": self.display_title(),
+            "inputSchema": self.input_schema,
+        });
+        if let Some(description) = &self.description {
+            result["description"] = description.clone().into();
+        }
+        if let Some(annotations) = &self.annotations {
+            result["annotations"] = annotations.clone();
+        }
+        result
     }
 
     /// Return the ordered list of parameter names from `input_schema.properties`.
@@ -119,7 +158,14 @@ impl CompressionEngine {
         let tool_description = format_tool_at_level(tool, &CompressionLevel::Low);
         let schema = serde_json::to_string_pretty(&tool.input_schema)
             .unwrap_or_else(|_| tool.input_schema.to_string());
-        format!("{tool_description}\n\n{schema}")
+        if tool.display_title() == tool.name {
+            format!("{tool_description}\n\n{schema}")
+        } else {
+            format!(
+                "{tool_description}\nTitle: {}\n\n{schema}",
+                tool.display_title()
+            )
+        }
     }
 }
 
@@ -445,5 +491,40 @@ mod tests {
     fn param_names_empty_schema() {
         let tool = no_args_tool();
         assert_eq!(tool.param_names(), Vec::<String>::new());
+    }
+    #[test]
+    fn schema_metadata_preserves_titles_hints_and_schema() {
+        let mut tool = fetch_tool();
+        tool.title = Some("Fetch a page".into());
+        tool.annotations = Some(
+            serde_json::json!({"title": "Legacy title", "readOnlyHint": true, "destructiveHint": false}),
+        );
+        let metadata = tool.schema_metadata();
+        assert_eq!(metadata["name"], "fetch");
+        assert_eq!(metadata["title"], "Fetch a page");
+        assert_eq!(metadata["annotations"], tool.annotations.clone().unwrap());
+        assert_eq!(metadata["inputSchema"], tool.input_schema);
+        assert!(CompressionEngine::format_schema_response(&tool).contains("Title: Fetch a page"));
+        tool.title = Some("  ".into());
+        assert_eq!(tool.schema_metadata()["title"], "Legacy title");
+        tool.annotations = Some(serde_json::json!({"title": "", "readOnlyHint": false}));
+        assert_eq!(tool.schema_metadata()["title"], "fetch");
+        assert_eq!(tool.schema_metadata()["annotations"]["readOnlyHint"], false);
+    }
+
+    #[test]
+    fn legacy_tool_json_and_untitled_schema_remain_compatible() {
+        let tool: Tool = serde_json::from_value(serde_json::json!({
+            "name": "plain_tool", "description": null, "input_schema": {"type": "object", "title": "Input type, not tool title"}
+        })).unwrap();
+        assert_eq!(tool.schema_metadata()["title"], "plain_tool");
+        assert!(tool.schema_metadata().get("annotations").is_none());
+        assert_eq!(
+            CompressionEngine::format_schema_response(&tool),
+            format!(
+                "<tool>plain_tool()</tool>\n\n{}",
+                serde_json::to_string_pretty(&tool.input_schema).unwrap()
+            )
+        );
     }
 }

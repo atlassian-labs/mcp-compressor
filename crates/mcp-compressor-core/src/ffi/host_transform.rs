@@ -494,6 +494,8 @@ mod tests {
 
     fn tool(name: &str, description: &str) -> FfiTool {
         FfiTool {
+            title: None,
+            annotations: None,
             name: name.to_string(),
             description: Some(description.to_string()),
             input_schema: json!({"type":"object","properties":{}}),

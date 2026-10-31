@@ -1,5 +1,7 @@
 export interface ExecutableTool<TResult = string> {
   name: string;
+  title?: string | null;
+  annotations?: Record<string, unknown> | null;
   description?: string;
   inputSchema: Record<string, unknown>;
   execute(input?: Record<string, unknown>): Promise<TResult>;

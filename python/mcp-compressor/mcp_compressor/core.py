@@ -137,12 +137,16 @@ class ToolSpec:
     name: str
     description: str | None
     input_schema: dict[str, Any]
+    title: str | None = None
+    annotations: dict[str, Any] | None = None
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "description": self.description,
             "input_schema": self.input_schema,
+            **({"title": self.title} if self.title is not None else {}),
+            **({"annotations": self.annotations} if self.annotations is not None else {}),
         }
 
 

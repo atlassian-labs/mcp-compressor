@@ -87,3 +87,21 @@ Frontends can be:
 ## Native SDKs
 
 Rust, Python, and TypeScript SDKs can start a compressed proxy in-process without spawning the `mcp-compressor` stdio CLI. The SDKs still start the backend MCP servers or connect to remote backend URLs as configured.
+
+### Display names in schema lookup
+
+The MCP `get_tool_schema` response includes `structuredContent` shaped like an MCP
+Tool: `name`, `title`, `description` (when present), `inputSchema`, and original
+`annotations` (when present). Clients can cache this metadata under the selected
+backend tool name and use its `title` when displaying subsequent `invoke_tool`
+calls. This is response data, not a dynamic change to the wrapper's `tools/list`
+identity, and does not require a proprietary `_meta` field.
+
+Display precedence is the backend's nonblank `title`, then `annotations.title`,
+then the canonical tool name. Callable names and input schemas are unchanged;
+missing titles are not guessed from descriptions. Existing text-based clients
+still receive the full description and input schema, with a `Title:` line when
+a friendly title exists. Compression of the initial listing is unchanged.
+
+Backend annotations are preserved, not elevated to authorization decisions;
+clients remain responsible for deciding whether to trust a server's hints.

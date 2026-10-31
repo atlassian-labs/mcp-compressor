@@ -10,6 +10,8 @@ import type { ExecutableTool } from "./adapters.js";
 import { stringifyToolResult } from "./tool_specs.js";
 
 export interface LocalTool<TInput = Record<string, unknown>, TResult = unknown> {
+  title?: string | null;
+  annotations?: Record<string, unknown> | null;
   description?: string;
   inputSchema: unknown;
   execute: (input: TInput) => TResult | Promise<TResult>;
@@ -83,6 +85,8 @@ export function compressTools(
   const compressionLevel = options.compressionLevel ?? "medium";
   const specs: ToolSpec[] = Object.entries(tools).map(([name, tool]) => ({
     name,
+    title: tool.title,
+    annotations: tool.annotations,
     description: tool.description,
     inputSchema: asJsonSchema(tool.inputSchema, options.schemaAdapter),
   }));

@@ -334,13 +334,35 @@ impl CompressedServer {
         _wrapper_tool_name: &str,
         backend_tool_name: &str,
     ) -> Result<String, Error> {
-        let backend = self.backend_for_wrapper(_wrapper_tool_name)?;
-        let tool = backend
+        let tool = self.schema_tool(_wrapper_tool_name, backend_tool_name)?;
+        Ok(CompressionEngine::format_schema_response(tool))
+    }
+
+    /// Schema lookup with standard MCP structured content; text remains compatible.
+    pub async fn get_tool_schema_result(
+        &self,
+        wrapper_tool_name: &str,
+        backend_tool_name: &str,
+    ) -> Result<rmcp::model::CallToolResult, Error> {
+        let tool = self.schema_tool(wrapper_tool_name, backend_tool_name)?;
+        let mut result =
+            rmcp::model::CallToolResult::success(vec![rmcp::model::ContentBlock::text(
+                CompressionEngine::format_schema_response(tool),
+            )]);
+        result.structured_content = Some(tool.schema_metadata());
+        Ok(result)
+    }
+
+    fn schema_tool(
+        &self,
+        wrapper_tool_name: &str,
+        backend_tool_name: &str,
+    ) -> Result<&Tool, Error> {
+        self.backend_for_wrapper(wrapper_tool_name)?
             .tools
             .iter()
             .find(|tool| tool.name == backend_tool_name)
-            .ok_or_else(|| Error::ToolNotFound(backend_tool_name.to_string()))?;
-        Ok(CompressionEngine::format_schema_response(tool))
+            .ok_or_else(|| Error::ToolNotFound(backend_tool_name.to_string()))
     }
 
     /// List backend tools via the max-compression `list_tools` wrapper.

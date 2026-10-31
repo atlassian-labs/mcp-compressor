@@ -533,6 +533,8 @@ mod tests {
 
     fn tool(name: &str, description: &str) -> Tool {
         Tool {
+            title: None,
+            annotations: None,
             name: name.to_string(),
             description: Some(description.to_string()),
             input_schema: json!({
@@ -613,6 +615,8 @@ mod tests {
     #[test]
     fn option_descriptions_keep_their_line_breaks() {
         let tool = Tool {
+            title: None,
+            annotations: None,
             name: "create".to_string(),
             description: Some("Create.".to_string()),
             input_schema: json!({
@@ -645,6 +649,8 @@ mod tests {
     #[test]
     fn union_options_say_whether_plain_text_is_accepted() {
         let tool = Tool {
+            title: None,
+            annotations: None,
             name: "post".to_string(),
             description: Some("Post.".to_string()),
             input_schema: json!({
