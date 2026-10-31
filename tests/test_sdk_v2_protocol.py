@@ -299,6 +299,13 @@ async def test_wire_preserves_tool_result_envelope(rust_core_binary: Path, mode:
                 },
             },
         )
+        display_metadata = {
+            "name": "envelope",
+            "title": "UI_ONLY_ENVELOPE_TITLE",
+            "description": "envelope",
+            "inputSchema": {"type": "object"},
+            "annotations": {"title": "UI_ONLY_LEGACY_TITLE", "readOnlyHint": True},
+        }
         expected = {
             "content": [
                 {
@@ -310,8 +317,31 @@ async def test_wire_preserves_tool_result_envelope(rust_core_binary: Path, mode:
             ],
             "structuredContent": {"value": 42},
             "isError": False,
-            "_meta": {"fixture/result": True},
+            "_meta": {
+                "fixture/result": True,
+                "atlassian.com/mcp-compressor/tool": display_metadata,
+            },
         }
         if mode == "modern":
             expected["resultType"] = "complete"
         assert response["result"] == expected
+
+        # Exact equality above guards the complete envelope, including unrelated metadata.
+        # Titles are UI-only even when text output is TOON-transformed.
+        for field in ("content", "structuredContent"):
+            assert "UI_ONLY_" not in json.dumps(response["result"][field])
+        schema = await exchange(
+            process,
+            {
+                "id": "envelope-schema",
+                "method": "tools/call",
+                "params": {
+                    "name": "alpha_get_tool_schema",
+                    "arguments": {"tool_name": "envelope"},
+                    "_meta": meta,
+                },
+            },
+        )
+        assert schema["result"]["_meta"] == {"atlassian.com/mcp-compressor/tool": display_metadata}
+        assert "UI_ONLY_" not in json.dumps(schema["result"]["content"])
+        assert schema["result"].get("structuredContent") is None
