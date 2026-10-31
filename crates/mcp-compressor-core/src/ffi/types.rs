@@ -6,6 +6,8 @@ mod tests {
 
     fn sample_tool() -> FfiTool {
         FfiTool {
+            title: None,
+            annotations: None,
             name: "echo".to_string(),
             description: Some("Echo a message.".to_string()),
             input_schema: json!({
@@ -459,5 +461,16 @@ mod tests {
             vec![("X-Tenant".to_string(), "tenant-123".to_string())]
         );
         assert_eq!(parsed[0].oauth_app_name.as_deref(), Some("Test Agent"));
+    }
+    #[test]
+    fn ffi_roundtrip_preserves_display_and_policy_metadata() {
+        let mut tool = sample_tool();
+        tool.title = Some("UI_ONLY_ECHO_TITLE".into());
+        tool.annotations = Some(json!({"title": "Legacy echo", "readOnlyHint": true}));
+        let roundtrip = FfiTool::from(crate::compression::engine::Tool::from(tool.clone()));
+        assert_eq!(tool, roundtrip);
+        let text = format_tool_schema_response(tool);
+        assert!(!text.contains("UI_ONLY_ECHO_TITLE"));
+        assert!(!text.contains("Legacy echo"));
     }
 }

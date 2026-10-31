@@ -660,11 +660,16 @@ for example: `mcp-compressor -- <url> -H \"Authorization=Bearer <token>\"`. Use 
 }
 
 fn convert_tool(tool: rmcp::model::Tool) -> Tool {
-    Tool::new(
+    let mut converted = Tool::new(
         tool.name.to_string(),
         tool.description.map(|description| description.to_string()),
         Value::Object((*tool.input_schema).clone()),
-    )
+    );
+    converted.title = tool.title;
+    converted.annotations = tool
+        .annotations
+        .map(|annotations| serde_json::to_value(annotations).expect("MCP annotations serialize"));
+    converted
 }
 
 #[cfg(test)]

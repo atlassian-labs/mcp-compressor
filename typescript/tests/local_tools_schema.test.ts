@@ -2,9 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/rust_core.js", () => ({
   compressToolListing: () => "",
-  formatToolSchemaResponse: () => "",
+  formatToolSchemaResponse: vi.fn(() => ""),
 }));
 
+import { formatToolSchemaResponse } from "../src/rust_core.js";
 import { compressTools } from "../src/local_tools.js";
 
 const tools = {
@@ -51,4 +52,24 @@ describe("local compressed tool schemas", () => {
     );
     expect(execute).not.toHaveBeenCalled();
   });
+});
+
+it("forwards configured title and annotations to Rust schema formatting at all levels", async () => {
+  for (const compressionLevel of ["low", "medium", "high", "max"] as const) {
+    const titled = {
+      ...tools.echo,
+      title: "Echo a message",
+      annotations: { title: "Legacy echo", readOnlyHint: true },
+    };
+    await compressTools({ echo: titled }, { compressionLevel }).get_tool_schema!.execute({
+      tool_name: "echo",
+    });
+    expect(formatToolSchemaResponse).toHaveBeenLastCalledWith({
+      name: "echo",
+      title: titled.title,
+      annotations: titled.annotations,
+      description: titled.description,
+      inputSchema: titled.inputSchema,
+    });
+  }
 });

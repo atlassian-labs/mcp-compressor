@@ -12,7 +12,10 @@ from mcp.types import Annotations, AudioContent, ImageContent, TextContent
 mcp = FastMCP("Rust Core Alpha Fixture")
 
 
-@mcp.tool
+@mcp.tool(
+    title="UI_ONLY_ECHO_TITLE",
+    annotations={"title": "Legacy echo title", "readOnlyHint": True, "destructiveHint": False},
+)
 def echo(message: str) -> str:
     """Echo a message from alpha."""
     return f"alpha:{message}"

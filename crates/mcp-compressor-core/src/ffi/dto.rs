@@ -12,6 +12,12 @@ use crate::server::{BackendServerConfig, JustBashCommandSpec, JustBashProviderSp
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FfiTool {
     pub name: String,
+    /// Optional display title supplied by the backend (never a routing identifier).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Original MCP annotations, including legacy display titles and policy hints.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<serde_json::Value>,
     pub description: Option<String>,
     pub input_schema: Value,
 }
@@ -151,7 +157,10 @@ impl From<FfiGeneratorConfig> for GeneratorConfig {
 
 impl From<FfiTool> for Tool {
     fn from(value: FfiTool) -> Self {
-        Tool::new(value.name, value.description, value.input_schema)
+        let mut tool = Tool::new(value.name, value.description, value.input_schema);
+        tool.title = value.title;
+        tool.annotations = value.annotations;
+        tool
     }
 }
 
@@ -159,6 +168,8 @@ impl From<Tool> for FfiTool {
     fn from(value: Tool) -> Self {
         Self {
             name: value.name,
+            title: value.title,
+            annotations: value.annotations,
             description: value.description,
             input_schema: value.input_schema,
         }

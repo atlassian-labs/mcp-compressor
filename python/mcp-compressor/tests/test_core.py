@@ -622,3 +622,18 @@ def test_full_option_recovers_cached_mcp_response_without_reexecution() -> None:
         assert original["calls"] == 1
         assert original["backend_full"] is True
         assert "truncation" not in original
+
+
+def test_schema_keeps_configured_display_titles_out_of_model_text():
+    tool = ToolSpec(
+        name="technical_name",
+        description="Description stays separate.",
+        input_schema={"type": "object", "properties": {}},
+        title="Friendly tool",
+        annotations={"title": "Legacy title", "readOnlyHint": True},
+    )
+    assert "Friendly tool" not in format_tool_schema_response(tool)
+    assert "Legacy title" not in format_tool_schema_response(tool)
+    assert tool.to_json_dict()["annotations"]["readOnlyHint"] is True
+    legacy = ToolSpec("technical_name", None, {}, annotations={"title": "Legacy title"})
+    assert "Legacy title" not in format_tool_schema_response(legacy)

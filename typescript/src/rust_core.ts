@@ -2,6 +2,8 @@ import { loadNativeCore, type NativeCompressedSession, type NativeToolSpec } fro
 
 export interface ToolSpec {
   name: string;
+  title?: string | null;
+  annotations?: Record<string, unknown> | null;
   description?: string | null;
   inputSchema: Record<string, unknown>;
 }
@@ -9,6 +11,8 @@ export interface ToolSpec {
 function toNativeTool(tool: ToolSpec): NativeToolSpec {
   return {
     name: tool.name,
+    title: tool.title ?? null,
+    annotations: tool.annotations ?? null,
     description: tool.description ?? null,
     input_schema: tool.inputSchema,
   };
@@ -137,11 +141,15 @@ export interface CompressedSessionInfo {
   token: string;
   frontend_tools: Array<{
     name: string;
+    title?: string | null;
+    annotations?: Record<string, unknown> | null;
     description?: string | null;
     input_schema: Record<string, unknown>;
   }>;
   backend_tools: Array<{
     name: string;
+    title?: string | null;
+    annotations?: Record<string, unknown> | null;
     description?: string | null;
     input_schema: Record<string, unknown>;
   }>;
@@ -150,6 +158,8 @@ export interface CompressedSessionInfo {
     serverName?: string;
     tool: {
       name: string;
+      title?: string | null;
+      annotations?: Record<string, unknown> | null;
       description?: string | null;
       input_schema: Record<string, unknown>;
     };

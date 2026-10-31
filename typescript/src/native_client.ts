@@ -35,6 +35,8 @@ export interface CompressorClientOptions {
 
 export interface ProxyTool {
   name: string;
+  title?: string | null;
+  annotations?: Record<string, unknown> | null;
   description?: string | null;
   inputSchema: Record<string, unknown>;
 }
@@ -308,6 +310,8 @@ export class CompressorProxy {
   get tools(): ProxyTool[] {
     return this.info().frontend_tools.map((tool) => ({
       name: tool.name,
+      title: tool.title,
+      annotations: tool.annotations,
       description: tool.description,
       inputSchema: tool.input_schema,
     }));
@@ -404,6 +408,8 @@ export class CompressorProxy {
     for (const tool of this.tools) {
       result[tool.name] = {
         name: tool.name,
+        title: tool.title,
+        annotations: tool.annotations,
         description: tool.description ?? undefined,
         inputSchema: tool.inputSchema,
         execute: async (input: Record<string, unknown> = {}) =>
@@ -426,6 +432,8 @@ export class CompressorProxy {
       token: info.token,
       tools: info.backend_tools.map((tool) => ({
         name: tool.name,
+        title: tool.title,
+        annotations: tool.annotations,
         description: tool.description,
         inputSchema: tool.input_schema,
       })),

@@ -87,3 +87,31 @@ Frontends can be:
 ## Native SDKs
 
 Rust, Python, and TypeScript SDKs can start a compressed proxy in-process without spawning the `mcp-compressor` stdio CLI. The SDKs still start the backend MCP servers or connect to remote backend URLs as configured.
+
+### Client-only display names in schema lookup
+
+The MCP `get_tool_schema` and `invoke_tool` results carry display metadata only in
+`_meta["atlassian.com/mcp-compressor/tool"]`, using MCP Tool field names:
+`name`, `title`, `description` (when present), `inputSchema`, and original
+`annotations` (when present). The `_meta` envelope is standard MCP; the key
+inside it is a compressor-specific, namespaced extension.
+
+Clients can cache schema metadata for UI display and use invocation metadata
+to label the current call. Invocation metadata is attached after output shrinking,
+so it never enters text previews or truncation artifacts. **Do not forward `_meta` to the model or serialize the whole protocol
+result into model history.** Only model-facing `content` (and any actual
+`structuredContent`) belongs there. Compressor does not add display titles to
+either field. Existing schema text and compressed listings are unchanged.
+Local TypeScript/Python text formatters likewise never inject display titles.
+
+Display precedence is the backend's nonblank `title`, then `annotations.title`,
+then the canonical tool name. Callable names and input schemas are unchanged;
+missing titles are not guessed from descriptions. This does not rename the
+wrapper's `tools/list` identity. Passthrough tool descriptors preserve upstream
+metadata; hosts must treat display fields as UI metadata rather than prompt text.
+
+Backend annotations are preserved, not elevated to authorization decisions.
+As with all MCP metadata, the compressor cannot enforce how an arbitrary host
+serializes a result; hosts consuming `_meta` must maintain this client/model
+boundary. Titles already written into backend descriptions or input schemas
+are outside this display-metadata contract and are not scrubbed.

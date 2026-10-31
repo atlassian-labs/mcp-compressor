@@ -1967,3 +1967,22 @@ describe("Rust native core wrapper", () => {
     ]);
   });
 });
+
+it("keeps display titles out of model-facing native schema responses", async () => {
+  const tool = {
+    title: "Friendly tool",
+    annotations: { title: "Legacy title", readOnlyHint: true },
+    description: "Description stays separate.",
+    inputSchema: { type: "object", properties: {} },
+    execute: async () => "ok",
+  };
+  for (const compressionLevel of ["low", "medium", "high", "max"] as const) {
+    const schema = compressTools({ technical_name: tool }, { compressionLevel }).get_tool_schema!;
+    await expect(schema.execute({ tool_name: "technical_name" })).resolves.not.toContain(
+      "Friendly tool",
+    );
+  }
+  expect(formatToolSchemaResponse({ ...tool, name: "technical_name", title: "" })).not.toContain(
+    "Legacy title",
+  );
+});

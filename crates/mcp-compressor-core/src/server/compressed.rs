@@ -334,13 +334,48 @@ impl CompressedServer {
         _wrapper_tool_name: &str,
         backend_tool_name: &str,
     ) -> Result<String, Error> {
-        let backend = self.backend_for_wrapper(_wrapper_tool_name)?;
-        let tool = backend
+        let tool = self.schema_tool(_wrapper_tool_name, backend_tool_name)?;
+        Ok(CompressionEngine::format_schema_response(tool))
+    }
+
+    /// Schema lookup with client-only MCP result metadata; model text is unchanged.
+    pub async fn get_tool_schema_result(
+        &self,
+        wrapper_tool_name: &str,
+        backend_tool_name: &str,
+    ) -> Result<rmcp::model::CallToolResult, Error> {
+        let tool = self.schema_tool(wrapper_tool_name, backend_tool_name)?;
+        let mut result =
+            rmcp::model::CallToolResult::success(vec![rmcp::model::ContentBlock::text(
+                CompressionEngine::format_schema_response(tool),
+            )]);
+        Self::attach_display_metadata(&mut result, tool);
+        Ok(result)
+    }
+
+    /// Attach client display metadata after output formatting/shrinking. Never include it in text.
+    pub(crate) fn attach_display_metadata(result: &mut rmcp::model::CallToolResult, tool: &Tool) {
+        let meta = result.meta.get_or_insert_with(Default::default);
+        meta.insert("atlassian.com/mcp-compressor/tool".into(), tool.schema_metadata());
+    }
+
+    pub(crate) fn attach_invocation_display_metadata(
+        &self, result: &mut rmcp::model::CallToolResult, wrapper: &str, tool_name: &str,
+    ) -> Result<(), Error> {
+        Self::attach_display_metadata(result, self.schema_tool(wrapper, tool_name)?);
+        Ok(())
+    }
+
+    fn schema_tool(
+        &self,
+        wrapper_tool_name: &str,
+        backend_tool_name: &str,
+    ) -> Result<&Tool, Error> {
+        self.backend_for_wrapper(wrapper_tool_name)?
             .tools
             .iter()
             .find(|tool| tool.name == backend_tool_name)
-            .ok_or_else(|| Error::ToolNotFound(backend_tool_name.to_string()))?;
-        Ok(CompressionEngine::format_schema_response(tool))
+            .ok_or_else(|| Error::ToolNotFound(backend_tool_name.to_string()))
     }
 
     /// List backend tools via the max-compression `list_tools` wrapper.
@@ -1400,5 +1435,17 @@ mod toonify_tests {
             other => panic!("expected text content, got {other:?}"),
         };
         assert_eq!(text, "[1]{id,name}:\n  1,alpha");
+    }
+}
+
+#[cfg(test)]
+mod display_metadata_tests {
+    #[test]
+    fn model_string_projection_excludes_client_metadata() {
+        let mut result = rmcp::model::CallToolResult::success(vec![rmcp::model::ContentBlock::text("schema text")]);
+        result.meta = Some(serde_json::from_value(serde_json::json!({
+            "atlassian.com/mcp-compressor/tool": {"title": "UI_ONLY_SENTINEL"}
+        })).unwrap());
+        assert_eq!(super::call_tool_result_to_string(result).unwrap(), "schema text");
     }
 }

@@ -28,6 +28,8 @@ class ProxyTool:
     name: str
     description: str | None
     input_schema: dict[str, Any]
+    title: str | None = None
+    annotations: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -221,6 +223,8 @@ class CompressorProxy:
         return [
             ProxyTool(
                 name=str(tool["name"]),
+                title=tool.get("title"),
+                annotations=tool.get("annotations"),
                 description=tool.get("description"),
                 input_schema=dict(tool["input_schema"]),
             )

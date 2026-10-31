@@ -48,6 +48,8 @@ def main() -> None:  # noqa: C901 - explicit JSON-RPC fixture dispatch
                 "properties": {"message": {"type": "string"}},
                 "required": ["message"],
             }
+            tools[-1]["title"] = "UI_ONLY_ENVELOPE_TITLE"
+            tools[-1]["annotations"] = {"title": "UI_ONLY_LEGACY_TITLE", "readOnlyHint": True}
             result(request_id, {"tools": tools})
         elif method == "tools/call":
             meta = params.get("_meta", {})
